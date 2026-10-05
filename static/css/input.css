@@ -1,1 +1,84 @@
 @import "tailwindcss";
+
+/* Declares variable NAMES (so Tailwind generates bg-primary, text-txt-primary,
+   font-main, etc.) and the "neutral" preset's LIGHT values as the default.
+   Dark-mode and other-preset overrides live in themes.css, loaded after the
+   compiled output. `static` keeps every token in the build even when no
+   utility uses it yet, so runtime theme overrides always have a target. */
+
+@font-face {
+  font-family: 'Grotesk';
+  src: url('/static/fonts/SpaceGrotesk-VariableFont_wght.ttf') format('woff2');
+  font-weight: 100 900;
+  font-style: normal;
+  font-display: swap;
+}
+
+@font-face {
+  font-family: 'JetBrains Mono';
+  src: url('/static/fonts/JetBrainsMono-VariableFont_wght.ttf') format('truetype');
+  font-weight: 100 800;
+  font-style: normal;
+  font-display: swap;
+}
+
+@theme static {
+  --font-main: 'Grotesk', ui-sans-serif, system-ui, sans-serif;
+  --font-mono: 'JetBrains Mono', ui-monospace, SFMono-Regular, monospace;
+
+  --color-primary:        #18181B;
+  --color-primary-hover:  #27272A;
+  --color-primary-soft:   #F4F4F5;
+  --color-on-primary:     #FFFFFF;
+
+  --color-bg:             #FAFAFA;
+  --color-surface:        #FFFFFF;
+  --color-surface-alt:    #F4F4F5;
+
+  --color-txt-primary:    #18181B;
+  --color-txt-secondary:  #52525B;
+  --color-txt-muted:      #A1A1AA;
+
+  --color-border:         #E4E4E7;
+  --color-border-strong:  #D4D4D8;
+
+  --color-success:        #16A34A;
+  --color-error:          #DC2626;
+  --color-warning:        #D97706;
+  --color-info:           #2563EB;
+
+  --color-accent:         #3B82F6;
+  --color-accent-hover:   #2563EB;
+  --color-accent-soft:    #EFF6FF;
+  --color-on-accent:      #FFFFFF;
+}
+
+/* Reusable pieces, built only from the tokens above. */
+@layer components {
+  .btn {
+    @apply inline-flex items-center justify-center gap-2 rounded-lg px-4 py-2.5 text-sm font-medium
+           transition-colors disabled:pointer-events-none disabled:opacity-50
+           focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-accent;
+  }
+  .btn-primary   { @apply bg-primary text-on-primary hover:bg-primary-hover; }
+  .btn-secondary { @apply border border-border-strong bg-surface text-txt-primary hover:bg-surface-alt; }
+  .btn-ghost     { @apply text-txt-secondary hover:bg-surface-alt hover:text-txt-primary; }
+
+  .label { @apply mb-1.5 block text-sm font-medium text-txt-primary; }
+  .input {
+    @apply block w-full rounded-lg border border-border-strong bg-surface px-3 py-2.5 text-sm
+           text-txt-primary placeholder:text-txt-muted
+           focus-visible:border-accent focus-visible:outline-2 focus-visible:outline-accent;
+  }
+  .input-error { @apply border-error; }
+  .field-error { @apply mt-1.5 text-sm text-error; }
+  .field-help  { @apply mt-1.5 text-sm text-txt-secondary; }
+
+  .card { @apply rounded-xl border border-border bg-surface p-6; }
+}
+
+.logo-mask {
+  display: inline-block;
+  background-color: currentColor;
+  mask: var(--logo-url) center / contain no-repeat;
+}
