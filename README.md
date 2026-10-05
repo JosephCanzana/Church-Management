@@ -91,6 +91,18 @@ docs/                # schema.sql, flows.md, verify.sql (reference)
 42 tables in total. Table names are fixed with `db_table` and match
 `docs/schema.sql`.
 
+## Roles and routes
+
+| Role        | Base path        | Access                                           |
+|-------------|------------------|--------------------------------------------------|
+| Super-admin | `/superadmin/`   | Own dashboard, with a link to Django admin       |
+| Admin       | `/admin/`        | Manages extensions, settings, and coordinators   |
+| Coordinator | `/coordinator/`  | Manages their own extension only                 |
+| Member      | `/`              | Personal pages (attendance, tithes, prayer, etc.)|
+
+Django's built-in admin lives at `/django-admin/` (not `/admin/`) and is
+for the super-admin only. Only users with `is_staff=True` can open it.
+
 ## How the data works (short version)
 - **Roles:** super admin > admin > coordinator > member. Special roles
   (`tithes_offering`, `attendance`) are added on top, with a per-extension limit.

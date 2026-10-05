@@ -18,5 +18,9 @@ from django.contrib import admin
 from django.urls import path, include
 
 urlpatterns = [
-    path('admin/', admin.site.urls),
+    path("django-admin/", admin.site.urls),        # Django's built-in admin
+    # path("superadmin/", include("core.urls_superadmin")),
+    # path("admin/", include("core.urls_admin")),
+    # path("coordinator/", include("core.urls_coordinator")),
+    # path("", include("accounts.urls")),  
 ]

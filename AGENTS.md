@@ -171,3 +171,20 @@ still in use), `archive_inactive_users`, `auto_transfer_extension`,
 - Do not commit `.env`, `venv/`, `theme/tailwindcss`, media uploads or db dumps.
 - Keep `.env.example` in sync with settings.
 - Prefer the smallest relevant command or page load to verify a change.
+
+## Roles and routing
+- Four roles: super-admin, admin, coordinator, member. Role is stored in
+  `User.role`; do not infer it from `is_staff` or `is_superuser`.
+- `is_staff` / `is_superuser` are reserved for the super-admin, since they
+  control access to Django's built-in admin.
+- Django's built-in admin is mounted at `/django-admin/`. `/admin/` is the
+  custom Admin role area, not Django admin. Never "fix" this by moving
+  Django admin back to `/admin/`.
+- Route groups: `/superadmin/`, `/admin/`, `/coordinator/`, and member
+  pages at the root. Each group has its own urls module.
+- Every view in a role group must be protected with `role_required(...)`.
+  Hiding a link in a template is not access control.
+- Coordinator-scoped data must be fetched through the `for_user(user)`
+  queryset helper, not with ad hoc `.filter(extension=...)` calls in views.
+- Use `{% url 'admin:index' %}` to link to Django admin, never a hardcoded
+  path.
