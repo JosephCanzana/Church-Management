@@ -1,0 +1,5 @@
+{# Usage: {% include 'includes/icon.html' with name='home' class='size-5' %} #}
+{% load static %}
+<svg class="{{ class|default:'size-5' }}" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="1.5">
+  <use href="{% static 'icons/sprite.svg' %}#{{ name }}"></use>
+</svg>

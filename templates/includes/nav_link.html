@@ -1,0 +1,8 @@
+{# Usage: {% include 'includes/nav_link.html' with href=... label='Events' icon='calendar-days' %} #}
+<a href="{{ href }}"
+   {% if request.path == href %}aria-current="page"{% endif %}
+   class="flex items-center gap-3 rounded-lg px-3 py-2 text-sm font-medium transition-colors
+          {% if request.path == href %}bg-primary-soft text-txt-primary{% else %}text-txt-secondary hover:bg-surface-alt hover:text-txt-primary{% endif %}">
+  {% include 'includes/icon.html' with name=icon %}
+  {{ label }}
+</a>

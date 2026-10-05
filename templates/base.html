@@ -1,0 +1,48 @@
+{% load static %}
+<!DOCTYPE html>
+<html lang="{{ LANGUAGE_CODE|default:'en' }}"
+      data-mode="{{ theme_mode|default:'light' }}"
+      class="{% if theme_mode == 'dark' %}dark{% endif %}">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>{% block title %}Church Management{% endblock %}</title>
+  <!-- Light mode and dark mode -->
+  <script>
+    (function () {
+      var root = document.documentElement;
+      function apply(mode) {
+        root.dataset.mode = mode;
+        root.classList.toggle('dark', mode === 'dark');
+      }
+      var saved = null;
+      try { saved = localStorage.getItem('mode'); } catch (e) {}
+      apply(saved || (matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light'));
+
+      window.toggleMode = function () {
+        var next = root.classList.contains('dark') ? 'light' : 'dark';
+        apply(next);
+        try { localStorage.setItem('mode', next); } catch (e) {}
+        return next;
+      };
+    })();
+  </script>
+  <link rel="stylesheet" href="{% static 'css/output.css' %}">
+  <link rel="stylesheet" href="{% static 'css/themes.css' %}">
+  {# Active theme palette from the theming context processor; must come after the files above. #}
+  {% if theme_css %}<style id="theme-vars">{{ theme_css|safe }}</style>{% endif %}
+  {% block extra_head %}{% endblock %}
+  <script defer src="{% static 'js/alpine.min.js' %}"></script>
+</head>
+<body class="min-h-dvh bg-bg font-main text-txt-primary antialiased">
+  <a href="#main"
+     class="sr-only rounded-lg bg-surface px-4 py-2 text-sm focus:not-sr-only focus:fixed focus:left-4 focus:top-4 focus:z-50">
+    Skip to content
+  </a>
+
+  {% block body %}{% endblock %}
+
+  {% include 'includes/messages.html' %}
+  {% block extra_js %}{% endblock %}
+</body>
+</html>

@@ -1,0 +1,31 @@
+{% extends 'base.html' %}
+{% load static %}
+
+{# Authenticated app: sidebar on large screens, slide-in drawer on small ones. #}
+{% block body %}
+<div x-data="{ drawer: false }" @keydown.escape.window="drawer = false" class="min-h-dvh lg:flex">
+
+  {# Desktop sidebar #}
+  <aside class="hidden w-64 shrink-0 border-r border-border bg-surface lg:block">
+    <div class="sticky top-0 flex h-dvh flex-col">
+      {% include 'includes/sidebar.html' %}
+    </div>
+  </aside>
+
+  {# Mobile drawer #}
+  <div x-show="drawer" x-cloak class="fixed inset-0 z-40 lg:hidden" role="dialog" aria-modal="true" aria-label="Main menu">
+    <div class="absolute inset-0 bg-primary/40" @click="drawer = false"></div>
+    <aside class="relative flex h-full w-72 max-w-[85%] flex-col border-r border-border bg-surface"
+           x-transition:enter="transition duration-150" x-transition:enter-start="-translate-x-full" x-transition:enter-end="translate-x-0">
+      {% include 'includes/sidebar.html' %}
+    </aside>
+  </div>
+
+  <div class="flex min-w-0 flex-1 flex-col">
+    {% include 'includes/topbar.html' %}
+    <main id="main" class="mx-auto w-full max-w-6xl flex-1 px-4 py-6 lg:px-8">
+      {% block content %}{% endblock %}
+    </main>
+  </div>
+</div>
+{% endblock %}

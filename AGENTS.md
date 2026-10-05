@@ -7,8 +7,10 @@ attendance, tithes and offering, faith goals and Bible streaks, accountability
 buddies, prayer requests, events, resources, notifications and audit logging.
 
 **Status:** all 14 apps and 42 models exist, with migrations and seed data.
-`core.test_schema` verifies them. Services, views, forms and templates are
-mostly not built yet: the next work is building features on top of the models.
+`core.test_schema` verifies them. The base templates, design tokens, light/dark
+toggle and a placeholder landing page exist. Services, views and forms are
+mostly not built yet: the next work is the login, then features on top of the
+models.
 
 Reference docs (the source of truth for behaviour):
 - `docs/schema.sql`: original SQL design, with comments on every rule
@@ -24,8 +26,13 @@ Python 3.12, Django 5.1+ (tested on 5.2 and 6.0), PostgreSQL 16, Tailwind CSS
 - One folder per app (below). Standard files per app: `models.py`,
   `services.py` (business logic), `views.py`, `urls.py`, `forms.py`,
   `permissions.py`, `management/commands/` (jobs).
-- `templates/` (`base.html`, `base_public.html`, `base_app.html`, `includes/`),
-  `static/`, `theme/` (Tailwind CLI binary, gitignored), `docs/`.
+- `templates/` (project-level: `base.html`, `base_public.html`, `base_app.html`,
+  `includes/`). Page templates that belong to one app go in that app's
+  `templates/<app>/` folder (e.g. `pages/templates/pages/landing.html`).
+- `static/`: `css/input.css` (Tailwind source and design tokens), `css/themes.css`
+  (dark overrides), `css/output.css` (generated, not committed), `fonts/`,
+  `icons/sprite.svg`, `images/` (logos), `js/alpine.min.js`.
+- `theme/` (Tailwind CLI binary, gitignored), `docs/`.
 - `Dockerfile`, `docker-compose.yml`, `Makefile`, `requirements.txt`, `.env.example`.
 
 ## Commands (always through Docker)
@@ -152,6 +159,27 @@ still in use), `archive_inactive_users`, `auto_transfer_extension`,
 - Layouts: `base_public.html` for logged-out pages, `base_app.html` for the
   authenticated app. Add nav entries to `templates/includes/`, not inline.
 - Keep `{# ... #}` comments on their own line, never inside a tag.
+- Fonts are self-hosted from `static/fonts/`. `font-main` is Inter (body and UI);
+  `font-mono` is JetBrains Mono (account ids, amounts). Change a font by editing
+  `--font-main` / `--font-mono` and the matching `@font-face` in `input.css`.
+- Reusable component classes live in `input.css` under `@layer components`:
+  `.btn`, `.btn-primary`, `.btn-secondary`, `.btn-ghost`, `.label`, `.input`,
+  `.input-error`, `.field-error`, `.field-help`, `.card`. Use them before writing
+  new one-off utility strings, and build new ones from tokens only.
+- `--color-on-primary` and `--color-on-accent` are the text colors for filled
+  primary and accent surfaces; use them instead of `text-white`.
+- Light/dark: `base.html` sets `data-mode` and `.dark` on `<html>` from
+  `localStorage` (falling back to the system setting) before first paint, and
+  exposes `window.toggleMode()`. When `user_settings` is wired up, the server
+  value `theme_mode` takes over. Dark values live in `static/css/themes.css`.
+- Logos: `includes/logo.html` draws the SVG from `static/images/` as a CSS mask,
+  so its color follows the theme tokens. Options: `variant` (`mark` | `full`),
+  `plate`, `size`, `decorative`.
+- `input.css` must contain `[x-cloak] { display: none !important; }`. Put
+  `x-cloak` on anything Alpine shows or hides on load, to avoid a flash.
+- Page templates extend `base_public.html` or `base_app.html` and fill the
+  `content` block (and `title`, `page_title` where they exist). Never extend
+  `base.html` directly from a page.
 
 ## Known footguns
 - `migrate` from the host cannot reach `POSTGRES_HOST=db`; run it in the `web`
@@ -162,6 +190,17 @@ still in use), `archive_inactive_users`, `auto_transfer_extension`,
   several apps; if an app's tables move to a later migration, update its
   `dependencies`.
 - pgAdmin shows FKs as `NO ACTION`; that is expected (see above).
+- `TemplateDoesNotExist` for `base_public.html` means `TEMPLATES['DIRS']` is
+  missing `BASE_DIR / 'templates'`. Static files need
+  `STATICFILES_DIRS = [BASE_DIR / 'static']`. After adding folders, restart the
+  `web` container (or rebuild) so they are mounted.
+- `{% extends %}` needs the full file name: `"base_public.html"`, not
+  `"base_public"`.
+- Django 5+ logout is POST-only; use a form with `{% csrf_token %}`, not a link.
+- Font file names with spaces or commas need URL-encoding in `@font-face`;
+  prefer renaming them to plain names.
+- Rebuild Tailwind (`make tailwind-build`) after adding classes in templates,
+  or run `make tailwind-watch`.
 - pgAdmin access needs the dev-only port from
   `docker-compose.override.yml.example`; never publish the db port in production.
 
@@ -170,6 +209,13 @@ still in use), `archive_inactive_users`, `auto_transfer_extension`,
 - Never edit an applied migration; add a new one.
 - Do not commit `.env`, `venv/`, `theme/tailwindcss`, media uploads or db dumps.
 - Keep `.env.example` in sync with settings.
+- **Document the code so it is easy to read.** Every new module, class and
+  function gets a short docstring saying what it is for. Add a comment for the
+  why when the reason is not obvious (a constraint, a trigger, a workaround).
+  Each template starts with a `{# ... #}` comment listing the blocks it fills,
+  the context variables it expects and, for includes, a usage example. When
+  you change structure, commands or behaviour, update `README.md` and this file
+  in the same change.
 - Prefer the smallest relevant command or page load to verify a change.
 
 ## Roles and routing

@@ -103,6 +103,21 @@ docs/                # schema.sql, flows.md, verify.sql (reference)
 Django's built-in admin lives at `/django-admin/` (not `/admin/`) and is
 for the super-admin only. Only users with `is_staff=True` can open it.
 
+## Frontend setup
+
+- **Stack:** Tailwind CSS (standalone CLI), Alpine.js, self-hosted fonts and Heroicons sprite.
+- **Templates:** project-level layouts live in `templates/` (`base.html`, `base_public.html`,
+  `base_app.html`, `includes/`). App-specific pages live in `<app>/templates/<app>/`.
+- **Static files:** `static/css/input.css` is the Tailwind source and holds the design tokens.
+  `static/css/output.css` is generated and not committed. Other folders: `fonts/`, `icons/`,
+  `images/`, `js/`.
+- **Build CSS:** `make tailwind-build` (once) or `make tailwind-watch` (while developing).
+- **Light and dark mode:** the toggle in the public header saves the choice in the browser.
+  Dark colors are in `static/css/themes.css`.
+- **Settings required:** `TEMPLATES['DIRS'] = [BASE_DIR / 'templates']` and
+  `STATICFILES_DIRS = [BASE_DIR / 'static']`.
+- **Placeholder pages:** the landing page at `/` is a stub until the real content is built.
+
 ## How the data works (short version)
 - **Roles:** super admin > admin > coordinator > member. Special roles
   (`tithes_offering`, `attendance`) are added on top, with a per-extension limit.

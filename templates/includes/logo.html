@@ -1,0 +1,18 @@
+{# Usage: {% include 'includes/logo.html' with variant='mark' plate='surface' size='size-10' %} #}
+{# variant: mark (default) | full      plate: surface (default) | accent | none #}
+{# The logo is a mask filled with currentColor, so the plate decides its color in light and dark mode. #}
+{% load static %}
+{% if variant == 'full' %}
+  {% static 'images/jil-full-logo.svg' as logo_src %}
+{% else %}
+  {% static 'images/black-logo.svg' as logo_src %}
+{% endif %}
+
+<span class="inline-flex items-center justify-center
+  {% if plate == 'accent' %}rounded-xl bg-accent p-2 text-on-accent
+  {% elif plate == 'none' %}text-txt-primary
+  {% else %}rounded-xl border border-border bg-surface p-2 text-txt-primary{% endif %}">
+  <span class="logo-mask {{ size|default:'size-10' }}"
+        style="--logo-url: url('{{ logo_src }}')"
+        {% if decorative %}aria-hidden="true"{% else %}role="img" aria-label="Jesus Is Lord Church"{% endif %}></span>
+</span>

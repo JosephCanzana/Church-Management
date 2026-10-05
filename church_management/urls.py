@@ -19,6 +19,7 @@ from django.urls import path, include
 
 urlpatterns = [
     path("django-admin/", admin.site.urls),        # Django's built-in admin
+    path("", include("pages.urls"))
     # path("superadmin/", include("core.urls_superadmin")),
     # path("admin/", include("core.urls_admin")),
     # path("coordinator/", include("core.urls_coordinator")),

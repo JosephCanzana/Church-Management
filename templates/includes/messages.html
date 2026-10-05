@@ -1,0 +1,15 @@
+{% if messages %}
+<div class="fixed inset-x-4 bottom-4 z-50 mx-auto flex max-w-sm flex-col gap-2 sm:left-auto sm:right-4 sm:mx-0" aria-live="polite">
+  {% for message in messages %}
+  <div x-data="{ show: true }" x-init="setTimeout(() => show = false, 6000)" x-show="show" x-transition.opacity
+       role="{% if message.level_tag == 'error' %}alert{% else %}status{% endif %}"
+       class="flex items-start gap-3 rounded-lg border border-border bg-surface p-3 text-sm shadow-lg
+              border-l-4 {% if message.level_tag == 'success' %}border-l-success{% elif message.level_tag == 'error' %}border-l-error{% elif message.level_tag == 'warning' %}border-l-warning{% else %}border-l-info{% endif %}">
+    <p class="flex-1">{{ message }}</p>
+    <button type="button" @click="show = false" class="text-txt-muted hover:text-txt-primary" aria-label="Dismiss">
+      {% include 'includes/icon.html' with name='x-mark' class='size-4' %}
+    </button>
+  </div>
+  {% endfor %}
+</div>
+{% endif %}
