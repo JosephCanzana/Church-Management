@@ -8,11 +8,14 @@ buddies, prayer requests, events, resources, notifications and audit logging.
 
 **Status:** all 14 apps and 42 models exist, with migrations and seed data.
 `core.test_schema` verifies them. The base templates, design tokens, light/dark
-toggle and a placeholder landing page exist. Services, views and forms are
+toggle, the public landing page (static copy for now) and the redesigned login page exist. Services, views and forms are
 mostly not built yet. The login is built (`accounts/backends.py`, `services.py`,
 `forms.py`, `views.py`, `urls.py`; routes `/login/`, `/logout/`, `/activate/`);
-`/activate/` is a placeholder until the activation flow exists. Next: the real
-activation flow, `role_required`, then features on top of the models.
+`/activate/` is a placeholder until the activation flow exists. Forgot-password and reset
+are not built yet; the "Forgot password?" link on the login page is a placeholder
+(`href="#"`). The Log in buttons on the landing page hardcode `/login/`; switch them to
+`{% url 'accounts:login' %}`. Next: the real activation flow, forgot/reset password,
+`role_required`, then features on top of the models.
 
 Reference docs (the source of truth for behaviour):
 - `docs/schema.sql`: original SQL design, with comments on every rule
@@ -29,9 +32,9 @@ Python 3.12, Django 5.1+ (tested on 5.2 and 6.0), PostgreSQL 16, Tailwind CSS
   `services.py` (business logic), `views.py`, `urls.py`, `forms.py`,
   `permissions.py`, `management/commands/` (jobs).
 - `templates/` (project-level: `base.html`, `base_public.html`, `base_app.html`,
-  `includes/` with `public_navbar.html`, `public_footer.html`, `logo.html`, `icon.html`).
+  `includes/` with `public_navbar.html`, `footer.html`, `logo.html`, `icon.html`).
   Page templates that belong to one app go in that app's `templates/<app>/` folder
-  (e.g. `pages/templates/pages/landing.html`).
+  (e.g. `pages/templates/pages/landing.html`, `accounts/templates/accounts/login.html`).
 - `static/`: `css/input.css` (Tailwind source and design tokens), `css/themes.css`
   (dark overrides), `css/output.css` (generated, not committed), `fonts/`,
   `icons/sprite.svg`, `images/` (logos), `js/alpine.min.js`.
@@ -173,12 +176,16 @@ still in use), `archive_inactive_users`, `auto_transfer_extension`,
   `aria-hidden="true"` on the icon, `aria-label` on the parent button/link.
 - Layouts: `base_public.html` for logged-out pages, `base_app.html` for the
   authenticated app. Add nav entries to `templates/includes/`, not inline.
-- Template comments: `{# ... #}` is single-line only. A multi-line `{# ... #}` is not a
-  comment; Django renders it as page text. Use `{% comment %} ... {% endcomment %}` for
-  anything longer than one line. Never put a comment inside a tag, and never wrap one in
-  `<!-- -->`.
-- `base_public.html` composes `includes/public_navbar.html` and `includes/public_footer.html`
-  inside `{% block body %}`. An `{% include %}` outside a block is ignored in a child
+- Template comments: `{# ... #}` is single-line only; a multi-line one renders as page text.
+  Use `{% comment %} ... {% endcomment %}` for anything longer than one line or that
+  mentions template tags. The one exception is the file header: it is an HTML comment
+  (`<!-- ... -->`) placed before `{% extends %}` and it must contain no template tags,
+  because anything tag-like inside an HTML comment still executes. Never put a comment
+  inside a tag.
+- `base_public.html` composes `includes/public_navbar.html` and `includes/footer.html`
+  inside `{% block body %}`: a `min-h-dvh` flex column holding the navbar, a `flex-1`
+  `<main>` that centers the `content` block (`items-center justify-center px-4 py-10`),
+  then the footer. Pages never include the footer themselves. An `{% include %}` outside a block is ignored in a child
   template, so keep includes inside blocks. Public pages fill only `content` (and
   `main_align`).
 - Public navbar: on `md` and up it is a three-column grid (`md:grid-cols-[1fr_auto_1fr]`) so
@@ -190,7 +197,7 @@ still in use), `archive_inactive_users`, `auto_transfer_extension`,
   route raises `NoReverseMatch`.
 - Icons inside Alpine toggles (`x-show`) go in a wrapper `<span>`, since `includes/icon.html`
   only accepts `name` and `class`.
-- Fonts are self-hosted from `static/fonts/`. `font-main` is Inter (body and UI);
+- Fonts are self-hosted from `static/fonts/`. `font-main` is Space Grotesk (body and UI, declared as `'Grotesk'`);
   `font-mono` is JetBrains Mono (account ids, amounts). Change a font by editing
   `--font-main` / `--font-mono` and the matching `@font-face` in `input.css`.
 - Reusable component classes live in `input.css` under `@layer components`:
@@ -211,6 +218,32 @@ still in use), `archive_inactive_users`, `auto_transfer_extension`,
 - Page templates extend `base_public.html` or `base_app.html` and fill the
   `content` block (and `title`, `page_title` where they exist). Never extend
   `base.html` directly from a page.
+- Public page sizing: `<main>` already centers and pads the page, so a public page sets only
+  its own width (`w-full max-w-*`) and adds no outer padding. If a page is not vertically
+  centered, check the real `base_public.html` and the navbar height before adding offsets.
+- Footer (`includes/footer.html`): sits in normal flow (never `fixed`, which covers content on
+  short screens), `border-t border-border bg-bg`, `text-txt-secondary` (not `text-txt-muted`,
+  which fails contrast). The year comes from `{% now "Y" %}`. A `{% block %}` inside an
+  included file overrides nothing; pass values with `{% include ... with church_name="..." %}`.
+- Visual direction: calm, minimal, human. Flat surfaces, borders instead of shadows, one
+  accent color, real church context (greeting, first-time note, verse) instead of generic
+  marketing copy. Glass is optional and subtle: keep a solid fallback and add
+  `supports-[backdrop-filter]:bg-surface/70 supports-[backdrop-filter]:backdrop-blur-md`
+  over at most one soft glow (`bg-accent/20 blur-3xl`). Opacity modifiers on tokens work
+  in light and dark. Never use glass behind tables or dense data.
+- Accessibility on public pages: body text 16px or larger, touch targets at least 44px,
+  contrast AA in both modes, and no meaning carried by color alone.
+- Login page pattern (`accounts/login.html`): two sides from `md` up (greeting, first-time
+  note and verse on the left, form on the right), stacked below `md`; the verse is hidden
+  below `md`. The greeting uses Alpine (`x-data` with the device clock) and falls back to
+  "Welcome" without JavaScript. Show password is a checkbox (`x-data="{ show: false }"`,
+  `x-bind:type`, `x-cloak` on the checkbox label) on the same row as "Forgot password?".
+  Failed logins and a badly shaped account id share one generic error box (`role="alert"`)
+  listing `non_field_errors` and `identifier.errors`. The account id input is `font-mono`
+  with `autocomplete="username"` and `autocapitalize="none"`; the password is never echoed
+  back. Inputs are enlarged with `px-4 py-3.5 text-base` on top of `.input`.
+- Landing page copy is static in the template until the `pages` models feed it. Do not
+  invent church facts (service times, addresses, verses attributed to JIL).
 
 ## Known footguns
 - `migrate` from the host cannot reach `POSTGRES_HOST=db`; run it in the `web`
@@ -234,11 +267,18 @@ still in use), `archive_inactive_users`, `auto_transfer_extension`,
   or run `make tailwind-watch`.
 - pgAdmin access needs the dev-only port from
   `docker-compose.override.yml.example`; never publish the db port in production.
-- Do not use `{# ... #}` template comments. A multi-line one renders as text on the page. Use the comment style of the language you are in: `<!-- ... -->` in HTML, `/* ... */` or `//` in JS and CSS.
-- Each template starts with an HTML comment (`<!-- ... -->`) listing the blocks it fills,
-  the context variables it expects and, for includes, a usage example.
+- Do not use multi-line `{# ... #}` template comments; they render as text on the page. In JS
+  and CSS use `/* ... */` or `//`.
+- Each template starts with a header comment (HTML `<!-- ... -->` before `{% extends %}`, no
+  template tags inside) listing the blocks it fills, the context variables it expects and,
+  for includes, a usage example.
 - An `{% include %}` placed outside a block in a template that extends another is silently
   dropped.
+- A `{% block %}` inside a file that is only `{% include %}`d never overrides anything.
+- A `position: fixed` footer or bar covers page content on short screens; keep the footer in
+  normal flow.
+- In `input.css` the Space Grotesk `@font-face` says `format('woff2')` but points at a `.ttf`
+  file; use `format('truetype')` to match the file.
 
 ## Working rules for agents
 - Use Docker commands; run `check` and `core.test_schema` after any model change.
@@ -248,7 +288,7 @@ still in use), `archive_inactive_users`, `auto_transfer_extension`,
 - **Document the code so it is easy to read.** Every new module, class and
   function gets a short docstring saying what it is for. Add a comment for the
   why when the reason is not obvious (a constraint, a trigger, a workaround).
-  Each template starts with a `{% comment %}` block listing the blocks it fills,
+  Each template starts with a header comment (see Template comments) listing the blocks it fills,
   the context variables it expects and, for includes, a usage example. When
   you change structure, commands or behaviour, update `README.md` and this file
   in the same change.

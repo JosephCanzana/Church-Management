@@ -117,7 +117,8 @@ docs/                # schema.sql, flows.md, verify.sql (reference)
 | Member      | `/`              | Personal pages (attendance, tithes, prayer, etc.)|
 
 Login: `/login/` (account id or verified email), `/logout/` (POST only) and
-`/activate/` (placeholder until activation is built). People with a temporary or
+`/activate/` (placeholder until activation is built). Forgot-password and reset are not
+built yet; the link on the login page is a placeholder. People with a temporary or
 never-set password are sent to `/activate/` after logging in.
 
 Django's built-in admin lives at `/django-admin/` (not `/admin/`) and is
@@ -128,10 +129,11 @@ for the super-admin only. Only users with `is_staff=True` can open it.
 - **Stack:** Tailwind CSS (standalone CLI), Alpine.js, self-hosted fonts and Heroicons sprite.
 - **Templates:** project-level layouts live in `templates/` (`base.html`, `base_public.html`,
   `base_app.html`). Shared pieces live in `templates/includes/` (`public_navbar.html`,
-  `public_footer.html`, `logo.html`, `icon.html`). App-specific pages live in
+  `footer.html`, `logo.html`, `icon.html`). App-specific pages live in
   `<app>/templates/<app>/`.
 - **Public layout:** `base_public.html` wraps each page with the public navbar (brand, centered
-  links, mode toggle, login button, mobile dropdown) and the public footer.
+  links, mode toggle, login button, mobile dropdown) and the public footer. The footer
+  (`includes/footer.html`) sits in normal flow below the content, so it never covers it.
 - **Static files:** `static/css/input.css` is the Tailwind source and holds the design tokens.
   `static/css/output.css` is generated and not committed. Other folders: `fonts/`, `icons/`,
   `images/`, `js/`.
@@ -140,9 +142,15 @@ for the super-admin only. Only users with `is_staff=True` can open it.
   Dark colors are in `static/css/themes.css`.
 - **Settings required:** `TEMPLATES['DIRS'] = [BASE_DIR / 'templates']` and
   `STATICFILES_DIRS = [BASE_DIR / 'static']`.
-- **Placeholder pages:** the landing page at `/` is a stub until the real content is built.
-  The navbar's Login button and its About / Give links are placeholders (`href="#"`) until
-  those pages exist.
+- **Public pages:** the landing page (`/`, `pages/templates/pages/landing.html`) has static
+  copy: a hero with a Log in button, what members and leaders get, and a closing call to
+  action. The `pages` app will feed it later. The login page
+  (`accounts/templates/accounts/login.html`) shows a time-of-day greeting, a first-time note
+  and a verse on the left and the form on the right (stacked on small screens), with a
+  show-password checkbox and a forgot-password link.
+- **Placeholder links:** the navbar's Login button, its About / Give links and the login
+  page's Forgot password link are `href="#"` until those pages exist. The landing page's
+  Log in buttons point to `/login/`.
 
 ## How the data works (short version)
 - **Roles:** super admin > admin > coordinator > member. Special roles

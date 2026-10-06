@@ -2,29 +2,29 @@
    from theme_palette rows and injected after this file (see base.html). */
 :root.dark,
 :root[data-mode="dark"] {
-  --color-primary:        #FAFAFA;
-  --color-primary-hover:  #E4E4E7;
-  --color-primary-soft:   #27272A;
-  --color-on-primary:     #18181B;
+  --color-primary:        #4C9BEB;
+  --color-primary-hover:  #78B6F2;
+  --color-primary-soft:   #102C4D;
+  --color-on-primary:     #071827;
 
-  --color-bg:             #09090B;
-  --color-surface:        #18181B;
-  --color-surface-alt:    #27272A;
+  --color-bg:             #0A1728;
+  --color-surface:        #10243B;
+  --color-surface-alt:    #16314F;
 
-  --color-txt-primary:    #FAFAFA;
-  --color-txt-secondary:  #A1A1AA;
-  --color-txt-muted:      #71717A;
+  --color-txt-primary:    #F4F8FC;
+  --color-txt-secondary:  #C2D1E2;
+  --color-txt-muted:      #8FA5BD;
 
-  --color-border:         #27272A;
-  --color-border-strong:  #3F3F46;
+  --color-border:         #294866;
+  --color-border-strong:  #3B6083;
 
   --color-success:        #4ADE80;
-  --color-error:          #F87171;
+  --color-error:          #FB7185;
   --color-warning:        #FBBF24;
   --color-info:           #60A5FA;
 
-  --color-accent:         #60A5FA;
-  --color-accent-hover:   #93C5FD;
-  --color-accent-soft:    #172554;
-  --color-on-accent:      #09090B;
+  --color-accent:         #63A9EF;
+  --color-accent-hover:   #94C6F5;
+  --color-accent-soft:    #123658;
+  --color-on-accent:      #071827;
 }

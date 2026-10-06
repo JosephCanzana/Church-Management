@@ -1,10 +1,22 @@
 <!--
   accounts/login.html: the login page.
-  Extends: base_public.html (fills the title and content blocks).
+  Extends: base_public.html (fills the title and content blocks). That layout
+  centers the content block inside main, so this page sets only its own width.
   Context variables: form (LoginForm, bound or unbound), next (URL to open
   after login, may be empty).
+  Layout: from md up, two sides, vertically centered: greeting, first-time
+  note and verse on the left, the login card on the right. Below md the
+  order is greeting, card, then the note and verse, all centered. The footer
+  include is fixed to the bottom of the screen, so the section keeps bottom
+  padding to stay clear of it.
+  Greeting: Alpine.js reads the device clock and says good morning, good
+  afternoon or good evening. Without JavaScript it simply says Welcome.
   Errors: a failed login and a badly shaped account id both show the same
   generic message, so both are listed together in one box.
+  Show password: an Alpine.js checkbox switches the password input between
+  type password and type text. It stays hidden until Alpine loads (x-cloak),
+  so without JavaScript the field simply stays masked.
+  Forgot password: placeholder link (href #) until the reset view exists.
   Note: this comment contains no template tags on purpose, because anything
   inside an HTML comment that looks like a tag would still be executed.
 -->
@@ -13,56 +25,93 @@
 {% block title %}Log in{% endblock %}
 
 {% block content %}
-<section class="mx-auto w-full max-w-md py-12">
-  <div class="card">
-    <h1 class="text-2xl font-semibold text-txt-primary">Log in</h1>
-    <p class="mt-1 text-txt-secondary">
-      Use your account ID or your verified email address.
-    </p>
+<section class="my-auto w-full max-w-5xl self-center pb-12">
+  <div class="grid gap-x-20 gap-y-10 text-center md:grid-cols-2 md:gap-y-0 md:text-left">
 
-    <form method="post" action="{% url 'accounts:login' %}" class="mt-6 space-y-5" novalidate>
-      {% csrf_token %}
-      <!-- next: the page the person was trying to open (checked in the view) -->
-      <input type="hidden" name="next" value="{{ next }}">
+    <div class="md:col-start-1 md:row-start-1 md:self-end">
+      <h1
+        class="text-5xl font-semibold leading-tight tracking-tight text-txt-primary sm:text-6xl"
+        x-data="{ hello: (() => { const h = new Date().getHours(); return h < 12 ? 'Good morning' : h < 18 ? 'Good afternoon' : 'Good evening'; })() }"
+      >
+        <span x-text="hello">Welcome</span>.
+        <span class="block text-accent">Come on in.</span>
+      </h1>
+    </div>
 
-      {% if form.non_field_errors or form.identifier.errors %}
-        <div class="field-error" role="alert">
-          {% for error in form.non_field_errors %}<p>{{ error }}</p>{% endfor %}
-          {% for error in form.identifier.errors %}<p>{{ error }}</p>{% endfor %}
+    <div class="rounded-2xl border border-border bg-surface p-6 text-left sm:p-8 md:col-start-2 md:row-span-2 md:row-start-1 md:self-center">
+      <form method="post" action="{% url 'accounts:login' %}" class="space-y-6" novalidate x-data="{ show: false }">
+        {% csrf_token %}
+        <input type="hidden" name="next" value="{{ next }}">
+
+        {% if form.non_field_errors or form.identifier.errors %}
+          <div class="flex items-start gap-3 rounded-lg border border-error px-4 py-3 text-base text-error" role="alert">
+            <span class="mt-0.5 shrink-0">
+              {% include "includes/icon.html" with name="exclamation-circle" class="h-5 w-5" %}
+            </span>
+            <div>
+              {% for error in form.non_field_errors %}<p>{{ error }}</p>{% endfor %}
+              {% for error in form.identifier.errors %}<p>{{ error }}</p>{% endfor %}
+            </div>
+          </div>
+        {% endif %}
+
+        <div>
+          <label for="id_identifier" class="label text-base">Account ID or email</label>
+          <input
+            type="text"
+            name="identifier"
+            id="id_identifier"
+            value="{{ form.identifier.value|default:'' }}"
+            placeholder="10002026"
+            class="input px-4 py-3.5 text-lg font-mono tracking-wider {% if form.errors %}input-error{% endif %}"
+            autocomplete="username"
+            autocapitalize="none"
+            spellcheck="false"
+            required
+            autofocus
+          >
         </div>
-      {% endif %}
 
-      <div>
-        <label for="id_identifier" class="label">Account ID or email</label>
-        <input
-          type="text"
-          name="identifier"
-          id="id_identifier"
-          value="{{ form.identifier.value|default:'' }}"
-          class="input font-mono {% if form.errors %}input-error{% endif %}"
-          autocomplete="username"
-          autocapitalize="none"
-          spellcheck="false"
-          required
-          autofocus
-        >
-      </div>
+        <div>
+          <label for="id_password" class="label text-base">Password</label>
+          <input
+            type="password"
+            x-bind:type="show ? 'text' : 'password'"
+            name="password"
+            id="id_password"
+            class="input px-4 py-3.5 text-base {% if form.errors %}input-error{% endif %}"
+            autocomplete="current-password"
+            required
+          >
+          <div class="mt-4 flex items-center justify-between gap-4">
+            <label x-cloak class="inline-flex cursor-pointer select-none items-center gap-2.5 text-base text-txt-secondary">
+              <input type="checkbox" x-model="show" class="h-5 w-5 rounded border-border-strong accent-accent">
+              Show password
+            </label>
+            <a href="#" class="ml-auto text-base text-txt-secondary underline underline-offset-4 hover:text-txt-primary">
+              Forgot password?
+            </a>
+          </div>
+        </div>
 
-      <div>
-        <label for="id_password" class="label">Password</label>
-        <!-- the password value is never sent back to the page -->
-        <input
-          type="password"
-          name="password"
-          id="id_password"
-          class="input {% if form.errors %}input-error{% endif %}"
-          autocomplete="current-password"
-          required
-        >
-      </div>
+        <button type="submit" class="btn btn-primary w-full py-3.5 text-base">Log in</button>
+      </form>
+    </div>
 
-      <button type="submit" class="btn btn-primary w-full">Log in</button>
-    </form>
+    <div class="md:col-start-1 md:row-start-2 md:self-start">
+      <p class="mx-auto mt-8 max-w-sm text-lg leading-relaxed text-txt-secondary md:mx-0">
+        First time here? Your extension's coordinator gives you your account ID and a temporary password.
+      </p>
+      <blockquote class="mt-10 hidden border-l-2 border-border-strong pl-5 md:block">
+        <p class="mx-auto mt-6 max-w-sm text-lg italic leading-relaxed text-txt-muted md:mx-0">
+          I was glad when they said unto me, Let us go into the house of the Lord.
+          <span class="mt-1 block text-sm not-italic">Psalm 122:1</span>
+        </p>
+      </blockquote>
+    </div>
+
   </div>
 </section>
+
+{% include "includes/footer.html" %}
 {% endblock %}

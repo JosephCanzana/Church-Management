@@ -26,30 +26,30 @@
   --font-main: 'Grotesk', ui-sans-serif, system-ui, sans-serif;
   --font-mono: 'JetBrains Mono', ui-monospace, SFMono-Regular, monospace;
 
-  --color-primary:        #18181B;
-  --color-primary-hover:  #27272A;
-  --color-primary-soft:   #F4F4F5;
+  --color-primary:        #0B3B75;
+  --color-primary-hover:  #082E5C;
+  --color-primary-soft:   #E8F1FC;
   --color-on-primary:     #FFFFFF;
 
-  --color-bg:             #FAFAFA;
+  --color-bg:             #F7F9FC;
   --color-surface:        #FFFFFF;
-  --color-surface-alt:    #F4F4F5;
+  --color-surface-alt:    #EFF4FA;
 
-  --color-txt-primary:    #18181B;
-  --color-txt-secondary:  #52525B;
-  --color-txt-muted:      #A1A1AA;
+  --color-txt-primary:    #10233D;
+  --color-txt-secondary:  #4B607A;
+  --color-txt-muted:      #7B8CA3;
 
-  --color-border:         #E4E4E7;
-  --color-border-strong:  #D4D4D8;
+  --color-border:         #D7E2F0;
+  --color-border-strong:  #B8C9DD;
 
-  --color-success:        #16A34A;
-  --color-error:          #DC2626;
-  --color-warning:        #D97706;
-  --color-info:           #2563EB;
+  --color-success:        #15803D;
+  --color-error:          #B91C1C;
+  --color-warning:        #B45309;
+  --color-info:           #1D5FA7;
 
-  --color-accent:         #3B82F6;
-  --color-accent-hover:   #2563EB;
-  --color-accent-soft:    #EFF6FF;
+  --color-accent:         #1769C2;
+  --color-accent-hover:   #0E4F96;
+  --color-accent-soft:    #E8F1FC;
   --color-on-accent:      #FFFFFF;
 }
 

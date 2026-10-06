@@ -1,7 +1,151 @@
 {% extends "base_public.html" %}
 
+{% comment %}
+  Public landing page (logged-out visitors), served at "/".
+  Blocks filled: title, content.
+  Context variables: none yet. The copy is static until the `pages` app
+  (church_content, landing_image) feeds it.
+  Includes used: includes/icon.html (name, class).
+  Links: Login uses a hardcoded "/login/" until the URL name is confirmed;
+  swap it for {% url %} then.
+{% endcomment %}
+
 {% block title %}Welcome{% endblock %}
 
 {% block content %}
-  <h2 class="text-2xl font-semibold">Hello</h2>
+<div class="mx-auto w-full max-w-6xl px-4 sm:px-6">
+
+  {% comment %} Hero: what the site is, and the one action a visitor can take. {% endcomment %}
+  <section class="py-16 sm:py-24 max-w-3xl">
+    <h1 class="text-4xl sm:text-5xl font-semibold tracking-tight text-txt-primary">
+      (THIS PAGE IS TEMPORARY)
+      Your church family, together in one place.
+    </h1>
+    <p class="mt-6 text-lg leading-relaxed text-txt-secondary max-w-2xl">
+      Jesus Is Lord Church and its local branches use this site to take attendance,
+      record tithes and offering, share prayer requests, keep up with events, and
+      grow in the Word, one day at a time.
+    </p>
+    <div class="mt-8 flex flex-wrap gap-3">
+      <a href="/login/" class="btn btn-primary">Log in</a>
+      <a href="#whats-inside" class="btn btn-secondary">See what's inside</a>
+    </div>
+    <p class="mt-4 text-sm text-txt-secondary">
+      Log in with your account id or your verified email.
+    </p>
+  </section>
+
+  {% comment %} Two audiences, side by side: members first, then the people who serve them. {% endcomment %}
+  <section id="whats-inside" class="grid gap-12 border-t border-border py-16 md:grid-cols-2 md:gap-16">
+
+    <div>
+      <h2 class="text-2xl font-semibold text-txt-primary">For every member</h2>
+      <p class="mt-2 text-txt-secondary">Tools for your own walk with God and with the people around you.</p>
+
+      <ul class="mt-8 space-y-6">
+        <li class="flex gap-4">
+          <span class="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg bg-accent text-on-accent">
+            {% include "includes/icon.html" with name="fire" class="h-5 w-5" %}
+          </span>
+          <div>
+            <h3 class="font-medium text-txt-primary">Faith goals and Bible streaks</h3>
+            <p class="mt-1 text-txt-secondary">Set goals, check in daily, and watch your Bible reading streak grow.</p>
+          </div>
+        </li>
+        <li class="flex gap-4">
+          <span class="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg bg-accent text-on-accent">
+            {% include "includes/icon.html" with name="users" class="h-5 w-5" %}
+          </span>
+          <div>
+            <h3 class="font-medium text-txt-primary">Accountability buddy</h3>
+            <p class="mt-1 text-txt-secondary">Partner with someone, see each other's goals, and send encouragement.</p>
+          </div>
+        </li>
+        <li class="flex gap-4">
+          <span class="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg bg-accent text-on-accent">
+            {% include "includes/icon.html" with name="hand-raised" class="h-5 w-5" %}
+          </span>
+          <div>
+            <h3 class="font-medium text-txt-primary">Prayer requests</h3>
+            <p class="mt-1 text-txt-secondary">Send a request to your coordinator, privately or anonymously, and read their reply.</p>
+          </div>
+        </li>
+        <li class="flex gap-4">
+          <span class="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg bg-accent text-on-accent">
+            {% include "includes/icon.html" with name="calendar-days" class="h-5 w-5" %}
+          </span>
+          <div>
+            <h3 class="font-medium text-txt-primary">Events and reminders</h3>
+            <p class="mt-1 text-txt-secondary">Know what is coming up, and get notified when a date or plan changes.</p>
+          </div>
+        </li>
+        <li class="flex gap-4">
+          <span class="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg bg-accent text-on-accent">
+            {% include "includes/icon.html" with name="book-open" class="h-5 w-5" %}
+          </span>
+          <div>
+            <h3 class="font-medium text-txt-primary">Worship resources</h3>
+            <p class="mt-1 text-txt-secondary">Find the monthly theme, the weekly presentation, and shared resources.</p>
+          </div>
+        </li>
+      </ul>
+    </div>
+
+    <div>
+      <h2 class="text-2xl font-semibold text-txt-primary">For the people who serve</h2>
+      <p class="mt-2 text-txt-secondary">Coordinators and admins keep each extension running without the paperwork.</p>
+
+      <ul class="mt-8 space-y-6">
+        <li class="flex gap-4">
+          <span class="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg bg-accent text-on-accent">
+            {% include "includes/icon.html" with name="clipboard-document-check" class="h-5 w-5" %}
+          </span>
+          <div>
+            <h3 class="font-medium text-txt-primary">Attendance</h3>
+            <p class="mt-1 text-txt-secondary">Record who came, add first timers, and lock the sheet once it is uploaded.</p>
+          </div>
+        </li>
+        <li class="flex gap-4">
+          <span class="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg bg-accent text-on-accent">
+            {% include "includes/icon.html" with name="banknotes" class="h-5 w-5" %}
+          </span>
+          <div>
+            <h3 class="font-medium text-txt-primary">Tithes and offering</h3>
+            <p class="mt-1 text-txt-secondary">Count by denomination, see live totals, and finalize each record.</p>
+          </div>
+        </li>
+        <li class="flex gap-4">
+          <span class="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg bg-accent text-on-accent">
+            {% include "includes/icon.html" with name="building-office-2" class="h-5 w-5" %}
+          </span>
+          <div>
+            <h3 class="font-medium text-txt-primary">Extensions and members</h3>
+            <p class="mt-1 text-txt-secondary">Manage accounts and roles for your own extension, and nobody else's.</p>
+          </div>
+        </li>
+        <li class="flex gap-4">
+          <span class="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg bg-accent text-on-accent">
+            {% include "includes/icon.html" with name="bell" class="h-5 w-5" %}
+          </span>
+          <div>
+            <h3 class="font-medium text-txt-primary">Notifications</h3>
+            <p class="mt-1 text-txt-secondary">Get alerted when something needs your attention, then open the page to act on it.</p>
+          </div>
+        </li>
+      </ul>
+    </div>
+  </section>
+
+  {% comment %} Closing call to action, repeated so it is reachable at the end of the page. {% endcomment %}
+  <section class="border-t border-border py-16 text-center">
+    <h2 class="text-2xl font-semibold text-txt-primary">Ready to get started?</h2>
+    <p class="mx-auto mt-2 max-w-xl text-txt-secondary">
+      Log in to see your goals, your extension's events, and everything shared with you.
+    </p>
+    <div class="mt-6">
+      <a href="/login/" class="btn btn-primary">Log in</a>
+    </div>
+  </section>
+
+</div>
 {% endblock %}
