@@ -27,8 +27,9 @@ Python 3.12, Django 5.1+ (tested on 5.2 and 6.0), PostgreSQL 16, Tailwind CSS
   `services.py` (business logic), `views.py`, `urls.py`, `forms.py`,
   `permissions.py`, `management/commands/` (jobs).
 - `templates/` (project-level: `base.html`, `base_public.html`, `base_app.html`,
-  `includes/`). Page templates that belong to one app go in that app's
-  `templates/<app>/` folder (e.g. `pages/templates/pages/landing.html`).
+  `includes/` with `public_navbar.html`, `public_footer.html`, `logo.html`, `icon.html`).
+  Page templates that belong to one app go in that app's `templates/<app>/` folder
+  (e.g. `pages/templates/pages/landing.html`).
 - `static/`: `css/input.css` (Tailwind source and design tokens), `css/themes.css`
   (dark overrides), `css/output.css` (generated, not committed), `fonts/`,
   `icons/sprite.svg`, `images/` (logos), `js/alpine.min.js`.
@@ -158,7 +159,23 @@ still in use), `archive_inactive_users`, `auto_transfer_extension`,
   `aria-hidden="true"` on the icon, `aria-label` on the parent button/link.
 - Layouts: `base_public.html` for logged-out pages, `base_app.html` for the
   authenticated app. Add nav entries to `templates/includes/`, not inline.
-- Keep `{# ... #}` comments on their own line, never inside a tag.
+- Template comments: `{# ... #}` is single-line only. A multi-line `{# ... #}` is not a
+  comment; Django renders it as page text. Use `{% comment %} ... {% endcomment %}` for
+  anything longer than one line. Never put a comment inside a tag, and never wrap one in
+  `<!-- -->`.
+- `base_public.html` composes `includes/public_navbar.html` and `includes/public_footer.html`
+  inside `{% block body %}`. An `{% include %}` outside a block is ignored in a child
+  template, so keep includes inside blocks. Public pages fill only `content` (and
+  `main_align`).
+- Public navbar: on `md` and up it is a three-column grid (`md:grid-cols-[1fr_auto_1fr]`) so
+  the links stay centered whatever the brand text width; below `md` it is a flex row. The
+  mobile menu is `absolute inset-x-0 top-full` under the sticky header, so it overlays the
+  page instead of pushing it down. Keep the nav and menu `max-w-*` the same.
+- The Login button and the About / Give links in the public navbar are temporary
+  (`href="#"`). Replace them with `{% url %}` once the views exist; `{% url %}` on a missing
+  route raises `NoReverseMatch`.
+- Icons inside Alpine toggles (`x-show`) go in a wrapper `<span>`, since `includes/icon.html`
+  only accepts `name` and `class`.
 - Fonts are self-hosted from `static/fonts/`. `font-main` is Inter (body and UI);
   `font-mono` is JetBrains Mono (account ids, amounts). Change a font by editing
   `--font-main` / `--font-mono` and the matching `@font-face` in `input.css`.
@@ -203,6 +220,11 @@ still in use), `archive_inactive_users`, `auto_transfer_extension`,
   or run `make tailwind-watch`.
 - pgAdmin access needs the dev-only port from
   `docker-compose.override.yml.example`; never publish the db port in production.
+- Do not use `{# ... #}` template comments. A multi-line one renders as text on the page. Use the comment style of the language you are in: `<!-- ... -->` in HTML, `/* ... */` or `//` in JS and CSS.
+- Each template starts with an HTML comment (`<!-- ... -->`) listing the blocks it fills,
+  the context variables it expects and, for includes, a usage example.
+- An `{% include %}` placed outside a block in a template that extends another is silently
+  dropped.
 
 ## Working rules for agents
 - Use Docker commands; run `check` and `core.test_schema` after any model change.
@@ -212,7 +234,7 @@ still in use), `archive_inactive_users`, `auto_transfer_extension`,
 - **Document the code so it is easy to read.** Every new module, class and
   function gets a short docstring saying what it is for. Add a comment for the
   why when the reason is not obvious (a constraint, a trigger, a workaround).
-  Each template starts with a `{# ... #}` comment listing the blocks it fills,
+  Each template starts with a `{% comment %}` block listing the blocks it fills,
   the context variables it expects and, for includes, a usage example. When
   you change structure, commands or behaviour, update `README.md` and this file
   in the same change.

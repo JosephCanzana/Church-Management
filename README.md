@@ -107,16 +107,22 @@ for the super-admin only. Only users with `is_staff=True` can open it.
 
 - **Stack:** Tailwind CSS (standalone CLI), Alpine.js, self-hosted fonts and Heroicons sprite.
 - **Templates:** project-level layouts live in `templates/` (`base.html`, `base_public.html`,
-  `base_app.html`, `includes/`). App-specific pages live in `<app>/templates/<app>/`.
+  `base_app.html`). Shared pieces live in `templates/includes/` (`public_navbar.html`,
+  `public_footer.html`, `logo.html`, `icon.html`). App-specific pages live in
+  `<app>/templates/<app>/`.
+- **Public layout:** `base_public.html` wraps each page with the public navbar (brand, centered
+  links, mode toggle, login button, mobile dropdown) and the public footer.
 - **Static files:** `static/css/input.css` is the Tailwind source and holds the design tokens.
   `static/css/output.css` is generated and not committed. Other folders: `fonts/`, `icons/`,
   `images/`, `js/`.
 - **Build CSS:** `make tailwind-build` (once) or `make tailwind-watch` (while developing).
-- **Light and dark mode:** the toggle in the public header saves the choice in the browser.
+- **Light and dark mode:** the toggle in the public navbar saves the choice in the browser.
   Dark colors are in `static/css/themes.css`.
 - **Settings required:** `TEMPLATES['DIRS'] = [BASE_DIR / 'templates']` and
   `STATICFILES_DIRS = [BASE_DIR / 'static']`.
 - **Placeholder pages:** the landing page at `/` is a stub until the real content is built.
+  The navbar's Login button and its About / Give links are placeholders (`href="#"`) until
+  those pages exist.
 
 ## How the data works (short version)
 - **Roles:** super admin > admin > coordinator > member. Special roles
