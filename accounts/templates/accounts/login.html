@@ -1,0 +1,68 @@
+<!--
+  accounts/login.html: the login page.
+  Extends: base_public.html (fills the title and content blocks).
+  Context variables: form (LoginForm, bound or unbound), next (URL to open
+  after login, may be empty).
+  Errors: a failed login and a badly shaped account id both show the same
+  generic message, so both are listed together in one box.
+  Note: this comment contains no template tags on purpose, because anything
+  inside an HTML comment that looks like a tag would still be executed.
+-->
+{% extends "base_public.html" %}
+
+{% block title %}Log in{% endblock %}
+
+{% block content %}
+<section class="mx-auto w-full max-w-md py-12">
+  <div class="card">
+    <h1 class="text-2xl font-semibold text-txt-primary">Log in</h1>
+    <p class="mt-1 text-txt-secondary">
+      Use your account ID or your verified email address.
+    </p>
+
+    <form method="post" action="{% url 'accounts:login' %}" class="mt-6 space-y-5" novalidate>
+      {% csrf_token %}
+      <!-- next: the page the person was trying to open (checked in the view) -->
+      <input type="hidden" name="next" value="{{ next }}">
+
+      {% if form.non_field_errors or form.identifier.errors %}
+        <div class="field-error" role="alert">
+          {% for error in form.non_field_errors %}<p>{{ error }}</p>{% endfor %}
+          {% for error in form.identifier.errors %}<p>{{ error }}</p>{% endfor %}
+        </div>
+      {% endif %}
+
+      <div>
+        <label for="id_identifier" class="label">Account ID or email</label>
+        <input
+          type="text"
+          name="identifier"
+          id="id_identifier"
+          value="{{ form.identifier.value|default:'' }}"
+          class="input font-mono {% if form.errors %}input-error{% endif %}"
+          autocomplete="username"
+          autocapitalize="none"
+          spellcheck="false"
+          required
+          autofocus
+        >
+      </div>
+
+      <div>
+        <label for="id_password" class="label">Password</label>
+        <!-- the password value is never sent back to the page -->
+        <input
+          type="password"
+          name="password"
+          id="id_password"
+          class="input {% if form.errors %}input-error{% endif %}"
+          autocomplete="current-password"
+          required
+        >
+      </div>
+
+      <button type="submit" class="btn btn-primary w-full">Log in</button>
+    </form>
+  </div>
+</section>
+{% endblock %}

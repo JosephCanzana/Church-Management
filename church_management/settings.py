@@ -150,3 +150,13 @@ MAILERS = {
         'BACKEND': 'django.core.mail.backends.console.EmailBackend',
     },
 }
+
+# Use our backend so people can log in with an account id OR a verified email.
+# It also keeps /django-admin/ login working (it accepts Django's "username" argument).
+AUTHENTICATION_BACKENDS = ["accounts.backends.AccountIdOrEmailBackend"]
+
+# Where Django sends people who are not logged in, and where login lands by default.
+LOGIN_URL = "accounts:login"
+LOGIN_REDIRECT_URL = "/"
+
+AUTH_USER_MODEL = "accounts.User"

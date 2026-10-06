@@ -40,6 +40,22 @@ prayer requests, events, and shared worship resources.
    (format: counter starting at 1000 + year, e.g. `10002026`). Then enter
    first name, last name and password. Log in with the account id.
 
+### Resetting dev data and seeding a super-admin
+Add a password for the seeded account to `.env` (it is never stored in code):
+```
+SEED_SUPERADMIN_PASSWORD=choose-a-dev-password
+```
+Then, after any reset:
+```bash
+docker compose down -v
+docker compose up --build -d
+docker compose exec web python manage.py migrate
+docker compose exec web python manage.py seed_superadmin
+```
+The command prints the account id (on a fresh database the first id is `1000` plus
+the year, e.g. `10002026`). Log in at `/login/`. It only runs with `DEBUG=True` and
+does nothing if a super-admin already exists.
+
 ### Day-to-day
 ```bash
 docker compose up
@@ -100,6 +116,10 @@ docs/                # schema.sql, flows.md, verify.sql (reference)
 | Coordinator | `/coordinator/`  | Manages their own extension only                 |
 | Member      | `/`              | Personal pages (attendance, tithes, prayer, etc.)|
 
+Login: `/login/` (account id or verified email), `/logout/` (POST only) and
+`/activate/` (placeholder until activation is built). People with a temporary or
+never-set password are sent to `/activate/` after logging in.
+
 Django's built-in admin lives at `/django-admin/` (not `/admin/`) and is
 for the super-admin only. Only users with `is_staff=True` can open it.
 
@@ -138,6 +158,9 @@ for the super-admin only. Only users with `is_staff=True` can open it.
 ## Verifying the install
 
 ```bash
+# 0. login and audit tests
+docker compose exec web python manage.py test accounts audit -v 2
+
 # 1. config + models match migrations (both must print nothing bad)
 docker compose exec web python manage.py check
 docker compose exec web python manage.py makemigrations --check --dry-run

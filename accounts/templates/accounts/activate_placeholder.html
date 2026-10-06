@@ -1,0 +1,29 @@
+<!--
+  accounts/activate_placeholder.html: temporary activation page.
+  Extends: base_public.html (fills the title and content blocks).
+  Context variables: none.
+  Replace this with the real activation form (set your own password) when
+  the activation flow is built. Login already redirects here for users who
+  are not activated or must change their password.
+-->
+{% extends "base_public.html" %}
+
+{% block title %}Activate your account{% endblock %}
+
+{% block content %}
+<section class="mx-auto w-full max-w-md py-12">
+  <div class="card">
+    <h1 class="text-2xl font-semibold text-txt-primary">Activate your account</h1>
+    <p class="mt-1 text-txt-secondary">
+      You need to set your own password before you can continue. This step is not
+      available yet.
+    </p>
+
+    <!-- Logout is POST-only, so it must be a form with a CSRF token, not a link. -->
+    <form method="post" action="{% url 'accounts:logout' %}" class="mt-6">
+      {% csrf_token %}
+      <button type="submit" class="btn btn-secondary w-full">Log out</button>
+    </form>
+  </div>
+</section>
+{% endblock %}

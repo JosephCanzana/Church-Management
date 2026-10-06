@@ -9,8 +9,10 @@ buddies, prayer requests, events, resources, notifications and audit logging.
 **Status:** all 14 apps and 42 models exist, with migrations and seed data.
 `core.test_schema` verifies them. The base templates, design tokens, light/dark
 toggle and a placeholder landing page exist. Services, views and forms are
-mostly not built yet: the next work is the login, then features on top of the
-models.
+mostly not built yet. The login is built (`accounts/backends.py`, `services.py`,
+`forms.py`, `views.py`, `urls.py`; routes `/login/`, `/logout/`, `/activate/`);
+`/activate/` is a placeholder until the activation flow exists. Next: the real
+activation flow, `role_required`, then features on top of the models.
 
 Reference docs (the source of truth for behaviour):
 - `docs/schema.sql`: original SQL design, with comments on every rule
@@ -41,6 +43,7 @@ Python 3.12, Django 5.1+ (tested on 5.2 and 6.0), PostgreSQL 16, Tailwind CSS
 docker compose up --build
 docker compose exec web python manage.py migrate
 docker compose exec web python manage.py createsuperuser   # Enter at "Account id"
+docker compose exec web python manage.py seed_superadmin   # dev only: super-admin from SEED_SUPERADMIN_* in .env
 docker compose exec web python manage.py check
 docker compose exec web python manage.py makemigrations --check --dry-run
 docker compose exec web python manage.py test core.test_schema -v 2
@@ -65,7 +68,7 @@ App at http://127.0.0.1:8001/ (use `127.0.0.1`, not `localhost`).
 | App | Tables | Logic that lives here |
 |---|---|---|
 | `core` | `site_setting`, `retention_policy` | Abstract bases (`TimestampedModel`, `ArchivableModel`), `archived_matches_status()`, generic archive / restore / force-delete, nightly `purge_archived`, permission hierarchy helpers, retention screen |
-| `audit` | `audit_log` | `log_action()`, log viewer, `cleanup_audit_log` |
+| `audit` | `audit_log` | `log_action()` in `audit/services.py` (strips sensitive keys, sends `action_logged` from `audit/signals.py`), log viewer, `cleanup_audit_log` |
 | `accounts` | `extension`, `app_user`, `special_role`, `user_special_role`, `extension_special_role_limit`, `default_password`, `email_token`, `user_extension_history` | Login/logout/activation, forgot + reset password, email verification, profile, create/manage accounts, extensions, special roles and limits, default passwords, `archive_inactive_users`, `auto_transfer_extension`, `cleanup_email_tokens`, `mark_attended()` |
 | `theming` | `theme`, `theme_palette`, `user_settings` | Theme CRUD (both palettes in one transaction), contrast warning, CSS generation + cache, context processor; `UserSettings` row created by `signals.py` |
 | `pages` | `church_content`, `landing_image`, `donation_account`, `jil_video` | Landing page and terms editing, donation page, `fetch_jil_videos` |
@@ -125,6 +128,17 @@ with. Only create a new app if the answer is "none".
 - **Login:** account id + password, or a *verified* email. Wrong account and
   wrong password show the same message. Log failures. Archived accounts are
   denied; not-activated or `must_change_password` users go to activation.
+- **Login implementation:** `AccountIdOrEmailBackend` (listed in
+  `AUTHENTICATION_BACKENDS`) accepts an account id or a verified email and
+  rejects archived users; `accounts.services.attempt_login()` calls Django's
+  `authenticate()` then `login()` (so `user_logged_in` fires), writes failures to
+  `audit_log` (`account.login_failed`, status failed, reason code in `after`; never the
+  password or the typed identifier)
+  and reports whether activation is needed. Every failure shows
+  `forms.GENERIC_LOGIN_ERROR`. `next` is only followed if
+  `url_has_allowed_host_and_scheme` passes. Post-login landing URLs are in
+  `views.ROLE_HOME_URLS` (all `/` until the role dashboards exist). Brute-force
+  throttling is not built yet.
 - **Status:** `not_activated -> active -> archived`. "Inactive for a year" is an
   automatic archive with `archive_reason='inactive'`.
 - **Default passwords:** hash only. Most specific wins: extension default, else
