@@ -1,15 +1,36 @@
-{% if messages %}
-<div class="fixed inset-x-4 bottom-4 z-50 mx-auto flex max-w-sm flex-col gap-2 sm:left-auto sm:right-4 sm:mx-0" aria-live="polite">
-  {% for message in messages %}
-  <div x-data="{ show: true }" x-init="setTimeout(() => show = false, 6000)" x-show="show" x-transition.opacity
-       role="{% if message.level_tag == 'error' %}alert{% else %}status{% endif %}"
-       class="flex items-start gap-3 rounded-lg border border-border bg-surface p-3 text-sm shadow-lg
-              border-l-4 {% if message.level_tag == 'success' %}border-l-success{% elif message.level_tag == 'error' %}border-l-error{% elif message.level_tag == 'warning' %}border-l-warning{% else %}border-l-info{% endif %}">
-    <p class="flex-1">{{ message }}</p>
-    <button type="button" @click="show = false" class="text-txt-muted hover:text-txt-primary" aria-label="Dismiss">
-      {% include 'includes/icon.html' with name='x-mark' class='size-4' %}
-    </button>
-  </div>
-  {% endfor %}
+{# Server messages are handed to the toast store, so no inline JS escaping issues #}
+<div id="dj-messages" hidden>
+  {% for m in messages %}<span data-level="{{ m.level_tag }}">{{ m }}</span>{% endfor %}
 </div>
-{% endif %}
+
+{# Toasts #}
+<div x-data class="pointer-events-none fixed inset-x-0 bottom-4 z-[60] flex flex-col items-center gap-2 px-4 sm:items-end sm:px-6"
+     role="status" aria-live="polite">
+  <template x-for="t in $store.ui.toasts" :key="t.id">
+    <div x-transition
+         class="pointer-events-auto flex w-full max-w-sm items-start gap-3 rounded-lg border border-border bg-surface px-4 py-3 text-sm shadow-lg">
+      <span class="flex-1" x-text="t.message"></span>
+      <button type="button" @click="$store.ui.dismiss(t.id)" class="opacity-60 hover:opacity-100" aria-label="Dismiss">✕</button>
+    </div>
+  </template>
+</div>
+
+{# Confirm modal #}
+<div x-data x-show="$store.ui.dialog.open" x-cloak
+     @keydown.escape.window="$store.ui.dialog.open && $store.ui.answer(false)"
+     class="fixed inset-0 z-[70] flex items-center justify-center p-4"
+     role="alertdialog" aria-modal="true" aria-labelledby="confirm-title">
+  <div class="absolute inset-0 bg-primary/40" @click="$store.ui.answer(false)"></div>
+  <div x-show="$store.ui.dialog.open" x-transition
+       class="relative w-full max-w-md rounded-xl border border-border bg-surface p-6 shadow-xl">
+    <h2 id="confirm-title" class="text-lg font-semibold" x-text="$store.ui.dialog.title"></h2>
+    <p class="mt-2 text-sm text-txt-secondary" x-text="$store.ui.dialog.message"></p>
+    <div class="mt-6 flex justify-end gap-3">
+      <button type="button" x-ref="cancel" @click="$store.ui.answer(false)"
+              class="rounded-lg border border-border px-4 py-2 text-sm">Cancel</button>
+      <button type="button" @click="$store.ui.answer(true)"
+              :class="$store.ui.dialog.danger ? 'bg-red-600 text-white' : 'bg-primary text-white'"
+              class="rounded-lg px-4 py-2 text-sm font-medium" x-text="$store.ui.dialog.confirmText"></button>
+    </div>
+  </div>
+</div>

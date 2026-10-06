@@ -33,6 +33,7 @@
   {# Active theme palette from the theming context processor; must come after the files above. #}
   {% if theme_css %}<style id="theme-vars">{{ theme_css|safe }}</style>{% endif %}
   {% block extra_head %}{% endblock %}
+  <script defer src="{% static 'js/ui.js' %}"></script>
   <script defer src="{% static 'js/alpine.min.js' %}"></script>
 </head>
 <body class="min-h-dvh bg-bg font-main text-txt-primary antialiased">

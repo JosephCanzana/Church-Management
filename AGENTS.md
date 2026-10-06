@@ -15,7 +15,9 @@ mostly not built yet. The login is built (`accounts/backends.py`, `services.py`,
 are not built yet; the "Forgot password?" link on the login page is a placeholder
 (`href="#"`). The Log in buttons on the landing page hardcode `/login/`; switch them to
 `{% url 'accounts:login' %}`. Next: the real activation flow, forgot/reset password,
-`role_required`, then features on top of the models.
+`role_required`, then features on top of the models. A global toast and confirm
+dialog (`static/js/ui.js`, rendered by `includes/messages.html`) report results and
+guard destructive actions.
 
 Reference docs (the source of truth for behaviour):
 - `docs/schema.sql`: original SQL design, with comments on every rule
@@ -32,12 +34,14 @@ Python 3.12, Django 5.1+ (tested on 5.2 and 6.0), PostgreSQL 16, Tailwind CSS
   `services.py` (business logic), `views.py`, `urls.py`, `forms.py`,
   `permissions.py`, `management/commands/` (jobs).
 - `templates/` (project-level: `base.html`, `base_public.html`, `base_app.html`,
-  `includes/` with `public_navbar.html`, `footer.html`, `logo.html`, `icon.html`).
+  `includes/` with `public_navbar.html`, `footer.html`, `logo.html`, `icon.html`,
+  `sidebar.html`, `topbar.html`, `messages.html`).
   Page templates that belong to one app go in that app's `templates/<app>/` folder
   (e.g. `pages/templates/pages/landing.html`, `accounts/templates/accounts/login.html`).
 - `static/`: `css/input.css` (Tailwind source and design tokens), `css/themes.css`
   (dark overrides), `css/output.css` (generated, not committed), `fonts/`,
-  `icons/sprite.svg`, `images/` (logos), `js/alpine.min.js`.
+  `icons/sprite.svg`, `images/` (logos), `js/alpine.min.js`, `js/ui.js` (toast and
+  confirm store).
 - `theme/` (Tailwind CLI binary, gitignored), `docs/`.
 - `Dockerfile`, `docker-compose.yml`, `Makefile`, `requirements.txt`, `.env.example`.
 
@@ -215,6 +219,28 @@ still in use), `archive_inactive_users`, `auto_transfer_extension`,
   `plate`, `size`, `decorative`.
 - `input.css` must contain `[x-cloak] { display: none !important; }`. Put
   `x-cloak` on anything Alpine shows or hides on load, to avoid a flash.
+- Toasts and confirm dialogs are global. `static/js/ui.js` registers the Alpine store
+  `ui` (`toasts`, `dialog`) and `includes/messages.html` renders both from `base.html`,
+  so every layout has them. Do not build per-page modals or use `alert()` / `confirm()`.
+  - Toast: the result of an action (saved, sent, failed). It does not block and
+    dismisses itself. Types: `success`, `error`, `warning`, `info`. Django `messages`
+    become toasts on page load (the template writes them into the hidden `#dj-messages`
+    element and `ui.js` reads it), so views keep calling `messages.success(...)`. From
+    Alpine or JS: `$store.ui.toast('Copied', 'success')`. Form validation errors stay
+    inline next to the fields; use `error` toasts only for real failures.
+  - Confirm dialog: before a destructive or hard-to-undo action (delete, archive, force
+    delete, reopen attendance or tithes, end a buddy partnership). Declarative form:
+    `data-confirm="..."` on the `<form>` or its submit button, with optional
+    `data-confirm-title`, `data-confirm-text` and `data-confirm-danger`. From Alpine or
+    JS: `await $store.ui.confirm({ title, message, confirmText, danger })`, which
+    resolves to true or false. Confirm first, then show a toast for the result. Do not
+    chain a confirm modal into an OK modal; a blocking acknowledge modal is only for
+    show-once information such as a generated default password.
+  - Destructive actions are POST forms. The dialog is a UX guard only; the server still
+    enforces permissions and the frozen-record rules.
+  - Style with tokens only: the danger button uses a danger token (add one to
+    `input.css` if it is missing) and `--color-on-primary` / `--color-on-accent` for
+    text. No `bg-red-*` or `text-white`.
 - Page templates extend `base_public.html` or `base_app.html` and fill the
   `content` block (and `title`, `page_title` where they exist). Never extend
   `base.html` directly from a page.
@@ -267,6 +293,12 @@ still in use), `archive_inactive_users`, `auto_transfer_extension`,
   or run `make tailwind-watch`.
 - pgAdmin access needs the dev-only port from
   `docker-compose.override.yml.example`; never publish the db port in production.
+- `static/js/ui.js` must be loaded with `defer` before `alpine.min.js` in `base.html`.
+  The `alpine:init` listener has to exist before Alpine starts, otherwise `$store.ui`
+  is undefined and toasts and confirm dialogs silently do nothing. Keep
+  `{% include 'includes/messages.html' %}` in `base.html` after `{% block body %}`.
+- A form with `data-confirm` submits normally if `ui.js` fails to load, so the server
+  must never rely on the dialog for safety.
 - Do not use multi-line `{# ... #}` template comments; they render as text on the page. In JS
   and CSS use `/* ... */` or `//`.
 - Each template starts with a header comment (HTML `<!-- ... -->` before `{% extends %}`, no

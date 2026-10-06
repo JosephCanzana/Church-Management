@@ -129,7 +129,7 @@ for the super-admin only. Only users with `is_staff=True` can open it.
 - **Stack:** Tailwind CSS (standalone CLI), Alpine.js, self-hosted fonts and Heroicons sprite.
 - **Templates:** project-level layouts live in `templates/` (`base.html`, `base_public.html`,
   `base_app.html`). Shared pieces live in `templates/includes/` (`public_navbar.html`,
-  `footer.html`, `logo.html`, `icon.html`). App-specific pages live in
+  `footer.html`, `logo.html`, `icon.html`, `sidebar.html`, `topbar.html`, `messages.html`). App-specific pages live in
   `<app>/templates/<app>/`.
 - **Public layout:** `base_public.html` wraps each page with the public navbar (brand, centered
   links, mode toggle, login button, mobile dropdown) and the public footer. The footer
@@ -140,6 +140,11 @@ for the super-admin only. Only users with `is_staff=True` can open it.
 - **Build CSS:** `make tailwind-build` (once) or `make tailwind-watch` (while developing).
 - **Light and dark mode:** the toggle in the public navbar saves the choice in the browser.
   Dark colors are in `static/css/themes.css`.
+- **Toasts and confirm dialogs:** global, defined in `static/js/ui.js` (Alpine store `ui`) and
+  rendered by `includes/messages.html`. Django `messages` show as toasts. Add
+  `data-confirm="..."` to a form or its submit button to ask for confirmation first, or call
+  `$store.ui.confirm({...})` / `$store.ui.toast(...)` from Alpine. `ui.js` loads with `defer`
+  before `alpine.min.js`.
 - **Settings required:** `TEMPLATES['DIRS'] = [BASE_DIR / 'templates']` and
   `STATICFILES_DIRS = [BASE_DIR / 'static']`.
 - **Public pages:** the landing page (`/`, `pages/templates/pages/landing.html`) has static
