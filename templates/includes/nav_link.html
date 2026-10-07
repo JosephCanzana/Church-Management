@@ -1,8 +1,41 @@
-{# Usage: {% include 'includes/nav_link.html' with href=... label='Events' icon='calendar-days' %} #}
-<a href="{{ href }}"
-   {% if request.path == href %}aria-current="page"{% endif %}
-   class="flex items-center gap-3 rounded-lg px-3 py-2 text-sm font-medium transition-colors
-          {% if request.path == href %}bg-primary-soft text-txt-primary{% else %}text-txt-secondary hover:bg-surface-alt hover:text-txt-primary{% endif %}">
-  {% include 'includes/icon.html' with name=icon %}
-  {{ label }}
+{% comment %}
+nav_link.html: one navigation link, in one of three layouts.
+Variables: item (an entry from nav.sections, nav.bottom_items or nav.more_items) and layout:
+  rail = icon only with a tooltip (desktop rail), row = icon and label side by side (panel, More sheet),
+  tab = icon above label (mobile bottom bar).
+A disabled item (route not built yet) has no href and is dimmed. Colours are tokens only; state classes are
+chosen here, so no CSS needs adding to input.css.
+Usage: {% include 'includes/nav_link.html' with item=item layout='rail' %}
+{% endcomment %}
+{% if layout == 'rail' %}
+<a {% if not item.disabled %}href="{{ item.href }}"{% endif %}
+   class="relative flex size-11 items-center justify-center rounded-lg transition-colors focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-accent {% if item.active %}bg-accent/15 text-txt-primary{% elif item.disabled %}cursor-not-allowed text-txt-secondary opacity-60{% else %}text-txt-secondary hover:bg-txt-primary/5 hover:text-txt-primary{% endif %}"
+   aria-label="{{ item.label }}"
+   {% if item.active %}aria-current="page"{% endif %}
+   {% if item.disabled %}aria-disabled="true" role="link"{% endif %}
+   x-data="{ tip: false, y: 0 }"
+   x-on:mouseenter="y = $el.getBoundingClientRect().top + $el.offsetHeight / 2; tip = true"
+   x-on:mouseleave="tip = false"
+   x-on:focus="y = $el.getBoundingClientRect().top + $el.offsetHeight / 2; tip = true"
+   x-on:blur="tip = false">
+  {% include 'includes/icon.html' with name=item.icon class='size-5' %}
+  <span x-show="tip" x-cloak aria-hidden="true" x-bind:style="{ top: y + 'px' }"
+        class="pointer-events-none fixed left-[4.25rem] z-50 -translate-y-1/2 whitespace-nowrap rounded-md border border-border bg-surface px-2 py-1 text-sm text-txt-primary">{{ item.label }}</span>
 </a>
+{% elif layout == 'tab' %}
+<a {% if not item.disabled %}href="{{ item.href }}"{% endif %}
+   class="flex min-h-14 w-full flex-col items-center justify-center gap-0.5 rounded-lg px-1 text-xs transition-colors focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-accent {% if item.active %}bg-accent/15 font-medium text-txt-primary{% elif item.disabled %}cursor-not-allowed text-txt-secondary opacity-60{% else %}text-txt-secondary hover:bg-txt-primary/5 hover:text-txt-primary{% endif %}"
+   {% if item.active %}aria-current="page"{% endif %}
+   {% if item.disabled %}aria-disabled="true" role="link"{% endif %}>
+  {% include 'includes/icon.html' with name=item.icon class='size-5 shrink-0' %}
+  <span class="max-w-full truncate">{{ item.label }}</span>
+</a>
+{% else %}
+<a {% if not item.disabled %}href="{{ item.href }}"{% endif %}
+   class="flex min-h-11 w-full items-center gap-3 rounded-lg px-3 text-base transition-colors focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-accent {% if item.active %}bg-accent/15 font-medium text-txt-primary{% elif item.disabled %}cursor-not-allowed text-txt-secondary opacity-60{% else %}text-txt-secondary hover:bg-txt-primary/5 hover:text-txt-primary{% endif %}"
+   {% if item.active %}aria-current="page"{% endif %}
+   {% if item.disabled %}aria-disabled="true" role="link" title="Coming soon"{% endif %}>
+  {% include 'includes/icon.html' with name=item.icon class='size-5 shrink-0' %}
+  <span class="truncate">{{ item.label }}</span>
+</a>
+{% endif %}

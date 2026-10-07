@@ -1,0 +1,7 @@
+{% comment %}
+brand_mark.html: the church logo mark at header size. The one place to tune the logo size, used by base_app.html and sidebar.html.
+It shrinks the logo with CSS zoom because the size option of includes/logo.html is not known here; once it is, replace
+the zoom wrapper with size=... on the logo include.
+Usage: {% include 'includes/brand_mark.html' %}
+{% endcomment %}
+<span class="inline-flex shrink-0 [zoom:0.65]">{% include 'includes/logo.html' with variant='mark' decorative=True %}</span>

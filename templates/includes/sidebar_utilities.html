@@ -1,0 +1,64 @@
+{% comment %}
+sidebar_utilities.html: the pinned bottom actions, light/dark toggle and log out.
+Variable: layout, "rail" (icon buttons with tooltips) or "row" (full-width rows; used by the sidebar panel and the More sheet).
+Needs the Alpine store mode (static/js/ui.js). Log out is a POST form (Django logout is POST-only) with a confirm dialog;
+remove the data-confirm attributes to sign out without asking.
+Usage: {% include 'includes/sidebar_utilities.html' with layout='row' %}
+{% endcomment %}
+{% if layout == 'rail' %}
+<div class="flex flex-col items-center gap-1">
+  <button type="button"
+          class="relative flex size-11 items-center justify-center rounded-lg text-txt-secondary transition-colors hover:bg-txt-primary/5 hover:text-txt-primary focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-accent"
+          aria-label="Switch between light and dark mode"
+          x-bind:aria-label="$store.mode.dark ? 'Switch to light mode' : 'Switch to dark mode'"
+          x-data="{ tip: false, y: 0 }"
+          x-on:click="$store.mode.toggle()"
+          x-on:mouseenter="y = $el.getBoundingClientRect().top + $el.offsetHeight / 2; tip = true"
+          x-on:mouseleave="tip = false"
+          x-on:focus="y = $el.getBoundingClientRect().top + $el.offsetHeight / 2; tip = true"
+          x-on:blur="tip = false">
+    <span class="flex" x-show="$store.mode.dark" x-cloak>{% include 'includes/icon.html' with name='sun' class='size-5' %}</span>
+    <span class="flex" x-show="!$store.mode.dark" x-cloak>{% include 'includes/icon.html' with name='moon' class='size-5' %}</span>
+    <span x-show="tip" x-cloak aria-hidden="true" x-bind:style="{ top: y + 'px' }"
+          x-text="$store.mode.dark ? 'Light mode' : 'Dark mode'"
+          class="pointer-events-none fixed left-[4.25rem] z-50 -translate-y-1/2 whitespace-nowrap rounded-md border border-border bg-surface px-2 py-1 text-sm text-txt-primary"></span>
+  </button>
+
+  <form method="post" action="{% url 'accounts:logout' %}"
+        data-confirm="Are you sure you want to sign out?" data-confirm-title="Sign out">
+    {% csrf_token %}
+    <button type="submit"
+            class="relative flex size-11 items-center justify-center rounded-lg text-txt-secondary transition-colors hover:bg-txt-primary/5 hover:text-txt-primary focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-accent"
+            aria-label="Log out"
+            x-data="{ tip: false, y: 0 }"
+            x-on:mouseenter="y = $el.getBoundingClientRect().top + $el.offsetHeight / 2; tip = true"
+            x-on:mouseleave="tip = false"
+            x-on:focus="y = $el.getBoundingClientRect().top + $el.offsetHeight / 2; tip = true"
+            x-on:blur="tip = false">
+      {% include 'includes/icon.html' with name='arrow-right-start-on-rectangle' class='size-5' %}
+      <span x-show="tip" x-cloak aria-hidden="true" x-bind:style="{ top: y + 'px' }"
+            class="pointer-events-none fixed left-[4.25rem] z-50 -translate-y-1/2 whitespace-nowrap rounded-md border border-border bg-surface px-2 py-1 text-sm text-txt-primary">Log out</span>
+    </button>
+  </form>
+</div>
+{% else %}
+<div class="space-y-1">
+  <button type="button"
+          class="flex min-h-11 w-full items-center gap-3 rounded-lg px-3 text-left text-base text-txt-secondary transition-colors hover:bg-txt-primary/5 hover:text-txt-primary focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-accent"
+          x-on:click="$store.mode.toggle()">
+    <span class="flex shrink-0" x-show="$store.mode.dark" x-cloak>{% include 'includes/icon.html' with name='sun' class='size-5' %}</span>
+    <span class="flex shrink-0" x-show="!$store.mode.dark" x-cloak>{% include 'includes/icon.html' with name='moon' class='size-5' %}</span>
+    <span x-text="$store.mode.dark ? 'Light mode' : 'Dark mode'">Switch mode</span>
+  </button>
+
+  <form method="post" action="{% url 'accounts:logout' %}"
+        data-confirm="Are you sure you want to sign out?" data-confirm-title="Sign out">
+    {% csrf_token %}
+    <button type="submit"
+            class="flex min-h-11 w-full items-center gap-3 rounded-lg px-3 text-left text-base text-txt-secondary transition-colors hover:bg-txt-primary/5 hover:text-txt-primary focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-accent">
+      {% include 'includes/icon.html' with name='arrow-right-start-on-rectangle' class='size-5 shrink-0' %}
+      <span>Log out</span>
+    </button>
+  </form>
+</div>
+{% endif %}

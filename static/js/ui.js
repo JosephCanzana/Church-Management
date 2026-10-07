@@ -46,3 +46,38 @@ document.addEventListener('submit', async (e) => {
   });
   if (ok) { form.dataset.confirmed = '1'; form.requestSubmit(e.submitter); }
 }, true);
+
+
+// ── Alpine stores: sidebar and colour mode ────────────────
+document.addEventListener('alpine:init', () => {
+ 
+    // The expanded sidebar panel (desktop overlay and mobile drawer).
+    Alpine.store('sidebar', {
+        expanded: false,
+ 
+        // Open the panel, lock page scroll, and move focus to its close button.
+        open() {
+            this.expanded = true
+            document.documentElement.style.overflow = 'hidden'
+            setTimeout(() => document.getElementById('sidebar-close')?.focus(), 60)
+        },
+ 
+        // Close the panel; returnFocus sends keyboard users back to the visible menu button
+        // (the rail's on sm and up, the header's on mobile).
+        close(returnFocus = false) {
+            if (!this.expanded) return
+            this.expanded = false
+            document.documentElement.style.overflow = ''
+            if (returnFocus) setTimeout(() => [...document.querySelectorAll('[data-sidebar-toggle]')].find(b => b.offsetParent)?.focus(), 60)
+        },
+ 
+        toggle() { this.expanded ? this.close(true) : this.open() },
+    })
+ 
+    // Light/dark mode. base.html defines window.toggleMode() and sets the starting class.
+    Alpine.store('mode', {
+        dark: document.documentElement.classList.contains('dark'),
+        toggle() { this.dark = window.toggleMode() === 'dark' },
+    })
+ 
+})

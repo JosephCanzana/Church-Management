@@ -1,0 +1,62 @@
+{% comment %}
+sidebar.html: the expanded sidebar panel plus its backdrop. It slides in over the page: from the icon rail on sm and up,
+or as the drawer on mobile (hamburger mode). Open and closed state is the Alpine store sidebar (static/js/ui.js).
+Closed, the panel is inert, so keyboard focus never lands on offscreen links. A mobile-only strip shows who is signed in.
+Variables: nav (from accounts.context_processors.navigation) and user.
+Usage: {% include 'includes/sidebar.html' %}
+{% endcomment %}
+<div x-show="$store.sidebar.expanded" x-cloak
+     x-transition:enter="transition-opacity duration-200 motion-reduce:transition-none"
+     x-transition:enter-start="opacity-0"
+     x-transition:enter-end="opacity-100"
+     x-transition:leave="transition-opacity duration-200 motion-reduce:transition-none"
+     x-transition:leave-start="opacity-100"
+     x-transition:leave-end="opacity-0"
+     x-on:click="$store.sidebar.close()"
+     class="fixed inset-0 z-40 bg-bg/70 supports-[backdrop-filter]:backdrop-blur-sm"></div>
+
+<aside id="app-sidebar" inert
+       class="fixed inset-y-0 left-0 z-50 flex w-72 max-w-[85vw] -translate-x-full flex-col border-r border-border bg-surface transition-transform duration-200 ease-out motion-reduce:transition-none sm:w-64"
+       x-bind:class="$store.sidebar.expanded ? 'translate-x-0' : '-translate-x-full'"
+       x-bind:inert="!$store.sidebar.expanded"
+       aria-label="Menu">
+
+  <div class="flex h-14 shrink-0 items-center justify-between gap-2 border-b border-border px-4">
+    <div class="flex min-w-0 items-center gap-2">
+      {% include 'includes/brand_mark.html' %}
+      <span class="truncate text-base font-medium text-txt-primary">Church Management</span>
+    </div>
+    <button id="sidebar-close" type="button"
+            class="-mr-2 inline-flex size-11 shrink-0 items-center justify-center rounded-lg text-txt-secondary transition-colors hover:bg-txt-primary/5 hover:text-txt-primary focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-accent"
+            x-on:click="$store.sidebar.close(true)" aria-label="Close menu">
+      {% include 'includes/icon.html' with name='x-mark' class='size-5' %}
+    </button>
+  </div>
+
+  <div class="flex shrink-0 items-center gap-3 border-b border-border px-4 py-3 sm:hidden">
+    <span class="flex size-10 shrink-0 items-center justify-center rounded-full bg-accent/15 text-sm font-semibold text-txt-primary" aria-hidden="true">{{ user.first_name|slice:":1"|upper }}{{ user.last_name|slice:":1"|upper }}</span>
+    <div class="min-w-0">
+      <p class="truncate text-base font-medium text-txt-primary">{{ user.first_name }} {{ user.last_name }}</p>
+      <p class="truncate text-sm text-txt-secondary">{{ user.get_role_display }}</p>
+    </div>
+  </div>
+
+  <nav class="min-h-0 flex-1 overflow-y-auto px-3 py-4" aria-label="Main">
+    {% for section in nav.sections %}
+    <div{% if not forloop.first %} class="mt-6"{% endif %}>
+      {% if section.heading %}
+      <h2 class="px-3 pb-2 text-sm font-medium text-txt-secondary">{{ section.heading }}</h2>
+      {% endif %}
+      <ul class="space-y-1">
+        {% for item in section.items %}
+        <li>{% include 'includes/nav_link.html' with item=item layout='row' %}</li>
+        {% endfor %}
+      </ul>
+    </div>
+    {% endfor %}
+  </nav>
+
+  <div class="shrink-0 border-t border-border p-3 pb-[max(0.75rem,env(safe-area-inset-bottom))]">
+    {% include 'includes/sidebar_utilities.html' with layout='row' %}
+  </div>
+</aside>

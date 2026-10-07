@@ -1,0 +1,30 @@
+{% comment %}
+sidebar_rail.html: the always-visible icon rail from sm up. The menu button (opens the full panel) on top, scrollable icons (a thin line replaces each
+section heading), pinned theme and log out buttons at the bottom. Tooltips are position: fixed (set by Alpine), so the
+scrollable list never clips them.
+Variables: nav (from accounts.context_processors.navigation).
+Usage: {% include 'includes/sidebar_rail.html' %}
+{% endcomment %}
+<div class="flex h-14 shrink-0 items-center justify-center border-b border-border">
+  <button data-sidebar-toggle type="button"
+          class="inline-flex size-11 items-center justify-center rounded-lg text-txt-secondary transition-colors hover:bg-txt-primary/5 hover:text-txt-primary focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-accent"
+          x-on:click="$store.sidebar.toggle()"
+          aria-label="Open menu" aria-controls="app-sidebar" x-bind:aria-expanded="$store.sidebar.expanded">
+    {% include 'includes/icon.html' with name='bars-3' class='size-6' %}
+  </button>
+</div>
+
+<nav class="min-h-0 flex-1 overflow-y-auto overflow-x-hidden py-3" aria-label="Main">
+  <ul class="flex flex-col items-center gap-1">
+    {% for section in nav.sections %}
+    {% if not forloop.first %}<li class="my-2 h-px w-8 bg-border" role="separator"></li>{% endif %}
+    {% for item in section.items %}
+    <li>{% include 'includes/nav_link.html' with item=item layout='rail' %}</li>
+    {% endfor %}
+    {% endfor %}
+  </ul>
+</nav>
+
+<div class="shrink-0 border-t border-border py-3">
+  {% include 'includes/sidebar_utilities.html' with layout='rail' %}
+</div>

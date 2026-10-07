@@ -35,7 +35,7 @@ Python 3.12, Django 5.1+ (tested on 5.2 and 6.0), PostgreSQL 16, Tailwind CSS
   `permissions.py`, `management/commands/` (jobs).
 - `templates/` (project-level: `base.html`, `base_public.html`, `base_app.html`,
   `includes/` with `public_navbar.html`, `footer.html`, `logo.html`, `icon.html`,
-  `sidebar.html`, `topbar.html`, `messages.html`).
+  `sidebar.html`, `sidebar_rail.html`, `sidebar_utilities.html`, `nav_link.html`, `brand_mark.html`, `topbar.html`, `bottom_nav.html`, `messages.html`).
   Page templates that belong to one app go in that app's `templates/<app>/` folder
   (e.g. `pages/templates/pages/landing.html`, `accounts/templates/accounts/login.html`).
 - `static/`: `css/input.css` (Tailwind source and design tokens), `css/themes.css`
@@ -179,7 +179,8 @@ still in use), `archive_inactive_users`, `auto_transfer_extension`,
   `<use href="{% static 'icons/sprite.svg' %}#name">`. No icon fonts or CDNs.
   `aria-hidden="true"` on the icon, `aria-label` on the parent button/link.
 - Layouts: `base_public.html` for logged-out pages, `base_app.html` for the
-  authenticated app. Add nav entries to `templates/includes/`, not inline.
+  authenticated app. Nav entries are data in `accounts/navigation.py` (`NAV_ITEMS`), not markup: never hardcode a
+  link in a sidebar or bottom-bar template.
 - Template comments: `{# ... #}` is single-line only; a multi-line one renders as page text.
   Use `{% comment %} ... {% endcomment %}` for anything longer than one line or that
   mentions template tags. The one exception is the file header: it is an HTML comment
@@ -241,6 +242,21 @@ still in use), `archive_inactive_users`, `auto_transfer_extension`,
   - Style with tokens only: the danger button uses a danger token (add one to
     `input.css` if it is missing) and `--color-on-primary` / `--color-on-accent` for
     text. No `bg-red-*` or `text-white`.
+- App shell (`base_app.html`): the header shows the logo (`brand_mark.html`, the one place its size is set) and
+  the page title. From `sm` up an icon rail (its top button opens the panel) plus an expandable panel (Alpine store `sidebar`,
+  `expanded`, `open()`, `close()`, `toggle()`); below `sm` a bottom bar or a drawer from `mobile_nav_style`
+  (`user_settings.mobile_nav_style`, default `bottom`). The context processor
+  `accounts.context_processors.navigation` supplies `nav` and `mobile_nav_style` and must be in `TEMPLATES`.
+  To change a menu edit `NAV_ITEMS` in `accounts/navigation.py` (order = list order, `roles=`, `bottom=True`,
+  `group=`, `exact=True` for home pages); `icon` must exist in `static/icons/sprite.svg`. Unresolvable url
+  names render as disabled placeholders, never `NoReverseMatch`. `NAV_ITEMS` holds only strings (no imports
+  from feature apps). Hiding a link is not access control. Nav markup uses utility classes only (state
+  classes are chosen in `nav_link.html`; nothing is added to `input.css`). The closed panel and the rail/content
+  behind an open panel are `inert`. Rail tooltips are `position: fixed` via Alpine so the scrolling rail never
+  clips them. The page heading is the `page_title` block in `base_app.html` (it renders the h1; pages use h2
+  and below). The fixed bottom bar is the one allowed fixed bar: `main` gets matching bottom padding in bottom
+  mode. Light/dark and log out live in `sidebar_utilities.html` (Alpine store `mode`). The `?nav=` override in
+  the context processor is DEBUG-only and temporary.
 - Page templates extend `base_public.html` or `base_app.html` and fill the
   `content` block (and `title`, `page_title` where they exist). Never extend
   `base.html` directly from a page.

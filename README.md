@@ -71,7 +71,7 @@ App: http://127.0.0.1:8001/  Admin: http://127.0.0.1:8001/admin/
 church_management/   # settings package (config only, not an app)
 core/                # shared abstract models, site settings, retention policy, purge job
 audit/               # audit_log (append-only)
-accounts/            # extensions, custom User, roles, default passwords, email tokens
+accounts/            # extensions, custom User, roles, default passwords, email tokens, app navigation
 theming/             # themes (light + dark palettes) and per-user display settings
 pages/               # landing page content, donation info, latest JIL video
 bible/               # verse of the day, chapters read
@@ -135,11 +135,20 @@ for the super-admin only. Only users with `is_staff=True` can open it.
 - **Stack:** Tailwind CSS (standalone CLI), Alpine.js, self-hosted fonts and Heroicons sprite.
 - **Templates:** project-level layouts live in `templates/` (`base.html`, `base_public.html`,
   `base_app.html`). Shared pieces live in `templates/includes/` (`public_navbar.html`,
-  `footer.html`, `logo.html`, `icon.html`, `sidebar.html`, `topbar.html`, `messages.html`). App-specific pages live in
+  `footer.html`, `logo.html`, `icon.html`, `sidebar.html`, `sidebar_rail.html`, `sidebar_utilities.html`, `nav_link.html`, `brand_mark.html`, `topbar.html`, `bottom_nav.html`, `messages.html`). App-specific pages live in
   `<app>/templates/<app>/`.
 - **Public layout:** `base_public.html` wraps each page with the public navbar (brand, centered
   links, mode toggle, login button, mobile dropdown) and the public footer. The footer
   (`includes/footer.html`) sits in normal flow below the content, so it never covers it.
+- **App layout and navigation:** `base_app.html` is the signed-in layout. From `sm` up there is an icon
+  rail (`sidebar_rail.html`, tooltips on hover and focus) whose top button expands it into the full panel (`sidebar.html`) over the page, with a backdrop. Below `sm` it is either a bottom
+  bar with a "More" sheet or the same panel as a slide-in drawer (opened by a header button), chosen by
+  `user_settings.mobile_nav_style`. Every link comes from the `NAV_ITEMS` list in
+  `accounts/navigation.py`: add, remove or reorder a line, set `roles=`, and `bottom=True` for the bottom bar
+  (4 slots, the rest go under More). A url name that does not exist yet shows as a dimmed placeholder.
+  Needs `accounts.context_processors.navigation` in `TEMPLATES` and the Alpine stores `sidebar` and `mode`
+  in `static/js/ui.js`. With `DEBUG=True`, `?nav=bottom` or `?nav=hamburger` forces a mobile style for the
+  session (`?nav=off` clears it).
 - **Static files:** `static/css/input.css` is the Tailwind source and holds the design tokens.
   `static/css/output.css` is generated and not committed. Other folders: `fonts/`, `icons/`,
   `images/`, `js/`.

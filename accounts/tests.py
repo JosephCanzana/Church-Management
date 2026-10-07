@@ -6,15 +6,18 @@ Run with:
 import os
 from io import StringIO
 from unittest.mock import patch
+from unittest import mock
 
 from django.core.management import CommandError, call_command
-from django.test import TestCase, override_settings
+from django.test import TestCase, override_settings, SimpleTestCase
 from django.urls import reverse
 from django.utils import timezone
 
 from accounts.forms import GENERIC_LOGIN_ERROR
 from accounts.models import ArchiveReason, Extension, Role, Status, User
 from audit.models import AuditLog
+from accounts import navigation as nav
+from accounts.navigation import NavItem
 
 PASSWORD = "correct-horse-battery"
 
@@ -217,3 +220,59 @@ class SeedSuperadminTests(TestCase):
     def test_refuses_to_run_outside_debug(self):
         with self.assertRaises(CommandError):
             self.run_command(SEED_SUPERADMIN_PASSWORD=PASSWORD)
+
+
+class NavigationBuilderTests(SimpleTestCase):
+    """build_nav: role filtering, placeholders, sections, bottom bar slots, active state."""
+
+    EXISTING = "accounts:login"  # a url name known to exist
+    MISSING = "nothing:here"  # a url name that does not exist
+
+    def build(self, items, role="member", path="/"):
+        """Run build_nav against a custom NAV_ITEMS list."""
+        with mock.patch.object(nav, "NAV_ITEMS", items):
+            return nav.build_nav(role, path)
+
+    def test_only_items_for_the_role_are_shown(self):
+        items = [
+            NavItem("Everyone", self.EXISTING, "home"),
+            NavItem("Leaders", self.EXISTING, "users", roles=(nav.ADMIN,)),
+        ]
+        member = self.build(items, role=nav.MEMBER)
+        admin = self.build(items, role=nav.ADMIN)
+        self.assertEqual([i["label"] for s in member["sections"] for i in s["items"]], ["Everyone"])
+        self.assertEqual([i["label"] for s in admin["sections"] for i in s["items"]], ["Everyone", "Leaders"])
+
+    def test_missing_route_becomes_a_disabled_placeholder(self):
+        result = self.build([NavItem("Soon", self.MISSING, "home")])
+        item = result["sections"][0]["items"][0]
+        self.assertTrue(item["disabled"])
+        self.assertEqual(item["href"], "#")
+        self.assertFalse(item["active"])
+
+    def test_consecutive_items_with_the_same_group_share_a_section(self):
+        items = [
+            NavItem("A", self.EXISTING, "home"),
+            NavItem("B", self.EXISTING, "home", group="Manage"),
+            NavItem("C", self.EXISTING, "home", group="Manage"),
+        ]
+        sections = self.build(items)["sections"]
+        self.assertEqual([s["heading"] for s in sections], ["", "Manage"])
+        self.assertEqual(len(sections[1]["items"]), 2)
+
+    def test_bottom_bar_is_capped_and_the_rest_goes_to_more(self):
+        items = [NavItem(f"I{n}", self.EXISTING, "home", bottom=True) for n in range(nav.BOTTOM_BAR_SLOTS + 2)]
+        result = self.build(items)
+        self.assertEqual(len(result["bottom_items"]), nav.BOTTOM_BAR_SLOTS)
+        self.assertEqual(len(result["more_items"]), 2)
+
+    def test_active_state_exact_versus_prefix(self):
+        href = reverse(self.EXISTING)
+        items = [
+            NavItem("Exact", self.EXISTING, "home", exact=True),
+            NavItem("Prefix", self.EXISTING, "home"),
+        ]
+        on_page = self.build(items, path=href)["sections"][0]["items"]
+        below = self.build(items, path=href + "child/")["sections"][0]["items"]
+        self.assertEqual([i["active"] for i in on_page], [True, True])
+        self.assertEqual([i["active"] for i in below], [False, True])

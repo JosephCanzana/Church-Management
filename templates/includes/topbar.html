@@ -1,0 +1,14 @@
+{% comment %}
+topbar.html: right-hand side of the app header, the signed-in user (initials, plus name and role from sm up).
+The header, the menu button and the page title live in base_app.html, because a block inside an included file never overrides anything.
+The light/dark toggle and log out are in sidebar_utilities.html.
+Variables: user (from the auth context processor).
+Usage: {% include 'includes/topbar.html' %}
+{% endcomment %}
+<div class="flex min-w-0 shrink-0 items-center gap-3">
+  <div class="hidden min-w-0 max-w-56 text-right sm:block">
+    <p class="truncate text-sm font-medium text-txt-primary">{{ user.first_name }} {{ user.last_name }}</p>
+    <p class="truncate text-sm text-txt-secondary">{{ user.get_role_display }}</p>
+  </div>
+  <span class="flex size-9 shrink-0 items-center justify-center rounded-full bg-accent/15 text-sm font-semibold text-txt-primary" aria-hidden="true">{{ user.first_name|slice:":1"|upper }}{{ user.last_name|slice:":1"|upper }}</span>
+</div>
