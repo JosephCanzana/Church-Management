@@ -53,6 +53,7 @@ INSTALLED_APPS = [
     'resources',
     'theming.apps.ThemingConfig',
     'tithes',
+    'dashboards'
 ]
 
 MIDDLEWARE = [

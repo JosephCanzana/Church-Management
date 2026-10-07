@@ -53,7 +53,7 @@ docker compose exec web python manage.py migrate
 docker compose exec web python manage.py seed_superadmin
 ```
 The command prints the account id (on a fresh database the first id is `1000` plus
-the year, e.g. `10002026`). Log in at `/login/`. It only runs with `DEBUG=True` and
+the year, e.g. `10002026`). Log in at `/accounts/login/`. It only runs with `DEBUG=True` and
 does nothing if a super-admin already exists.
 
 ### Day-to-day
@@ -83,6 +83,7 @@ tithes/              # tithes and offering records
 buddy/               # accountability partners
 prayer/              # prayer requests and replies
 notifications/       # bell, preferences, admin alerts
+dashboards/          # temporary role landing pages (no models)
 templates/  static/  theme/
 docs/                # schema.sql, flows.md, verify.sql (reference)
 ```
@@ -104,7 +105,7 @@ docs/                # schema.sql, flows.md, verify.sql (reference)
 | `prayer` | `prayer_request`, `prayer_reply` |
 | `notifications` | `notification`, `notification_preference`, `notification_rule` |
 
-42 tables in total. Table names are fixed with `db_table` and match
+42 tables in total (`dashboards` has none). Table names are fixed with `db_table` and match
 `docs/schema.sql`.
 
 ## Roles and routes
@@ -114,12 +115,17 @@ docs/                # schema.sql, flows.md, verify.sql (reference)
 | Super-admin | `/superadmin/`   | Own dashboard, with a link to Django admin       |
 | Admin       | `/admin/`        | Manages extensions, settings, and coordinators   |
 | Coordinator | `/coordinator/`  | Manages their own extension only                 |
-| Member      | `/`              | Personal pages (attendance, tithes, prayer, etc.)|
+| Member      | `/home/`         | Personal pages (attendance, tithes, prayer, etc.)|
 
-Login: `/login/` (account id or verified email), `/logout/` (POST only) and
-`/activate/` (placeholder until activation is built). Forgot-password and reset are not
-built yet; the link on the login page is a placeholder. People with a temporary or
-never-set password are sent to `/activate/` after logging in.
+Login: `/accounts/login/` (account id or verified email), `/accounts/logout/` (POST only)
+and `/accounts/activate/` (placeholder until activation is built). Forgot-password and
+reset are not built yet; the link on the login page is a placeholder. People with a
+temporary or never-set password are sent to `/accounts/activate/` after logging in.
+
+After login each role lands on its own temporary page (served by the `dashboards` app,
+which only says which role it is) until the real dashboards exist. Opening another
+role's page sends you back to your own. Where each role lands is set in
+`accounts/decorators.py` (`ROLE_HOME_NAMES`).
 
 Django's built-in admin lives at `/django-admin/` (not `/admin/`) and is
 for the super-admin only. Only users with `is_staff=True` can open it.
@@ -155,7 +161,7 @@ for the super-admin only. Only users with `is_staff=True` can open it.
   show-password checkbox and a forgot-password link.
 - **Placeholder links:** the navbar's Login button, its About / Give links and the login
   page's Forgot password link are `href="#"` until those pages exist. The landing page's
-  Log in buttons point to `/login/`.
+  Log in buttons point to the login page (`/accounts/login/`).
 
 ## How the data works (short version)
 - **Roles:** super admin > admin > coordinator > member. Special roles
@@ -184,6 +190,13 @@ docker compose exec web python manage.py test core.test_schema -v 2
 The suite checks all 42 tables, seed data, purge triggers, account-id
 generation, login, delete rules and the database constraints.
 
+### Checking the role redirects
+1. Log in as each role. You should land on `/superadmin/`, `/admin/`, `/coordinator/` or
+   `/home/`, and the page should say which role it is.
+2. As a member, open `/admin/`. You should be sent back to `/home/`.
+3. Logged out, open `/superadmin/`. You should reach the login page with
+   `?next=/superadmin/`.
+
 ### Inspecting the database with pgAdmin
 1. `cp docker-compose.override.yml.example docker-compose.override.yml`
    (git-ignored) and run `docker compose up -d`.
@@ -209,6 +222,8 @@ pgAdmin will show foreign keys as `NO ACTION`. That is expected: Django applies
   `account_number_seq` sequence is created by `core` migration
   `0002_seed_and_triggers`. Make sure it has been applied.
 - **Pages unstyled:** `make tailwind-watch` is not running.
+- **`TemplateDoesNotExist` for a page in a new app:** the app is missing from
+  `INSTALLED_APPS`, so its `templates/` folder is not searched.
 - **Inspect from the CLI:** `docker compose exec web python manage.py dbshell`,
   then `\dt`, `\d <table>`, `\pset pager off`.
 

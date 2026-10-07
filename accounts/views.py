@@ -11,26 +11,38 @@ from django.urls import reverse
 from django.utils.http import url_has_allowed_host_and_scheme
 from django.views.decorators.cache import never_cache
 from django.views.decorators.http import require_http_methods, require_POST
+from functools import wraps
 
 from .forms import GENERIC_LOGIN_ERROR, LoginForm
 from .models import Role
 from .services import attempt_login
 
+from .models import Role
 
-# Where each role lands after login. Every role goes to the site root for now
-# because the /superadmin/, /admin/ and /coordinator/ dashboards do not exist
-# yet. When they do, change the values here and nothing else.
-ROLE_HOME_URLS = {
-    Role.SUPER_ADMIN: settings.LOGIN_REDIRECT_URL,
-    Role.ADMIN: settings.LOGIN_REDIRECT_URL,
-    Role.COORDINATOR: settings.LOGIN_REDIRECT_URL,
-    Role.MEMBER: settings.LOGIN_REDIRECT_URL,
+ROLE_HOME_NAMES = {
+    Role.SUPER_ADMIN: "dashboards:superadmin",
+    Role.ADMIN: "dashboards:admin",
+    Role.COORDINATOR: "dashboards:coordinator",
+    Role.MEMBER: "dashboards:member",
 }
-
 
 def home_url_for(user):
     """Return the landing URL for this user's role."""
-    return ROLE_HOME_URLS.get(user.role, settings.LOGIN_REDIRECT_URL)
+    name = ROLE_HOME_NAMES.get(user.role)
+    return reverse(name) if name else settings.LOGIN_REDIRECT_URL
+
+
+def role_required(*roles):
+    """Allow only these roles; anyone else goes to their own home page."""
+    def decorator(view):
+        @login_required
+        @wraps(view)
+        def wrapper(request, *args, **kwargs):
+            if request.user.role not in roles:
+                return redirect(home_url_for(request.user))
+            return view(request, *args, **kwargs)
+        return wrapper
+    return decorator
 
 
 def post_login_redirect(request, user, needs_activation):
