@@ -54,13 +54,7 @@
           {% include "includes/icon.html" with name="x-mark" %}
         </span>
       </button>
-      <!-- TEMPORARY: dev logout button, remove when base_app.html has a real one -->
-{% if user.is_authenticated %}
-<form method="post" action="{% url 'accounts:logout' %}">
-  {% csrf_token %}
-  <button type="submit" class="btn btn-secondary">Log out</button>
-</form>
-{% endif %}
+
     </div>
   </nav>
 
