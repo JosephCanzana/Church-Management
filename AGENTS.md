@@ -10,12 +10,12 @@ buddies, prayer requests, events, resources, notifications and audit logging.
 `core.test_schema` verifies them. The base templates, design tokens, light/dark
 toggle, the public landing page (static copy for now) and the redesigned login page exist. Services, views and forms are
 mostly not built yet. The login is built (`accounts/backends.py`, `services.py`,
-`forms.py`, `views.py`, `urls.py`; routes `/login/`, `/logout/`, `/activate/`);
+`forms.py`, `views.py`, `urls.py`; routes `/accounts/login/`, `/accounts/logout/`, `/accounts/activate/`);
 `/activate/` is a placeholder until the activation flow exists. Forgot-password and reset
 are not built yet; the "Forgot password?" link on the login page is a placeholder
 (`href="#"`). The Log in buttons on the landing page hardcode `/login/`; switch them to
 `{% url 'accounts:login' %}`. Next: the real activation flow, forgot/reset password,
-`role_required`, then features on top of the models. A global toast and confirm
+then features on top of the models. `role_required` exists (`accounts/decorators.py`). Super-admin extension management is built (`/superadmin/extensions/`); user management is next. A global toast and confirm
 dialog (`static/js/ui.js`, rendered by `includes/messages.html`) report results and
 guard destructive actions.
 
@@ -144,7 +144,7 @@ with. Only create a new app if the answer is "none".
   and reports whether activation is needed. Every failure shows
   `forms.GENERIC_LOGIN_ERROR`. `next` is only followed if
   `url_has_allowed_host_and_scheme` passes. Post-login landing URLs are in
-  `views.ROLE_HOME_URLS` (all `/` until the role dashboards exist). Brute-force
+  `decorators.ROLE_HOME_NAMES` (the `dashboards` routes). Brute-force
   throttling is not built yet.
 - **Status:** `not_activated -> active -> archived`. "Inactive for a year" is an
   automatic archive with `archive_reason='inactive'`.
@@ -358,3 +358,28 @@ still in use), `archive_inactive_users`, `auto_transfer_extension`,
   queryset helper, not with ad hoc `.filter(extension=...)` calls in views.
 - Use `{% url 'admin:index' %}` to link to Django admin, never a hardcoded
   path.
+
+## Super-admin management (extensions built, users next)
+- **Where:** `accounts/views_superadmin.py` + `accounts/urls_superadmin.py` (namespace `superadmin`, mounted at
+  `/superadmin/`; the super-admin home stays in `dashboards`). Templates: `accounts/templates/accounts/superadmin/`.
+  Business rules: `accounts/services.py` (extension section). Who may do what: `accounts/permissions.py`.
+  Shared archive / restore / force-delete helpers and `ServiceError`: `core/services.py`.
+- **Two guards, both required:** `@role_required(Role.SUPER_ADMIN)` on the view guards the page; every service starts
+  with a check from `accounts/permissions.py` and guards the action. To open a screen to another role, change the
+  permission function and add routes, not the services.
+- **Role home URLs live in ONE place:** `accounts/decorators.py` (`ROLE_HOME_NAMES`, `home_url_for`, `role_required`).
+  `accounts/views.py` imports them; never copy them back.
+- **Extension invariants (the database cannot enforce them, the services do):** the coordinator has `role=coordinator`
+  and belongs to that extension; one coordinator per extension; replacing a coordinator demotes the old one to member;
+  an extension cannot be archived while non-archived people belong to it; only archived extensions can be deleted.
+- **Lock order in services:** extension row first, then people in ascending id order. Never `select_related` a nullable
+  FK together with `select_for_update` (Postgres refuses it).
+- **Archive writes:** always `save(update_fields=[...])` with `archived_at` in the list (via `core.services`), or the purge
+  trigger does not fire and a stale `purge_at` can be written back.
+- **Audit keys:** `log_action` drops any `before`/`after` key containing "password", "token" or "secret", so a key such as
+  `must_change_password` silently disappears. Log it under another name (for example `needs_activation`).
+- **Double clicks:** `static/js/ui.js` locks a POST form on its first real submit (opt out with `data-no-lock`). The server
+  must stay safe without it: actions check the current state under a row lock and report "already done" instead of failing.
+- **UI pieces:** `.btn-danger` (destructive buttons), `includes/pagination.html` (Page + `querystring`), and
+  `$store.ui.showSecrets({title, message, headers, rows})` for show-once data such as generated passwords (or hand it
+  over with `json_script:"secrets-data"`). The secrets dialog only closes with its own button.

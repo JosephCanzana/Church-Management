@@ -8,13 +8,15 @@ from django.urls import reverse
 
 from .models import Role
 
-# URL names, resolved at request time. When a real dashboard exists,
-# change the name here and nothing else.
+# URL names, resolved at request time. These are the real dashboard routes
+# (see dashboards/urls.py). When a real dashboard replaces a placeholder,
+# change the name here and nothing else. accounts/navigation.py reads this
+# dict for the "Home" link, so the sidebar and the redirects always agree.
 ROLE_HOME_NAMES = {
-    Role.SUPER_ADMIN: "accounts:superadmin_home",
-    Role.ADMIN: "accounts:admin_home",
-    Role.COORDINATOR: "accounts:coordinator_home",
-    Role.MEMBER: "accounts:member_home",
+    Role.SUPER_ADMIN: "dashboards:superadmin",
+    Role.ADMIN: "dashboards:admin",
+    Role.COORDINATOR: "dashboards:coordinator",
+    Role.MEMBER: "dashboards:member",
 }
 
 

@@ -56,13 +56,13 @@ class LoginTests(TestCase):
     def test_login_with_account_id(self):
         user = make_user()
         response = self.post(user.account_id)
-        self.assertRedirects(response, "/", fetch_redirect_response=False)
+        self.assertRedirects(response, reverse("dashboards:member"), fetch_redirect_response=False)
         self.assertEqual(int(self.client.session["_auth_user_id"]), user.pk)
 
     def test_login_with_verified_email_is_case_insensitive(self):
         make_user(email="juan@example.com", email_verified_at=timezone.now())
         response = self.post("JUAN@Example.com")
-        self.assertRedirects(response, "/", fetch_redirect_response=False)
+        self.assertRedirects(response, reverse("dashboards:member"), fetch_redirect_response=False)
 
     def test_unverified_pending_email_cannot_log_in(self):
         make_user(pending_email="juan@example.com")
@@ -113,13 +113,13 @@ class LoginTests(TestCase):
     def test_external_next_url_is_ignored(self):
         user = make_user()
         response = self.post(user.account_id, next="https://evil.example.com/")
-        self.assertRedirects(response, "/", fetch_redirect_response=False)
+        self.assertRedirects(response, reverse("dashboards:member"), fetch_redirect_response=False)
 
     def test_logged_in_user_skips_the_form(self):
         user = make_user()
         self.client.force_login(user)
         response = self.client.get(self.url)
-        self.assertRedirects(response, "/", fetch_redirect_response=False)
+        self.assertRedirects(response, reverse("dashboards:member"), fetch_redirect_response=False)
 
 
 class LoginAuditTests(TestCase):

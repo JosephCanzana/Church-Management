@@ -1,0 +1,82 @@
+<!--
+accounts/superadmin/extension_list.html
+Super-admin list of extensions: search, status filter, sort and paging.
+Extends base_app.html. Blocks filled: title, page_title, content.
+Context: form (ExtensionFilterForm), page (a Page of Extension rows, each with
+member_count), total (number of matches), status ("active", "archived" or "all"),
+querystring (current filters without the page number).
+-->
+{% extends "base_app.html" %}
+
+{% block title %}Extensions{% endblock %}
+{% block page_title %}Extensions{% endblock %}
+
+{% block content %}
+<div class="flex flex-wrap items-center justify-between gap-3">
+  <p class="text-sm text-txt-secondary">
+    {{ total }} extension{{ total|pluralize }}{% if status == "archived" %} in the archive{% endif %}
+  </p>
+  <a href="{% url 'superadmin:extension_create' %}" class="btn btn-primary">
+    {% include 'includes/icon.html' with name='plus' class='size-4' %}
+    New extension
+  </a>
+</div>
+
+<form method="get" class="mt-4 grid gap-3 sm:grid-cols-[1fr_auto_auto_auto] sm:items-end" role="search">
+  <div>
+    <label for="{{ form.q.id_for_label }}" class="label">{{ form.q.label }}</label>
+    {{ form.q }}
+  </div>
+  <div>
+    <label for="{{ form.status.id_for_label }}" class="label">Show</label>
+    {{ form.status }}
+  </div>
+  <div>
+    <label for="{{ form.sort.id_for_label }}" class="label">{{ form.sort.label }}</label>
+    {{ form.sort }}
+  </div>
+  <button type="submit" class="btn btn-secondary">
+    {% include 'includes/icon.html' with name='funnel' class='size-4' %}
+    Apply
+  </button>
+</form>
+
+{% if page.object_list %}
+<ul class="card mt-6 divide-y divide-border p-0">
+  {% for ext in page.object_list %}
+  <li class="flex flex-wrap items-center gap-x-6 gap-y-2 px-5 py-4">
+    <div class="min-w-0 flex-1 basis-56">
+      <a href="{% url 'superadmin:extension_detail' ext.pk %}"
+         class="font-medium text-txt-primary hover:underline focus-visible:outline-2 focus-visible:outline-accent">{{ ext.name }}</a>
+      {% if ext.archived_at %}
+      <span class="ml-2 rounded-full border border-border bg-surface-alt px-2 py-0.5 text-xs text-txt-secondary">Archived</span>
+      {% endif %}
+      <p class="mt-0.5 truncate text-sm text-txt-secondary">
+        {% if ext.barangay %}{{ ext.barangay }}, {% endif %}{{ ext.municipality }}
+      </p>
+    </div>
+    <p class="basis-48 text-sm text-txt-secondary">
+      {% if ext.coordinator %}
+        Coordinator: <span class="text-txt-primary">{{ ext.coordinator.full_name }}</span>
+      {% else %}
+        No coordinator
+      {% endif %}
+    </p>
+    <p class="w-24 text-sm text-txt-secondary">{{ ext.member_count }} {% if ext.member_count == 1 %}person{% else %}people{% endif %}</p>
+  </li>
+  {% endfor %}
+</ul>
+{% include 'includes/pagination.html' with page=page querystring=querystring %}
+{% else %}
+<div class="card mt-6 text-center">
+  <p class="font-medium text-txt-primary">No extensions found</p>
+  <p class="mt-1 text-sm text-txt-secondary">
+    {% if form.q.value or status != "active" %}
+      Try a different search or filter.
+    {% else %}
+      Create the first extension so you can add coordinators and members to it.
+    {% endif %}
+  </p>
+</div>
+{% endif %}
+{% endblock %}

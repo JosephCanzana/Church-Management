@@ -29,8 +29,46 @@
       <button type="button" x-ref="cancel" @click="$store.ui.answer(false)"
               class="rounded-lg border border-border px-4 py-2 text-sm">Cancel</button>
       <button type="button" @click="$store.ui.answer(true)"
-              :class="$store.ui.dialog.danger ? 'bg-red-600 text-white' : 'bg-primary text-white'"
+              :class="$store.ui.dialog.danger ? 'bg-error text-on-primary' : 'bg-primary text-on-primary'"
               class="rounded-lg px-4 py-2 text-sm font-medium" x-text="$store.ui.dialog.confirmText"></button>
+    </div>
+  </div>
+</div>
+
+{# Show-once secrets modal (generated passwords). It closes ONLY with its button, so a stray click or Escape cannot lose them. #}
+<div x-data x-show="$store.ui.secrets.open" x-cloak
+     x-effect="$store.ui.secrets.open && $nextTick(() => $refs.done && $refs.done.focus())"
+     class="fixed inset-0 z-[80] flex items-center justify-center p-4"
+     role="alertdialog" aria-modal="true" aria-labelledby="secrets-title" aria-describedby="secrets-message">
+  <div class="absolute inset-0 bg-primary/40"></div>
+  <div class="relative w-full max-w-2xl rounded-xl border border-border bg-surface p-6 shadow-xl">
+    <h2 id="secrets-title" class="text-lg font-semibold" x-text="$store.ui.secrets.title"></h2>
+    <p id="secrets-message" class="mt-2 text-sm text-txt-secondary" x-text="$store.ui.secrets.message"></p>
+    <div class="mt-4 max-h-[50dvh] overflow-auto rounded-lg border border-border">
+      <table class="w-full text-left text-sm">
+        <thead class="bg-surface-alt text-txt-secondary">
+          <tr>
+            <template x-for="(h, i) in $store.ui.secrets.headers" :key="i">
+              <th scope="col" class="px-3 py-2 font-medium" x-text="h"></th>
+            </template>
+          </tr>
+        </thead>
+        <tbody class="divide-y divide-border">
+          <template x-for="(row, i) in $store.ui.secrets.rows" :key="i">
+            <tr>
+              <template x-for="(cell, j) in row" :key="j">
+                <td class="px-3 py-2 font-mono" x-text="cell"></td>
+              </template>
+            </tr>
+          </template>
+        </tbody>
+      </table>
+    </div>
+    <div class="mt-6 flex flex-wrap justify-end gap-3">
+      <button type="button" @click="$store.ui.copySecrets()"
+              class="rounded-lg border border-border px-4 py-2 text-sm">Copy all</button>
+      <button type="button" x-ref="done" @click="$store.ui.closeSecrets()"
+              class="rounded-lg bg-primary px-4 py-2 text-sm font-medium text-on-primary">I have saved these</button>
     </div>
   </div>
 </div>

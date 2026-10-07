@@ -1,9 +1,9 @@
 """accounts.views: login, logout and the activation placeholder.
 
 Views stay thin: read the request, call a form and a service, then render a
-page or redirect. Business rules live in `accounts/services.py`.
+page or redirect. Business rules live in `accounts/services.py`. The role
+guard and the role home URLs live in `accounts/decorators.py` (one copy only).
 """
-from django.conf import settings
 from django.contrib.auth import logout
 from django.contrib.auth.decorators import login_required
 from django.shortcuts import redirect, render
@@ -11,38 +11,10 @@ from django.urls import reverse
 from django.utils.http import url_has_allowed_host_and_scheme
 from django.views.decorators.cache import never_cache
 from django.views.decorators.http import require_http_methods, require_POST
-from functools import wraps
 
+from .decorators import home_url_for
 from .forms import GENERIC_LOGIN_ERROR, LoginForm
-from .models import Role
 from .services import attempt_login
-
-from .models import Role
-
-ROLE_HOME_NAMES = {
-    Role.SUPER_ADMIN: "dashboards:superadmin",
-    Role.ADMIN: "dashboards:admin",
-    Role.COORDINATOR: "dashboards:coordinator",
-    Role.MEMBER: "dashboards:member",
-}
-
-def home_url_for(user):
-    """Return the landing URL for this user's role."""
-    name = ROLE_HOME_NAMES.get(user.role)
-    return reverse(name) if name else settings.LOGIN_REDIRECT_URL
-
-
-def role_required(*roles):
-    """Allow only these roles; anyone else goes to their own home page."""
-    def decorator(view):
-        @login_required
-        @wraps(view)
-        def wrapper(request, *args, **kwargs):
-            if request.user.role not in roles:
-                return redirect(home_url_for(request.user))
-            return view(request, *args, **kwargs)
-        return wrapper
-    return decorator
 
 
 def post_login_redirect(request, user, needs_activation):

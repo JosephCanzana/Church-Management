@@ -1,0 +1,47 @@
+<!--
+accounts/superadmin/extension_form.html
+Create (extension is None) or edit (extension is set) an extension.
+Extends base_app.html. Blocks filled: title, page_title, content.
+Context: form (ExtensionForm), extension (the Extension being edited, or None).
+-->
+{% extends "base_app.html" %}
+
+{% block title %}{% if extension %}Edit {{ extension.name }}{% else %}New extension{% endif %}{% endblock %}
+{% block page_title %}{% if extension %}Edit extension{% else %}New extension{% endif %}{% endblock %}
+
+{% block content %}
+<form method="post" class="card max-w-2xl" novalidate>
+  {% csrf_token %}
+
+  {% if form.non_field_errors %}
+  <div class="mb-5 rounded-lg border border-error p-3 text-sm text-error" role="alert">
+    {% for error in form.non_field_errors %}<p>{{ error }}</p>{% endfor %}
+  </div>
+  {% endif %}
+
+  <div>
+    <label for="{{ form.name.id_for_label }}" class="label">{{ form.name.label }}</label>
+    {{ form.name }}
+    {% for error in form.name.errors %}<p class="field-error">{{ error }}</p>{% endfor %}
+  </div>
+
+  <h2 class="mt-8 text-base font-semibold">Address</h2>
+  <div class="mt-3 grid gap-4 sm:grid-cols-2">
+    {% for field in form %}
+      {% if field.name != "name" %}
+      <div>
+        <label for="{{ field.id_for_label }}" class="label">{{ field.label }}</label>
+        {{ field }}
+        {% for error in field.errors %}<p class="field-error">{{ error }}</p>{% endfor %}
+      </div>
+      {% endif %}
+    {% endfor %}
+  </div>
+
+  <div class="mt-8 flex flex-wrap items-center gap-3">
+    <button type="submit" class="btn btn-primary">{% if extension %}Save changes{% else %}Create extension{% endif %}</button>
+    <a href="{% if extension %}{% url 'superadmin:extension_detail' extension.pk %}{% else %}{% url 'superadmin:extension_list' %}{% endif %}"
+       class="btn btn-ghost">Cancel</a>
+  </div>
+</form>
+{% endblock %}

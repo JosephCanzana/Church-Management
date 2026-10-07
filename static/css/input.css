@@ -8,7 +8,7 @@
 
 @font-face {
   font-family: 'Grotesk';
-  src: url('/static/fonts/SpaceGrotesk-VariableFont_wght.ttf') format('woff2');
+  src: url('/static/fonts/SpaceGrotesk-VariableFont_wght.ttf') format('truetype');
   font-weight: 100 900;
   font-style: normal;
   font-display: swap;
@@ -63,6 +63,8 @@
   .btn-primary   { @apply bg-primary text-on-primary hover:bg-primary-hover; }
   .btn-secondary { @apply border border-border-strong bg-surface text-txt-primary hover:bg-surface-alt; }
   .btn-ghost     { @apply text-txt-secondary hover:bg-surface-alt hover:text-txt-primary; }
+  /* Destructive actions (delete). Uses the error token; text color flips with the mode. */
+  .btn-danger    { @apply bg-error text-on-primary hover:opacity-90; }
 
   .label { @apply mb-1.5 block text-sm font-medium text-txt-primary; }
   .input {
@@ -70,7 +72,8 @@
            text-txt-primary placeholder:text-txt-muted
            focus-visible:border-accent focus-visible:outline-2 focus-visible:outline-accent;
   }
-  .input-error { @apply border-error; }
+  /* Django adds aria-invalid="true" to a field that has errors, so forms need no extra class. */
+  .input-error, .input[aria-invalid="true"] { @apply border-error; }
   .field-error { @apply mt-1.5 text-sm text-error; }
   .field-help  { @apply mt-1.5 text-sm text-txt-secondary; }
 

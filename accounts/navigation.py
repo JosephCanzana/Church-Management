@@ -73,8 +73,8 @@ NAV_ITEMS = [
     NavItem("Resources", "resources:list", "folder-open"),
     NavItem("Settings", "theming:settings", "cog-6-tooth"),
     # Management section (sidebar heading "Manage")
-    NavItem("Extensions", "accounts:extension_list", "building-office", roles=(SUPER_ADMIN, ADMIN), group="Manage"),
-    NavItem("People", "accounts:user_list", "users", roles=LEADERS, group="Manage"),
+    NavItem("Extensions", "superadmin:extension_list", "building-office", roles=(SUPER_ADMIN,), group="Manage"),
+    NavItem("People", "superadmin:user_list", "users", roles=(SUPER_ADMIN,), group="Manage"),
     NavItem("Site settings", "core:site_settings", "adjustments-horizontal", roles=(SUPER_ADMIN, ADMIN), group="Manage"),
     NavItem("Audit log", "audit:log", "shield-check", roles=(SUPER_ADMIN,), group="Manage"),
     NavItem("Django admin", "admin:index", "wrench-screwdriver", roles=(SUPER_ADMIN,), group="Manage"),

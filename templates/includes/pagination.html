@@ -1,0 +1,28 @@
+<!--
+includes/pagination.html
+Previous / Next links for a Django Page, keeping the current search and filters.
+Usage: include this file with page=page and querystring=querystring, where page is
+the Page object and querystring is the GET parameters without "page" (urlencoded).
+Renders nothing when there is only one page.
+-->
+{% if page.paginator.num_pages > 1 %}
+<nav class="mt-6 flex items-center justify-between gap-3" aria-label="Pagination">
+  <div class="w-28">
+    {% if page.has_previous %}
+    <a class="btn btn-secondary" href="?{% if querystring %}{{ querystring }}&amp;{% endif %}page={{ page.previous_page_number }}" rel="prev">
+      {% include 'includes/icon.html' with name='chevron-left' class='size-4' %}
+      Previous
+    </a>
+    {% endif %}
+  </div>
+  <p class="text-sm text-txt-secondary">Page {{ page.number }} of {{ page.paginator.num_pages }}</p>
+  <div class="flex w-28 justify-end">
+    {% if page.has_next %}
+    <a class="btn btn-secondary" href="?{% if querystring %}{{ querystring }}&amp;{% endif %}page={{ page.next_page_number }}" rel="next">
+      Next
+      {% include 'includes/icon.html' with name='chevron-right' class='size-4' %}
+    </a>
+    {% endif %}
+  </div>
+</nav>
+{% endif %}

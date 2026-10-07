@@ -127,6 +127,8 @@ which only says which role it is) until the real dashboards exist. Opening anoth
 role's page sends you back to your own. Where each role lands is set in
 `accounts/decorators.py` (`ROLE_HOME_NAMES`).
 
+The super-admin also manages extensions at `/superadmin/extensions/` (create, edit, archive, restore, delete, assign a coordinator). Users follow in the next step. These pages are super-admin only.
+
 Django's built-in admin lives at `/django-admin/` (not `/admin/`) and is
 for the super-admin only. Only users with `is_staff=True` can open it.
 
@@ -135,7 +137,7 @@ for the super-admin only. Only users with `is_staff=True` can open it.
 - **Stack:** Tailwind CSS (standalone CLI), Alpine.js, self-hosted fonts and Heroicons sprite.
 - **Templates:** project-level layouts live in `templates/` (`base.html`, `base_public.html`,
   `base_app.html`). Shared pieces live in `templates/includes/` (`public_navbar.html`,
-  `footer.html`, `logo.html`, `icon.html`, `sidebar.html`, `sidebar_rail.html`, `sidebar_utilities.html`, `nav_link.html`, `brand_mark.html`, `topbar.html`, `bottom_nav.html`, `messages.html`). App-specific pages live in
+  `footer.html`, `logo.html`, `icon.html`, `sidebar.html`, `sidebar_rail.html`, `sidebar_utilities.html`, `nav_link.html`, `brand_mark.html`, `topbar.html`, `bottom_nav.html`, `messages.html`, `pagination.html`). App-specific pages live in
   `<app>/templates/<app>/`.
 - **Public layout:** `base_public.html` wraps each page with the public navbar (brand, centered
   links, mode toggle, login button, mobile dropdown) and the public footer. The footer
