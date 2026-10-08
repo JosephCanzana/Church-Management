@@ -51,6 +51,12 @@
   --color-accent-hover:   #0E4F96;
   --color-accent-soft:    #E8F1FC;
   --color-on-accent:      #FFFFFF;
+
+  /* The frame that floats above the page: icon rail, sidebar panel, header, bottom bar. It is the surface color with a
+     hint of the primary color, so it is lighter than the page in light mode and in dark mode (higher layers are lighter),
+     and it follows custom themes. Its depth comes from the shadows in the templates. */
+  --color-shell:          color-mix(in oklab, var(--color-primary) 3%, var(--color-surface));
+  --color-shell-border:   color-mix(in oklab, var(--color-primary) 14%, var(--color-surface));
 }
 
 /* Keeps Alpine-controlled elements (modals, bars) hidden until Alpine has started. */

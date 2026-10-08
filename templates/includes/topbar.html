@@ -1,14 +1,24 @@
 {% comment %}
-topbar.html: right-hand side of the app header, the signed-in user (initials, plus name and role from sm up).
+topbar.html: right-hand side of the app header, on the frame color. A notification bell (placeholder link for now),
+then the signed-in user: a solid initials badge, plus name and role from sm up.
+The bell shows a dot when a context variable unread_count is above zero; nothing provides it yet, so no dot appears.
 The header, the menu button and the page title live in base_app.html, because a block inside an included file never overrides anything.
 The light/dark toggle and log out are in sidebar_utilities.html.
-Variables: user (from the auth context processor).
+Variables: user (from the auth context processor), unread_count (optional, from the notifications app later).
 Usage: {% include 'includes/topbar.html' %}
 {% endcomment %}
-<div class="flex min-w-0 shrink-0 items-center gap-3">
-  <div class="hidden min-w-0 max-w-56 text-right sm:block">
-    <p class="truncate text-sm font-medium text-txt-primary">{{ user.first_name }} {{ user.last_name }}</p>
-    <p class="truncate text-sm text-txt-secondary">{{ user.get_role_display }}</p>
+<div class="flex min-w-0 shrink-0 items-center gap-2 sm:gap-3">
+  <a href="#"
+     class="relative inline-flex size-11 shrink-0 items-center justify-center rounded-full text-txt-secondary transition-colors hover:bg-txt-primary/5 hover:text-txt-primary focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-accent"
+     aria-label="Notifications">
+    {% include 'includes/icon.html' with name='bell' class='size-6' %}
+    {% if unread_count %}<span class="absolute right-2.5 top-2.5 size-2.5 rounded-full bg-error ring-2 ring-shell"></span>{% endif %}
+  </a>
+  <div class="flex min-w-0 items-center gap-3">
+    <span class="flex size-9 shrink-0 items-center justify-center rounded-full bg-primary text-sm font-semibold text-on-primary" aria-hidden="true">{{ user.first_name|slice:":1"|upper }}{{ user.last_name|slice:":1"|upper }}</span>
+    <div class="hidden min-w-0 max-w-48 leading-tight sm:block">
+      <p class="truncate text-sm font-medium text-txt-primary">{{ user.first_name }} {{ user.last_name }}</p>
+      <p class="truncate text-sm text-txt-secondary">{{ user.get_role_display }}</p>
+    </div>
   </div>
-  <span class="flex size-9 shrink-0 items-center justify-center rounded-full bg-accent/15 text-sm font-semibold text-txt-primary" aria-hidden="true">{{ user.first_name|slice:":1"|upper }}{{ user.last_name|slice:":1"|upper }}</span>
 </div>

@@ -290,6 +290,13 @@ still in use), `archive_inactive_users`, `auto_transfer_extension`,
   short screens), `border-t border-border bg-bg`, `text-txt-secondary` (not `text-txt-muted`,
   which fails contrast). The year comes from `{% now "Y" %}`. A `{% block %}` inside an
   included file overrides nothing; pass values with `{% include ... with church_name="..." %}`.
+- App shell layers: the page (`bg-bg`) is the lowest layer. The icon rail and the header are `bg-shell` and float above it:
+  a hairline (`border-shell-border`, level across the rail's menu row and the header) plus a soft shadow that falls onto the
+  page. The sidebar panel, the mobile bottom bar and its More sheet use the same color and sit higher, with a bigger shadow and
+  light glass (`supports-[backdrop-filter]:bg-shell/85 supports-[backdrop-filter]:backdrop-blur-xl` over a solid fallback).
+  `--color-shell` and `--color-shell-border` are derived in `input.css` (`color-mix()` from `--color-surface` and
+  `--color-primary`), so they follow light/dark mode (higher layers are lighter in dark mode) and custom themes. Shadows are a
+  black `shadow-[...]` with low alpha. Cards, tables and forms stay flat with borders; no glass behind dense data.
 - Visual direction: calm, minimal, human. Flat surfaces, borders instead of shadows, one
   accent color, real church context (greeting, first-time note, verse) instead of generic
   marketing copy. Glass is optional and subtle: keep a solid fallback and add

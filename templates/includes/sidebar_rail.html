@@ -5,7 +5,7 @@ scrollable list never clips them.
 Variables: nav (from accounts.context_processors.navigation).
 Usage: {% include 'includes/sidebar_rail.html' %}
 {% endcomment %}
-<div class="flex h-14 shrink-0 items-center justify-center border-b border-border">
+<div class="flex h-14 shrink-0 items-center justify-center border-b border-shell-border">
   <button data-sidebar-toggle type="button"
           class="inline-flex size-11 items-center justify-center rounded-lg text-txt-secondary transition-colors hover:bg-txt-primary/5 hover:text-txt-primary focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-accent"
           x-on:click="$store.sidebar.toggle()"
@@ -17,7 +17,7 @@ Usage: {% include 'includes/sidebar_rail.html' %}
 <nav class="min-h-0 flex-1 overflow-y-auto overflow-x-hidden py-3" aria-label="Main">
   <ul class="flex flex-col items-center gap-1">
     {% for section in nav.sections %}
-    {% if not forloop.first %}<li class="my-2 h-px w-8 bg-border" role="separator"></li>{% endif %}
+    {% if not forloop.first %}<li class="my-2 h-px w-8 bg-shell-border" role="separator"></li>{% endif %}
     {% for item in section.items %}
     <li>{% include 'includes/nav_link.html' with item=item layout='rail' %}</li>
     {% endfor %}
@@ -25,6 +25,6 @@ Usage: {% include 'includes/sidebar_rail.html' %}
   </ul>
 </nav>
 
-<div class="shrink-0 border-t border-border py-3">
+<div class="shrink-0 border-t border-shell-border py-3">
   {% include 'includes/sidebar_utilities.html' with layout='rail' %}
 </div>

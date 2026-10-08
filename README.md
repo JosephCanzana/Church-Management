@@ -167,6 +167,9 @@ for the super-admin only. Only users with `is_staff=True` can open it.
   session (`?nav=off` clears it).
 - **Reusable modal and breadcrumb:** `{% load ui_tags %}` gives `{% modal "id" title="..." %}...{% endmodal %}` (open with
   `$store.ui.openModal('id')`) and the `|title_case` filter; `includes/breadcrumb.html` draws a two-level breadcrumb.
+- **Layers:** the page is the lowest layer; the icon rail and header float above it (soft `shell` color, hairline edge, soft
+  shadow); the slide-in panel, bottom bar and More sheet sit higher with light glass. `--color-shell` is derived in
+  `input.css`. The header has a notification bell (placeholder link) and a simple user badge (`includes/topbar.html`).
 - **Text size:** signed-in pages (`data-app-shell` in `base_app.html`) use a root font size of 106.25%, set in `input.css`.
 - **Static files:** `static/css/input.css` is the Tailwind source and holds the design tokens.
   `static/css/output.css` is generated and not committed. Other folders: `fonts/`, `icons/`,
