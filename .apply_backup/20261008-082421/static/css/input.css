@@ -83,13 +83,6 @@
   .card { @apply rounded-xl border border-border bg-surface p-6; }
 }
 
-/* Signed-in pages (base_app.html marks its root with data-app-shell) use a slightly larger
-   text size: 106.25% of the browser default, so 17px instead of 16px. Everything in Tailwind
-   is in rem, so spacing and icons grow with it. Public and login pages are untouched. */
-@layer base {
-  html:has([data-app-shell]) { font-size: 106.25%; }
-}
-
 .logo-mask {
   display: inline-block;
   background-color: currentColor;

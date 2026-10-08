@@ -13,9 +13,6 @@ from django.core.validators import validate_email
 
 from django.db.models import Q
 
-from core.text import clean_text, title_case
-
-from .address import COUNTRIES, HIERARCHY, PHILIPPINES, canonical_country, check_address
 from .models import Extension, Role, Status, User
 from .permissions import assignable_roles
 
@@ -56,126 +53,40 @@ class LoginForm(forms.Form):
 class ExtensionForm(forms.ModelForm):
     """Create or edit an extension. The view passes `cleaned_data` to the service.
 
-    - Fields run from the widest area to the smallest: country, province,
-      municipality, barangay, postal code, street, building number.
-    - Every field is required except the building number.
-    - Input is cleaned to lowercase with single spaces (`core.text.clean_text`);
-      the form shows saved values back in title case.
-    - For the Philippines the province, municipality and barangay must come
-      from `accounts.address` (the template turns them into cascading
-      dropdowns, this class is the server-side check).
-    - Invalid fields get `aria-invalid` from Django, which input.css styles.
+    Invalid fields get `aria-invalid` from Django, which input.css styles.
     """
-
-    #: Order of the fields (the template draws them by hand in this order).
-    field_order = [
-        "name", "country", "province", "municipality", "barangay",
-        "postal_code", "street", "building_number",
-    ]
-    #: The only field that may stay empty.
-    OPTIONAL_FIELDS = {"building_number"}
-    #: Fields shown back in title case when an extension is edited.
-    TITLE_FIELDS = ("name", "province", "municipality", "barangay", "street", "building_number")
-
-    # Declared here (not just in Meta) because it is a dropdown, not free text.
-    # The initial value is the model default for a new extension.
-    country = forms.ChoiceField(label="Country", initial=PHILIPPINES, choices=[])
 
     class Meta:
         model = Extension
         fields = [
-            "name", "country", "province", "municipality", "barangay",
-            "postal_code", "street", "building_number",
+            "name", "building_number", "street", "barangay",
+            "municipality", "province", "country", "postal_code",
         ]
         widgets = {
             "name": forms.TextInput(attrs={"class": "input", "autocomplete": "off"}),
-            "province": forms.TextInput(attrs={"class": "input", "autocomplete": "off"}),
-            "municipality": forms.TextInput(attrs={"class": "input", "autocomplete": "off"}),
-            "barangay": forms.TextInput(attrs={"class": "input", "autocomplete": "off"}),
-            "postal_code": forms.TextInput(attrs={
-                "class": "input font-mono", "maxlength": "10", "inputmode": "numeric",
-                "autocomplete": "off",
-            }),
-            "street": forms.TextInput(attrs={"class": "input", "autocomplete": "off"}),
-            "building_number": forms.TextInput(attrs={"class": "input", "autocomplete": "off"}),
+            "building_number": forms.TextInput(attrs={"class": "input"}),
+            "street": forms.TextInput(attrs={"class": "input"}),
+            "barangay": forms.TextInput(attrs={"class": "input"}),
+            "municipality": forms.TextInput(attrs={"class": "input"}),
+            "province": forms.TextInput(attrs={"class": "input"}),
+            "country": forms.TextInput(attrs={"class": "input"}),
+            "postal_code": forms.TextInput(attrs={"class": "input font-mono"}),
         }
         labels = {"name": "Extension name"}
 
-    def __init__(self, *args, **kwargs):
-        super().__init__(*args, **kwargs)
-        for name, field in self.fields.items():
-            field.required = name not in self.OPTIONAL_FIELDS
-
-        choices = [("", "Choose a country")] + [(c, c) for c in COUNTRIES]
-        saved_country = self.instance.country if self.instance.pk else ""
-        if saved_country and not canonical_country(saved_country):
-            # An old value that is not in the list stays selectable until changed.
-            old = title_case(saved_country)
-            choices.append((old, old))
-        self.fields["country"].choices = choices
-
-        if self.instance.pk and not self.is_bound:
-            # Saved values are lowercase (or old mixed case); show them as titles.
-            for name in self.TITLE_FIELDS:
-                self.initial[name] = title_case(getattr(self.instance, name))
-            self.initial["country"] = canonical_country(saved_country) or title_case(saved_country)
-
-    @property
-    def address_state(self):
-        """Current country/province/municipality/barangay for the page's JavaScript."""
-        return {name: self[name].value() or "" for name in HIERARCHY}
-
-    # --- cleaning: everything stored lowercase ---------------------------
-    def _lowered(self, name):
-        return clean_text(self.cleaned_data.get(name))
-
-    def clean_country(self):
-        return self._lowered("country")
-
-    def clean_province(self):
-        return self._lowered("province")
-
-    def clean_municipality(self):
-        return self._lowered("municipality")
-
-    def clean_barangay(self):
-        return self._lowered("barangay")
-
-    def clean_street(self):
-        return self._lowered("street")
-
-    def clean_building_number(self):
-        return self._lowered("building_number")
-
-    def clean_postal_code(self):
-        """Single spaces only; the case is left alone (foreign codes like 'SW1A 1AA')."""
-        return " ".join((self.cleaned_data.get("postal_code") or "").split())
-
     def clean_name(self):
-        """Lowercase, single spaces, and not used by another extension.
+        """Collapse extra spaces and reject a name used by another extension.
 
         The database unique index is case-sensitive, so "Cabanatuan" and
         "cabanatuan" would both pass it; this check closes that gap.
         """
-        name = self._lowered("name")
+        name = " ".join(self.cleaned_data["name"].split())
         taken = Extension.objects.filter(name__iexact=name)
         if self.instance.pk:
             taken = taken.exclude(pk=self.instance.pk)
         if taken.exists():
             raise ValidationError("An extension with this name already exists.")
         return name
-
-    def clean(self):
-        """Apply the Philippine address rules (same function the service uses)."""
-        cleaned = super().clean()
-        existing = None
-        if self.instance.pk:
-            # clean() runs before the instance is updated, so these are the saved values.
-            existing = {name: getattr(self.instance, name) for name in self.fields}
-        for field, message in check_address(cleaned, existing).items():
-            if field in self.fields and field not in self.errors:
-                self.add_error(field, message)
-        return cleaned
 
 
 class ExtensionFilterForm(forms.Form):

@@ -5,11 +5,6 @@ wrap their work in `transaction.atomic()` and call `log_action()` inside the
 same transaction.
 
 Sections: login, then extension management (super-admin).
-
-Extension text is STORED lowercase with single spaces (`core.text.clean_text`)
-and SHOWN in title case (`core.text.title_case`). Older rows may still hold
-mixed case, so every comparison below ignores case and nothing rewrites an
-old value until someone really changes it.
 """
 from dataclasses import dataclass
 
@@ -21,9 +16,7 @@ from audit.models import AuditLog
 from audit.services import log_action
 from core import services as core_services
 from core.services import ServiceError
-from core.text import clean_text, title_case
 
-from .address import check_address
 from .backends import find_user
 from .models import Extension, Role, Status, User
 from .permissions import require_extension_manager
@@ -121,50 +114,6 @@ EXTENSION_FIELDS = (
 )
 
 
-#: Every field must be filled in except the building number.
-REQUIRED_EXTENSION_FIELDS = tuple(f for f in EXTENSION_FIELDS if f != "building_number")
-
-_FIELD_LABELS = {
-    "name": "extension name", "country": "country", "province": "province",
-    "municipality": "municipality", "barangay": "barangay",
-    "postal_code": "postal code", "street": "street",
-}
-
-
-def clean_extension_data(data, existing=None):
-    """Normalise and check extension values; return a dict of EXTENSION_FIELDS.
-
-    This is the server-side rule set, so it holds even if the form or the
-    browser's JavaScript is bypassed:
-      - text is trimmed, single-spaced and lowercase (the postal code keeps
-        its case);
-      - every field except the building number is required;
-      - for the Philippines the province, municipality, barangay and postal
-        code must match `accounts.address` (`existing` lets an old, unlisted
-        value stay until it is changed).
-    Raises ServiceError with a message the view can show.
-    """
-    values = {}
-    for name in EXTENSION_FIELDS:
-        raw = data.get(name) or ""
-        values[name] = " ".join(str(raw).split()) if name == "postal_code" else clean_text(raw)
-    missing = [_FIELD_LABELS[n] for n in REQUIRED_EXTENSION_FIELDS if not values[n]]
-    if missing:
-        raise ServiceError("Please fill in: " + ", ".join(missing) + ".")
-    problems = check_address(values, existing)
-    if problems:
-        raise ServiceError(next(iter(problems.values())))
-    return values
-
-
-def _name_taken(name, exclude_pk=None):
-    """True when another extension already uses this name, ignoring case."""
-    taken = Extension.objects.filter(name__iexact=name)
-    if exclude_pk:
-        taken = taken.exclude(pk=exclude_pk)
-    return taken.exists()
-
-
 def _extension_snapshot(extension):
     """The editable fields as a dict (no private data, safe for audit_log)."""
     return {name: getattr(extension, name) for name in EXTENSION_FIELDS}
@@ -190,7 +139,7 @@ def _log_extension(action, actor, request, extension, **kwargs):
         request=request,
         entity_type="extension",
         entity_id=extension.pk,
-        entity_label=title_case(extension.name),
+        entity_label=extension.name,
         extension_id=extension.pk,
         **kwargs,
     )
@@ -214,16 +163,12 @@ def _log_role_change(actor, request, person, extension, old_role, new_role):
 def create_extension(actor, request, data):
     """Create an extension. `data` holds EXTENSION_FIELDS values.
 
-    Values are cleaned by `clean_extension_data` (lowercase, required fields,
-    Philippine address rules). A duplicate name, whatever its capitalisation,
-    becomes a ServiceError.
+    A duplicate name (also caught earlier by the form) becomes a ServiceError.
     """
     require_extension_manager(actor)
-    values = clean_extension_data(data)
+    values = {k: v for k, v in data.items() if k in EXTENSION_FIELDS}
     try:
         with transaction.atomic():
-            if _name_taken(values["name"]):
-                raise ServiceError("An extension with that name already exists.")
             extension = Extension.objects.create(**values)
             _log_extension(
                 "extension.create", actor, request, extension,
@@ -238,9 +183,8 @@ def update_extension(actor, request, extension, data):
     """Change an extension's details. Returns (extension, changed).
 
     Only fields that really changed are written and logged, so saving a form
-    with no edits leaves no audit row. "Changed" ignores capitalisation, so an
-    old "Santa Rosa" is not rewritten as "santa rosa" unless something else
-    about it changed. Archived extensions must be restored first.
+    with no edits leaves no audit row. Archived extensions must be restored
+    first.
     """
     require_extension_manager(actor)
     try:
@@ -249,20 +193,18 @@ def update_extension(actor, request, extension, data):
             if locked.is_archived:
                 raise ServiceError("Restore this extension before editing it.")
             before = _extension_snapshot(locked)
-            merged = {**before, **{k: v for k, v in data.items() if k in EXTENSION_FIELDS}}
-            clean = clean_extension_data(merged, existing=before)
-            changed = [n for n in EXTENSION_FIELDS if before[n].lower() != clean[n].lower()]
+            for name in EXTENSION_FIELDS:
+                if name in data:
+                    setattr(locked, name, data[name])
+            after = _extension_snapshot(locked)
+            changed = [n for n in EXTENSION_FIELDS if before[n] != after[n]]
             if not changed:
                 return locked, False
-            if "name" in changed and _name_taken(clean["name"], exclude_pk=locked.pk):
-                raise ServiceError("An extension with that name already exists.")
-            for name in changed:
-                setattr(locked, name, clean[name])
             locked.save(update_fields=[*changed, "updated_at"])
             _log_extension(
                 "extension.update", actor, request, locked,
                 before={n: before[n] for n in changed},
-                after={n: clean[n] for n in changed},
+                after={n: after[n] for n in changed},
             )
     except IntegrityError:
         raise ServiceError("An extension with that name already exists.")
@@ -367,7 +309,7 @@ def archive_extension(actor, request, extension):
         if people:
             noun = "person" if people == 1 else "people"
             raise ServiceError(
-                f"{title_case(ext.name)} still has {people} {noun}. Move or archive them first."
+                f"{ext.name} still has {people} {noun}. Move or archive them first."
             )
         extra = []
         if ext.coordinator_id:
@@ -420,52 +362,3 @@ def force_delete_extension(actor, request, extension):
             "deleted yet. Delete or purge those first."
         )
     return None, True
-
-
-# ------------------------------------------------------------ bulk actions
-@dataclass
-class BulkResult:
-    """Outcome of a bulk action on extensions.
-
-    done    -- display names of the extensions that were changed.
-    skipped -- one readable sentence per extension that was left alone, with
-               the reason (still has people, not archived, already archived...).
-    """
-
-    done: list
-    skipped: list
-
-
-def _run_bulk(actor, request, ids, service, unchanged_message):
-    """Apply `service` to each extension on its own, never stopping at a failure.
-
-    Each call is its own transaction (the services use `transaction.atomic()`),
-    so an extension that is refused leaves the others untouched. Ids that no
-    longer exist are ignored, like a double click on a deleted row.
-    """
-    require_extension_manager(actor)
-    result = BulkResult(done=[], skipped=[])
-    for ext in Extension.objects.filter(pk__in=ids).order_by("name", "pk"):
-        name = title_case(ext.name)  # read before the service: delete removes the row
-        try:
-            _, changed = service(actor, request, ext)
-        except ServiceError as exc:
-            reason = str(exc)
-            # Some refusals already name the extension; add the name when they do not.
-            result.skipped.append(reason if name.lower() in reason.lower() else f"{name}: {reason}")
-            continue
-        if changed:
-            result.done.append(name)
-        else:
-            result.skipped.append(unchanged_message.format(name=name))
-    return result
-
-
-def bulk_archive_extensions(actor, request, ids):
-    """Archive several extensions; ones that still have people are skipped."""
-    return _run_bulk(actor, request, ids, archive_extension, "{name} is already archived.")
-
-
-def bulk_delete_extensions(actor, request, ids):
-    """Permanently delete several ARCHIVED extensions; others are skipped."""
-    return _run_bulk(actor, request, ids, force_delete_extension, "{name} was not deleted.")

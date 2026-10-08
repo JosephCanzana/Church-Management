@@ -1,9 +1,6 @@
 document.addEventListener('alpine:init', () => {
   Alpine.store('ui', {
     toasts: [],
-    // Id of the open modal (the modal tag in core/templatetags/ui_tags.py), or null.
-    modal: null,
-    _modalOpener: null,
     dialog: { open: false, title: '', message: '', confirmText: 'Confirm', danger: false, resolve: null },
     // Show-once information such as generated passwords. Not stored anywhere else.
     secrets: { open: false, title: '', message: '', headers: [], rows: [], resolve: null },
@@ -28,25 +25,6 @@ document.addEventListener('alpine:init', () => {
       });
     },
     answer(ok) { this.dialog.open = false; this.dialog.resolve?.(ok); },
-
-    // Simple modal: $store.ui.openModal('filters') / $store.ui.closeModal().
-    // Locks page scroll, moves focus to the first field, and gives focus back on close.
-    openModal(id) {
-      this._modalOpener = document.activeElement;
-      this.modal = id;
-      document.documentElement.style.overflow = 'hidden';
-      setTimeout(() => {
-        const root = document.querySelector(`[data-modal="${id}"]`);
-        root?.querySelector('[data-autofocus], input:not([type=hidden]), select, textarea, button:not([aria-label="Close"])')?.focus();
-      }, 60);
-    },
-    closeModal() {
-      if (!this.modal) return;
-      this.modal = null;
-      document.documentElement.style.overflow = '';
-      this._modalOpener?.focus?.();
-      this._modalOpener = null;
-    },
 
     // Blocking "save this now" dialog: { title, message, headers: [..], rows: [[..], ..] }.
     // It closes only through closeSecrets(), and the values are wiped when it does.

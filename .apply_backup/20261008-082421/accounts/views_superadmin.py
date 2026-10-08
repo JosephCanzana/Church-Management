@@ -2,9 +2,6 @@
 
 Today: extensions. User management is added here next.
 
-Names shown in messages go through `title_case` because extension text is
-stored in lowercase (see `core.text`).
-
 Every view is wrapped in role_required(SUPER_ADMIN) (the page guard) and the
 services check permission again (the action guard). Views stay thin: parse the
 request, call a service, show a message, redirect. Destructive actions are
@@ -12,18 +9,13 @@ POST-only. A person double-clicking a button must never get an error page, so
 actions on a record that is already in the wanted state (or already gone)
 report that calmly instead of failing.
 """
-from urllib.parse import urlencode
-
 from django.contrib import messages
 from django.core.paginator import Paginator
 from django.db.models import Count, Q
-from django.http import QueryDict
 from django.shortcuts import redirect, render
-from django.urls import reverse
 from django.views.decorators.http import require_http_methods, require_POST
 
 from core.services import ServiceError
-from core.text import title_case
 
 from .decorators import role_required
 from .forms import AssignCoordinatorForm, ExtensionFilterForm, ExtensionForm
@@ -31,8 +23,6 @@ from .models import Extension, Role, Status, User
 from .services import (
     archive_extension,
     assign_coordinator,
-    bulk_archive_extensions,
-    bulk_delete_extensions,
     create_extension,
     force_delete_extension,
     restore_extension,
@@ -42,9 +32,6 @@ from .services import (
 
 PAGE_SIZE = 25
 DETAIL_MEMBER_LIMIT = 50
-BULK_LIMIT = 100          # most rows one bulk request will touch
-NAMES_IN_MESSAGE = 3      # how many names a toast lists before "and N more"
-LIST_PARAMS = ("q", "status", "sort", "page")
 
 super_admin_only = role_required(Role.SUPER_ADMIN)
 
@@ -58,21 +45,6 @@ def _gone(request):
     """Calm answer for an extension that no longer exists."""
     messages.info(request, "That extension no longer exists.")
     return redirect("superadmin:extension_list")
-
-
-def _list_query(source):
-    """The list's own GET parameters (search, status, sort, page), re-encoded.
-
-    Anything else is dropped, so the value is safe to send back to the page.
-    """
-    return urlencode({k: source.get(k, "") for k in LIST_PARAMS if source.get(k)})
-
-
-def _list_url(source):
-    """URL of the extension list with only the known list parameters kept."""
-    query = _list_query(source)
-    base = reverse("superadmin:extension_list")
-    return f"{base}?{query}" if query else base
 
 
 # ------------------------------------------------------------------- list
@@ -112,10 +84,6 @@ def extension_list(request):
         "total": paginator.count,
         "status": status,
         "querystring": params.urlencode(),
-        # How many filters differ from the defaults (badge on the Filters button).
-        "active_filters": sum([bool(q), status != "active", sort != "name"]),
-        # Sent back with a bulk action so the person returns to the same view.
-        "current_query": _list_query(request.GET),
     })
 
 
@@ -131,7 +99,7 @@ def extension_create(request):
         except ServiceError as exc:
             form.add_error(None, str(exc))
         else:
-            messages.success(request, f"{title_case(extension.name)} was created.")
+            messages.success(request, f"{extension.name} was created.")
             return redirect("superadmin:extension_detail", pk=extension.pk)
     return render(request, "accounts/superadmin/extension_form.html", {
         "form": form, "extension": None,
@@ -159,7 +127,7 @@ def extension_edit(request, pk):
             form.add_error(None, str(exc))
         else:
             if changed:
-                messages.success(request, f"{title_case(updated.name)} was updated.")
+                messages.success(request, f"{updated.name} was updated.")
             else:
                 messages.info(request, "No changes to save.")
             return redirect("superadmin:extension_detail", pk=pk)
@@ -204,7 +172,7 @@ def _run_extension_action(request, pk, service, done, nothing, *, to_list=False)
     extension = _extension_or_none(pk)
     if extension is None:
         return _gone(request)
-    name = title_case(extension.name)
+    name = extension.name
     try:
         _, changed = service(request.user, request, extension)
     except ServiceError as exc:
@@ -277,65 +245,7 @@ def extension_assign_coordinator(request, pk):
         messages.error(request, str(exc))
     else:
         if changed:
-            messages.success(
-                request, f"{person.full_name} is now the coordinator of {title_case(extension.name)}."
-            )
+            messages.success(request, f"{person.full_name} is now the coordinator of {extension.name}.")
         else:
             messages.info(request, f"{person.full_name} is already the coordinator.")
     return redirect("superadmin:extension_detail", pk=pk)
-
-
-# ------------------------------------------------------------ bulk actions
-def _selected_ids(request):
-    """Extension ids ticked on the list: whole numbers only, no repeats, capped."""
-    ids = []
-    for raw in request.POST.getlist("ids"):
-        if raw.isdigit() and int(raw) not in ids:
-            ids.append(int(raw))
-    return ids[:BULK_LIMIT]
-
-
-def _names_sentence(names):
-    """'A, B, C and 4 more' for a toast."""
-    shown = ", ".join(names[:NAMES_IN_MESSAGE])
-    extra = len(names) - NAMES_IN_MESSAGE
-    return f"{shown} and {extra} more" if extra > 0 else shown
-
-
-@super_admin_only
-@require_POST
-def extension_bulk(request):
-    """Archive or delete the ticked extensions (POST: action, ids, qs).
-
-    Rows that do not qualify are skipped and explained, never an error page:
-    archiving skips extensions that still have people; deleting skips ones
-    that are not archived or are still in use.
-    """
-    back = _list_url(QueryDict(request.POST.get("qs", "")[:500]))
-    action = request.POST.get("action")
-    ids = _selected_ids(request)
-    if action not in ("archive", "delete"):
-        messages.error(request, "Choose archive or delete.")
-        return redirect(back)
-    if not ids:
-        messages.info(request, "Tick at least one extension first.")
-        return redirect(back)
-
-    if action == "archive":
-        result, verb = bulk_archive_extensions(request.user, request, ids), "archived"
-    else:
-        result, verb = bulk_delete_extensions(request.user, request, ids), "deleted"
-
-    if result.done:
-        count = len(result.done)
-        noun = "extension was" if count == 1 else "extensions were"
-        messages.success(request, f"{count} {noun} {verb}: {_names_sentence(result.done)}.")
-    if result.skipped:
-        count = len(result.skipped)
-        messages.warning(
-            request, f"Skipped {count}. " + " ".join(result.skipped[: NAMES_IN_MESSAGE + 2])
-            + (f" And {count - NAMES_IN_MESSAGE - 2} more." if count > NAMES_IN_MESSAGE + 2 else "")
-        )
-    if not result.done and not result.skipped:
-        messages.info(request, "Those extensions no longer exist.")
-    return redirect(back)

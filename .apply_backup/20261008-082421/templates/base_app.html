@@ -9,7 +9,6 @@ Blocks filled by pages: title, page_title (the header h1), content. Also from ba
 extra_head, extra_js.
 Context: nav and mobile_nav_style (accounts.context_processors.navigation), user.
 Needs the Alpine stores sidebar and mode from static/js/ui.js.
-The data-app-shell attribute on the root div switches on the slightly larger text size (input.css).
 Pages extend this file, never base.html. Page content uses h2 and below, because page_title
 renders the h1.
 -->
@@ -17,7 +16,7 @@ renders the h1.
 {% load static %}
 
 {% block body %}
-<div class="min-h-dvh sm:flex" data-app-shell x-data x-on:keydown.escape.window="$store.sidebar.close(true)">
+<div class="min-h-dvh sm:flex" x-data x-on:keydown.escape.window="$store.sidebar.close(true)">
 
   <aside class="hidden border-r border-border bg-surface sm:sticky sm:top-0 sm:z-30 sm:flex sm:h-dvh sm:w-16 sm:shrink-0 sm:flex-col"
          aria-label="Sidebar" x-bind:inert="$store.sidebar.expanded">

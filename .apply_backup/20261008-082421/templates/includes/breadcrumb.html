@@ -1,0 +1,13 @@
+<!--
+includes/breadcrumb.html
+Simple breadcrumb for detail/edit pages: a parent link and the current step.
+Includes usage: {% include 'includes/breadcrumb.html' with parent_label='Extensions' parent_url=list_url current='Edit extension' %}
+Context: parent_label, parent_url, current.
+-->
+<nav aria-label="Breadcrumb" class="mb-4 flex items-center gap-2 text-sm text-txt-secondary">
+  {% if parent_url %}
+    <a href="{{ parent_url }}" class="font-medium text-txt-secondary hover:text-txt-primary">{{ parent_label }}</a>
+    <span aria-hidden="true" class="text-txt-muted">/</span>
+  {% endif %}
+  <span class="text-txt-primary">{{ current }}</span>
+</nav>

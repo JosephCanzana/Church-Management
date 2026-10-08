@@ -35,7 +35,7 @@ Python 3.12, Django 5.1+ (tested on 5.2 and 6.0), PostgreSQL 16, Tailwind CSS
   `permissions.py`, `management/commands/` (jobs).
 - `templates/` (project-level: `base.html`, `base_public.html`, `base_app.html`,
   `includes/` with `public_navbar.html`, `footer.html`, `logo.html`, `icon.html`,
-  `sidebar.html`, `sidebar_rail.html`, `sidebar_utilities.html`, `nav_link.html`, `brand_mark.html`, `topbar.html`, `bottom_nav.html`, `messages.html`, `modal.html`, `breadcrumb.html`).
+  `sidebar.html`, `sidebar_rail.html`, `sidebar_utilities.html`, `nav_link.html`, `brand_mark.html`, `topbar.html`, `bottom_nav.html`, `messages.html`).
   Page templates that belong to one app go in that app's `templates/<app>/` folder
   (e.g. `pages/templates/pages/landing.html`, `accounts/templates/accounts/login.html`).
 - `static/`: `css/input.css` (Tailwind source and design tokens), `css/themes.css`
@@ -226,7 +226,6 @@ still in use), `archive_inactive_users`, `auto_transfer_extension`,
 - Toasts and confirm dialogs are global. `static/js/ui.js` registers the Alpine store
   `ui` (`toasts`, `dialog`) and `includes/messages.html` renders both from `base.html`,
   so every layout has them. Do not build per-page modals or use `alert()` / `confirm()`.
-  For a dialog that holds content (filters, a small form), use the reusable modal below, never hand-rolled markup.
   - Toast: the result of an action (saved, sent, failed). It does not block and
     dismisses itself. Types: `success`, `error`, `warning`, `info`. Django `messages`
     become toasts on page load (the template writes them into the hidden `#dj-messages`
@@ -241,11 +240,6 @@ still in use), `archive_inactive_users`, `auto_transfer_extension`,
     resolves to true or false. Confirm first, then show a toast for the result. Do not
     chain a confirm modal into an OK modal; a blocking acknowledge modal is only for
     show-once information such as a generated default password.
-  - Reusable modal: `{% load ui_tags %}` then `{% modal "filters" title="Filter extensions" %}...{% endmodal %}`
-    (`core/templatetags/ui_tags.py`, shell in `includes/modal.html`; width `sm`..`2xl`). The id must be a quoted literal.
-    Open with `$store.ui.openModal('filters')`, close with `$store.ui.closeModal()`; Escape, the X and the backdrop also
-    close it, focus moves in and back. The confirm dialog always sits above it. A tag is used because an included
-    template cannot receive a block of content.
   - Destructive actions are POST forms. The dialog is a UX guard only; the server still
     enforces permissions and the frozen-record rules.
   - Style with tokens only: the danger button uses a danger token (add one to
@@ -381,19 +375,6 @@ still in use), `archive_inactive_users`, `auto_transfer_extension`,
 - **Extension invariants (the database cannot enforce them, the services do):** the coordinator has `role=coordinator`
   and belongs to that extension; one coordinator per extension; replacing a coordinator demotes the old one to member;
   an extension cannot be archived while non-archived people belong to it; only archived extensions can be deleted.
-- **Extension text is stored lowercase, shown in title case:** `core/text.py` (`clean_text` on input, `title_case` on output;
-  templates use `{% load ui_tags %}` and `|title_case`, messages call `title_case(...)`). Old rows may be mixed case and are NOT
-  migrated, so every comparison ignores case (`name__iexact`, `clean_text`) and `update_extension` treats a case-only difference
-  as no change. Acronyms and roman numerals shown in capitals are listed in `core/text.py`.
-- **Extension required fields and address rules live in the service too:** `clean_extension_data` (`accounts/services.py`)
-  requires everything except `building_number` and, for the Philippines, checks province > municipality > barangay and a
-  4-digit postal code against `static/data/ph_address.json` through `accounts/address.py`. The form uses the same function.
-  The JSON ({province: {municipality: [barangay]}}, from PSGC, NCR districts merged into Metro Manila) is also what the
-  browser loads for the cascading dropdowns, so the two can never disagree. Other countries are free text.
-- **Extension bulk actions:** `bulk_archive_extensions` / `bulk_delete_extensions` (max 100 rows, `BulkResult(done, skipped)`)
-  run each extension in its own transaction and skip the ones that do not qualify; the view turns the result into a success
-  and a warning toast. They are naturally idempotent (an archived or deleted row is skipped on a repeat), so they do not use
-  a one-time submission token.
 - **Lock order in services:** extension row first, then people in ascending id order. Never `select_related` a nullable
   FK together with `select_for_update` (Postgres refuses it).
 - **Archive writes:** always `save(update_fields=[...])` with `archived_at` in the list (via `core.services`), or the purge
@@ -404,10 +385,7 @@ still in use), `archive_inactive_users`, `auto_transfer_extension`,
   must stay safe without it: actions check the current state under a row lock and report "already done" instead of failing.
 - **UI pieces:** `.btn-danger` (destructive buttons), `includes/pagination.html` (Page + `querystring`), and
   `$store.ui.showSecrets({title, message, headers, rows})` for show-once data such as generated passwords (or hand it
-  over with `json_script:"secrets-data"`). The secrets dialog only closes with its own button. Also
-  `includes/breadcrumb.html` (parent_label, parent_url, current) and the reusable modal above.
-- **App text size:** `base_app.html` marks its root with `data-app-shell`, and `input.css` raises the root font size to
-  106.25% for pages that have it. Public and login pages keep the default.
+  over with `json_script:"secrets-data"`). The secrets dialog only closes with its own button.
 
 ## Super-admin user management
 - **Where:** `accounts/services_users.py` (rules), `accounts/views_users.py` (screens), forms in `accounts/forms.py`,

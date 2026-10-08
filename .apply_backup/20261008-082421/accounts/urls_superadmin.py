@@ -14,7 +14,6 @@ app_name = "superadmin"
 urlpatterns = [
     path("extensions/", views.extension_list, name="extension_list"),
     path("extensions/new/", views.extension_create, name="extension_create"),
-    path("extensions/bulk/", views.extension_bulk, name="extension_bulk"),
     path("extensions/<int:pk>/", views.extension_detail, name="extension_detail"),
     path("extensions/<int:pk>/edit/", views.extension_edit, name="extension_edit"),
     path("extensions/<int:pk>/coordinator/", views.extension_assign_coordinator,

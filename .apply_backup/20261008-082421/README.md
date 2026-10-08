@@ -129,13 +129,6 @@ role's page sends you back to your own. Where each role lands is set in
 
 The super-admin also manages extensions at `/superadmin/extensions/` (create, edit, archive, restore, delete, assign a coordinator) and people at `/superadmin/users/` (create, edit, search, filter, sort, suspend, deactivate, reset password, archive, restore, delete, with multi-select bulk actions). These pages are super-admin only.
 
-On the extension list, click anywhere on a row to open it, right-click a row (or use its three-dot button) for Open / Edit / Archive
-(Restore / Delete for archived ones), and tick rows to archive or delete several at once; rows that do not qualify are skipped and
-explained. Search, status and sort live in the Filters dialog. The new/edit form is ordered country > province > municipality >
-barangay > postal code > street > building number; everything except the building number is required. For the Philippines the
-province, municipality and barangay are dropdowns that follow each other, filled from `static/data/ph_address.json` (PSGC data;
-the server checks the same file). Extension text is stored in lowercase and shown in title case.
-
 Django's built-in admin lives at `/django-admin/` (not `/admin/`) and is
 for the super-admin only. Only users with `is_staff=True` can open it.
 
@@ -144,7 +137,7 @@ for the super-admin only. Only users with `is_staff=True` can open it.
 - **Stack:** Tailwind CSS (standalone CLI), Alpine.js, self-hosted fonts and Heroicons sprite.
 - **Templates:** project-level layouts live in `templates/` (`base.html`, `base_public.html`,
   `base_app.html`). Shared pieces live in `templates/includes/` (`public_navbar.html`,
-  `footer.html`, `logo.html`, `icon.html`, `sidebar.html`, `sidebar_rail.html`, `sidebar_utilities.html`, `nav_link.html`, `brand_mark.html`, `topbar.html`, `bottom_nav.html`, `messages.html`, `pagination.html`, `modal.html`, `breadcrumb.html`). App-specific pages live in
+  `footer.html`, `logo.html`, `icon.html`, `sidebar.html`, `sidebar_rail.html`, `sidebar_utilities.html`, `nav_link.html`, `brand_mark.html`, `topbar.html`, `bottom_nav.html`, `messages.html`, `pagination.html`). App-specific pages live in
   `<app>/templates/<app>/`.
 - **Public layout:** `base_public.html` wraps each page with the public navbar (brand, centered
   links, mode toggle, login button, mobile dropdown) and the public footer. The footer
@@ -158,9 +151,6 @@ for the super-admin only. Only users with `is_staff=True` can open it.
   Needs `accounts.context_processors.navigation` in `TEMPLATES` and the Alpine stores `sidebar` and `mode`
   in `static/js/ui.js`. With `DEBUG=True`, `?nav=bottom` or `?nav=hamburger` forces a mobile style for the
   session (`?nav=off` clears it).
-- **Reusable modal and breadcrumb:** `{% load ui_tags %}` gives `{% modal "id" title="..." %}...{% endmodal %}` (open with
-  `$store.ui.openModal('id')`) and the `|title_case` filter; `includes/breadcrumb.html` draws a two-level breadcrumb.
-- **Text size:** signed-in pages (`data-app-shell` in `base_app.html`) use a root font size of 106.25%, set in `input.css`.
 - **Static files:** `static/css/input.css` is the Tailwind source and holds the design tokens.
   `static/css/output.css` is generated and not committed. Other folders: `fonts/`, `icons/`,
   `images/`, `js/`.
