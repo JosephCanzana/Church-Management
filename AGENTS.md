@@ -68,10 +68,11 @@ App at http://127.0.0.1:8001/ (use `127.0.0.1`, not `localhost`).
 `.env` is read with python-decouple; keys are in `.env.example`.
 
 Use `python manage.py test` to run the complete test suite. Test module paths
-include the Python package prefix (for example, `apps.accounts.tests`), while
-app-label test selection uses the short Django label (for example,
-`python manage.py test accounts audit`). Do not rewrite short labels in model
-references, migrations, or URL namespaces when moving or reorganizing app code.
+include the Python package prefix (for example,
+`apps.accounts.tests.test_accounts`). The accounts tests are grouped under
+`apps/accounts/tests/`; run them by passing the full module paths. Do not rewrite
+short Django app labels in model references, migrations, or URL namespaces when
+moving or reorganizing app code.
 
 ## Settings that must stay true
 - `AUTH_USER_MODEL = 'accounts.User'`, set before the first migrate. Never change
@@ -381,16 +382,16 @@ still in use), `archive_inactive_users`, `auto_transfer_extension`,
 - Use `{% url 'admin:index' %}` to link to Django admin, never a hardcoded
   path.
 
-## Super-admin management (extensions built, users next)
-- **Where:** `accounts/views_superadmin.py` + `accounts/urls_superadmin.py` (namespace `superadmin`, mounted at
+## Super-admin management
+- **Where:** `accounts/views/superadmin.py` + `accounts/urls/superadmin.py` (namespace `superadmin`, mounted at
   `/superadmin/`; the super-admin home stays in `dashboards`). Templates: `accounts/templates/accounts/superadmin/`.
-  Business rules: `accounts/services.py` (extension section). Who may do what: `accounts/permissions.py`.
+  Business rules: `accounts/services/__init__.py` (extension section). Who may do what: `accounts/permissions.py`.
   Shared archive / restore / force-delete helpers and `ServiceError`: `core/services.py`.
 - **Two guards, both required:** `@role_required(Role.SUPER_ADMIN)` on the view guards the page; every service starts
   with a check from `accounts/permissions.py` and guards the action. To open a screen to another role, change the
   permission function and add routes, not the services.
 - **Role home URLs live in ONE place:** `accounts/decorators.py` (`ROLE_HOME_NAMES`, `home_url_for`, `role_required`).
-  `accounts/views.py` imports them; never copy them back.
+  `accounts/views/__init__.py` imports them; never copy them back.
 - **Extension invariants (the database cannot enforce them, the services do):** the coordinator has `role=coordinator`
   and belongs to that extension; one coordinator per extension; replacing a coordinator demotes the old one to member;
   an extension cannot be archived while non-archived people belong to it; only archived extensions can be deleted.
@@ -398,7 +399,7 @@ still in use), `archive_inactive_users`, `auto_transfer_extension`,
   templates use `{% load ui_tags %}` and `|title_case`, messages call `title_case(...)`). Old rows may be mixed case and are NOT
   migrated, so every comparison ignores case (`name__iexact`, `clean_text`) and `update_extension` treats a case-only difference
   as no change. Acronyms and roman numerals shown in capitals are listed in `core/text.py`.
-- **Extension required fields and address rules live in the service too:** `clean_extension_data` (`accounts/services.py`)
+- **Extension required fields and address rules live in the service too:** `clean_extension_data` (`accounts/services/__init__.py`)
   requires everything except `building_number` and, for the Philippines, checks province > municipality > barangay and a
   4-digit postal code against `static/data/ph_address.json` through `accounts/address.py`. The form uses the same function.
   The JSON ({province: {municipality: [barangay]}}, from PSGC, NCR districts merged into Metro Manila) is also what the
@@ -423,8 +424,8 @@ still in use), `archive_inactive_users`, `auto_transfer_extension`,
   106.25% for pages that have it. Public and login pages keep the default.
 
 ## Super-admin user management
-- **Where:** `accounts/services_users.py` (rules), `accounts/views_users.py` (screens), forms in `accounts/forms.py`,
-  templates `accounts/templates/accounts/superadmin/user_*.html`, routes in `accounts/urls_superadmin.py`
+- **Where:** `accounts/services/users.py` (rules), `accounts/views/users.py` (screens), forms in `accounts/forms.py`,
+  templates `accounts/templates/accounts/superadmin/user_*.html`, routes in `accounts/urls/superadmin.py`
   (`/superadmin/users/...`). Permission helpers (`assignable_roles`, `can_manage_users`) are in `accounts/permissions.py`.
 - **One-time form tokens (`submission_token` table, 43rd table):** a form that must not run twice (create a person,
   reset a password, any bulk action) carries `new_submission_token()` in a hidden field; the service calls

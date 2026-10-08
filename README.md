@@ -213,9 +213,10 @@ docker compose exec web python manage.py makemigrations --check --dry-run
 docker compose exec web python manage.py test
 ```
 To run a specific test module, use its full Python module path, for example
-`docker compose exec web python manage.py test apps.accounts.tests -v 2`.
-To select by Django app label, use the short label, for example
-`docker compose exec web python manage.py test accounts audit -v 2`.
+`docker compose exec web python manage.py test apps.accounts.tests.test_accounts -v 2`.
+The accounts tests are grouped in `apps/accounts/tests/`; run the full accounts
+suite by passing its four test modules to `manage.py test`, or run the complete
+project suite with no module argument.
 
 ### Checking the role redirects
 1. Log in as each role. You should land on `/superadmin/`, `/admin/`, `/coordinator/` or

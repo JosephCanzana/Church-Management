@@ -21,6 +21,6 @@ urlpatterns = [
     path("", include("apps.pages.urls")),
     path("django-admin/", admin.site.urls),
     path("accounts/", include("apps.accounts.urls")),
-    path("superadmin/", include("apps.accounts.urls_superadmin")),
+    path("superadmin/", include("apps.accounts.urls.superadmin")),
     path("", include("apps.dashboards.urls")),
 ]
