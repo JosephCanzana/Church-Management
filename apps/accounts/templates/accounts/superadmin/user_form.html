@@ -55,8 +55,8 @@ submit_token (create only: one-time token so a double submit creates one person)
       {% for error in form.extension.errors %}<p class="field-error">{{ error }}</p>{% endfor %}
     </div>
   </div>
-  <p class="field-help" x-show="role === 'super_admin' || role === 'admin'" x-cloak>
-    Admins and super-admins do not belong to an extension.
+  <p class="field-help" x-show="role === 'admin'" x-cloak>
+    Admins do not belong to an extension.
   </p>
 
   {% if not person %}

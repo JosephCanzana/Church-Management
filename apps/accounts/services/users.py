@@ -25,11 +25,12 @@ from django.utils import timezone
 from apps.audit.services import log_action
 from apps.core import services as core_services
 from apps.core.services import ServiceError, consume_submission_token
+from apps.core.text import clean_text
 
 from ..models import (
     ArchiveReason, DefaultPassword, Extension, Role, Status, User, UserExtensionHistory,
 )
-from ..permissions import assignable_roles, require_user_manager
+from ..permissions import assignable_roles, default_password_roles, require_user_manager
 
 ROLES_WITH_EXTENSION = (Role.COORDINATOR, Role.MEMBER)
 USER_DETAIL_FIELDS = ("first_name", "middle_name", "last_name", "birth_date")
@@ -62,30 +63,91 @@ def generate_password(length=12):
     return "".join(secrets.choice(PASSWORD_ALPHABET) for _ in range(length))
 
 
-def _default_password_hash(role, extension):
-    """The stored default-password hash for this role, extension first, then global."""
-    if role not in (Role.ADMIN, Role.COORDINATOR, Role.MEMBER):
+def _default_password_hash(actor, role):
+    """The hash of `actor`'s OWN default password for people of `role`, or None.
+
+    Defaults are personal: coordinator A may keep one password and coordinator
+    B another. Only roles beneath the actor can have one.
+    """
+    if role not in default_password_roles(actor):
         return None
-    rows = DefaultPassword.objects.filter(applies_to_role=role)
-    row = rows.filter(extension=extension).first() if extension is not None else None
-    row = row or rows.filter(extension__isnull=True).first()
+    row = DefaultPassword.objects.filter(owner=actor, applies_to_role=role).first()
     return row.password_hash if row else None
 
 
-def _set_initial_password(person, typed, extension):
-    """Set `person`'s password: what was typed, else the default, else a random one."""
+def _set_initial_password(actor, person, typed):
+    """Set `person`'s password: what was typed, else `actor`'s default, else a random one."""
     if typed:
         if len(typed) < MIN_PASSWORD_LENGTH:
             raise ServiceError(f"Use at least {MIN_PASSWORD_LENGTH} characters, or leave it empty.")
         person.set_password(typed)
         return PasswordInfo("typed")
-    stored = _default_password_hash(person.role, extension)
+    stored = _default_password_hash(actor, person.role)
     if stored:
         person.password = stored          # already a hash; copied, never decoded
         return PasswordInfo("default")
     value = generate_password()
     person.set_password(value)
     return PasswordInfo("generated", value)
+
+
+# ---------------------------------------------------------------------- names
+NAME_FIELDS = ("first_name", "middle_name", "last_name")
+
+
+def normalize_details(data):
+    """Copy of `data` with the name parts the way the database stores them.
+
+    Trimmed, single spaces, lowercase (`core.text.clean_text`), so "Joseph
+    Canzana" and "joseph  canzana" are the same person. The screens show names
+    through `name_case`.
+    """
+    cleaned = dict(data)
+    for name in NAME_FIELDS:
+        if name in cleaned:
+            cleaned[name] = clean_text(cleaned[name])
+    return cleaned
+
+
+def find_duplicate_person(first_name, middle_name, last_name, birth_date=None, *, exclude_pk=None):
+    """Someone with the same name, or None. Archived people count.
+
+    Two real people can share a name, so a match is ignored only when BOTH have
+    a birth date and the dates differ. `__iexact` also catches rows saved
+    before names were stored in lowercase.
+    """
+    people = User.objects.filter(
+        first_name__iexact=first_name, middle_name__iexact=middle_name, last_name__iexact=last_name,
+    )
+    if exclude_pk is not None:
+        people = people.exclude(pk=exclude_pk)
+    for other in people.order_by("pk"):
+        if birth_date and other.birth_date and birth_date != other.birth_date:
+            continue
+        return other
+    return None
+
+
+def duplicate_message(data, *, exclude_pk=None):
+    """A sentence explaining the clash when `data` names someone who exists, else None."""
+    data = normalize_details(data)
+    other = find_duplicate_person(
+        data.get("first_name") or "", data.get("middle_name") or "", data.get("last_name") or "",
+        data.get("birth_date"), exclude_pk=exclude_pk,
+    )
+    if other is None:
+        return None
+    where = " (archived)" if other.status == Status.ARCHIVED else ""
+    return (
+        f"{other.full_name}{where} already exists with Account ID {other.account_id}. "
+        "If these are two different people, give both a birth date so they can be told apart."
+    )
+
+
+def _refuse_duplicate(data, *, exclude_pk=None):
+    message = duplicate_message(data, exclude_pk=exclude_pk)
+    if message:
+        raise ServiceError(message)
 
 
 # --------------------------------------------------------------------- locking
@@ -176,6 +238,7 @@ def create_user(actor, request, data, *, token):
     set as its coordinator in the same transaction.
     """
     require_user_manager(actor)
+    data = normalize_details(data)
     role = data["role"]
     if role not in assignable_roles(actor):
         raise PermissionDenied("You cannot create that role.")
@@ -194,6 +257,8 @@ def create_user(actor, request, data, *, token):
             if role == Role.COORDINATOR and ext.coordinator_id:
                 raise ServiceError(f"{ext.name} already has a coordinator. Remove or replace them first.")
 
+        _refuse_duplicate(data)
+
         activated = bool(data.get("activated"))
         person = User(
             first_name=data["first_name"],
@@ -206,7 +271,7 @@ def create_user(actor, request, data, *, token):
             must_change_password=not activated,
             created_by=actor,
         )
-        info = _set_initial_password(person, data.get("password") or "", ext)
+        info = _set_initial_password(actor, person, data.get("password") or "")
         person.save()                      # User.save() generates the account id
 
         if ext is not None:
@@ -225,6 +290,7 @@ def create_user(actor, request, data, *, token):
                 "extension_id": ext.pk if ext else None,
                 "status": person.status,
                 "activated_by_admin": activated,
+                "how_set": info.kind,          # not "password_...": audit drops those keys
             },
         )
     return CreateResult(user=person, password=info)
@@ -240,9 +306,8 @@ def update_user(actor, request, ref, data):
     closes the open history row and opens a new one.
     """
     require_user_manager(actor)
+    data = normalize_details(data)
     new_role = data["role"]
-    if new_role not in assignable_roles(actor):
-        raise PermissionDenied("You cannot give that role.")
     wanted = data.get("extension") if new_role in ROLES_WITH_EXTENSION else None
     if new_role in ROLES_WITH_EXTENSION and wanted is None:
         raise ServiceError("Choose an extension for this role.")
@@ -254,6 +319,10 @@ def update_user(actor, request, ref, data):
         person = locked.person
         if person.status == Status.ARCHIVED:
             raise ServiceError("Restore this person before editing them.")
+        # Checked on the locked row: keeping the current role is always fine (a
+        # super-admin stays one); giving a role nobody can hand out is not.
+        if new_role != person.role and new_role not in assignable_roles(actor):
+            raise PermissionDenied("You cannot give that role.")
         old_ext = exts.get(person.extension_id)
         if person.extension_id and old_ext is None:
             raise ServiceError("This person was just changed by someone else. Reload the page and try again.")
@@ -264,6 +333,8 @@ def update_user(actor, request, ref, data):
             if name in data:
                 setattr(person, name, data[name])
         details_changed = [n for n in USER_DETAIL_FIELDS if before[n] != getattr(person, n)]
+        if details_changed:
+            _refuse_duplicate({n: getattr(person, n) for n in USER_DETAIL_FIELDS}, exclude_pk=person.pk)
         old_role = person.role
         old_ext_id = person.extension_id
         role_changed = new_role != old_role
@@ -441,30 +512,37 @@ class ResetResult:
     duplicate: bool = False
 
 
-def _reset_password(actor, request, ref):
-    """Give a person a new password (default or generated). Returns (person, info)."""
+def _reset_password(actor, request, ref, typed=""):
+    """Give a person a new password: `typed`, else the actor's default, else generated.
+
+    Returns (person, info).
+    """
     with transaction.atomic():
         locked = _lock_person(ref.pk)
         person = locked.person
         if person.status == Status.ARCHIVED:
             raise ServiceError("Restore this person before resetting their password.")
         _refuse_self(actor, person, "reset the password of")
-        info = _set_initial_password(person, "", locked.extension)
+        info = _set_initial_password(actor, person, typed)
         person.must_change_password = True
         # Changing the hash also signs the person out of every open session.
         person.save(update_fields=["password", "must_change_password", "updated_at"])
         _log_person("account.password_reset", actor, request, person,
-                    after={"needs_activation": True})
+                    after={"needs_activation": True, "how_set": info.kind})
     return person, info
 
 
-def reset_password(actor, request, ref, *, token):
-    """Reset one person's password. A replayed token returns duplicate=True."""
+def reset_password(actor, request, ref, *, token, typed=""):
+    """Reset one person's password. A replayed token returns duplicate=True.
+
+    `typed` is an optional custom password (min 8 characters); empty means the
+    actor's default for the person's role, else a generated one.
+    """
     require_user_manager(actor)
     with transaction.atomic():
         if not consume_submission_token(token):
             return ResetResult(duplicate=True)
-        person, info = _reset_password(actor, request, ref)
+        person, info = _reset_password(actor, request, ref, typed)
     return ResetResult(user=person, password=info)
 
 

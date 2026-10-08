@@ -21,6 +21,7 @@ from django.views.decorators.cache import never_cache
 from django.views.decorators.http import require_http_methods, require_POST
 
 from apps.core.services import ServiceError, new_submission_token
+from apps.core.text import name_case
 
 from ..decorators import role_required
 from ..forms import UserCreateForm, UserFilterForm, UserForm
@@ -109,8 +110,11 @@ def _secrets(rows, title):
 
 
 # ------------------------------------------------------------------- list
-def _list_context(params):
-    """Everything the people list page needs, from a QueryDict of filters."""
+def _list_context(params, viewer):
+    """Everything the people list page needs, from a QueryDict of filters.
+
+    `viewer` (the signed-in super-admin) is left out of the list.
+    """
     form = UserFilterForm(params)
     form.is_valid()
     data = getattr(form, "cleaned_data", {})
@@ -119,7 +123,7 @@ def _list_context(params):
     extension = data.get("extension")
     sort = data.get("sort") or "last_name"
 
-    queryset = User.objects.select_related("extension")
+    queryset = User.objects.select_related("extension").exclude(pk=viewer.pk)
     if status == "current":
         queryset = queryset.exclude(status=Status.ARCHIVED)
     elif status != "all":
@@ -147,6 +151,11 @@ def _list_context(params):
         "bulk_buttons": _bulk_buttons(status),
         "querystring": without_page.urlencode(),
         "full_querystring": params.urlencode(),
+        # How many filters differ from the defaults (badge on the Filters button).
+        "active_filters": sum([
+            bool(data.get("q")), status != "current", bool(role),
+            extension is not None, sort != "last_name",
+        ]),
     }
 
 
@@ -155,7 +164,7 @@ def _list_context(params):
 @require_http_methods(["GET"])
 def user_list(request):
     """People with search, filters, sorting, paging and bulk selection."""
-    context = _list_context(request.GET)
+    context = _list_context(request.GET, request.user)
     context["submit_token"] = new_submission_token()
     return render(request, "accounts/superadmin/user_list.html", context)
 
@@ -207,13 +216,13 @@ def user_edit(request, pk):
         return redirect("superadmin:user_detail", pk=pk)
 
     initial = {
-        "first_name": person.first_name, "middle_name": person.middle_name,
-        "last_name": person.last_name, "birth_date": person.birth_date,
+        "first_name": name_case(person.first_name), "middle_name": name_case(person.middle_name),
+        "last_name": name_case(person.last_name), "birth_date": person.birth_date,
         "role": person.role, "extension": person.extension_id,
     }
     form = UserForm(
         request.POST or None, actor=request.user, initial=initial,
-        keep_extension=person.extension_id,
+        keep_extension=person.extension_id, keep_role=person.role, exclude_pk=person.pk,
     )
     if request.method == "POST" and form.is_valid():
         try:
@@ -336,6 +345,7 @@ def user_reset_password(request, pk):
     try:
         result = reset_password(
             request.user, request, person, token=request.POST.get("submit_token", ""),
+            typed=request.POST.get("password", ""),
         )
     except ServiceError as exc:
         messages.error(request, str(exc))
@@ -389,7 +399,7 @@ def user_bulk(request):
 
     _bulk_messages(request, action, result)
     if result.passwords:
-        context = _list_context(return_to)
+        context = _list_context(return_to, request.user)
         context["submit_token"] = new_submission_token()
         context["secrets"] = _secrets(result.passwords, "New passwords")
         return render(request, "accounts/superadmin/user_list.html", context)

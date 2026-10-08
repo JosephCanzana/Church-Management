@@ -36,11 +36,24 @@ def require_extension_manager(actor):
 def assignable_roles(actor):
     """Role values `actor` may give to someone (when creating or editing a person).
 
-    The super-admin may create every role. Other roles get their own list when
+    The super-admin may create admins, coordinators and members. Nobody can hand
+    out the super-admin role from a screen. Other roles get their own list when
     they get screens; until then they get none.
     """
     if is_super_admin(actor):
-        return [Role.SUPER_ADMIN, Role.ADMIN, Role.COORDINATOR, Role.MEMBER]
+        return [Role.ADMIN, Role.COORDINATOR, Role.MEMBER]
+    return []
+
+
+def default_password_roles(actor):
+    """Roles whose default password `actor` keeps: the roles beneath them.
+
+    Default passwords are personal. Each person who manages others has their
+    own, one per role below them (super-admin: admin, coordinator, member;
+    later a coordinator: member only).
+    """
+    if is_super_admin(actor):
+        return [Role.ADMIN, Role.COORDINATOR, Role.MEMBER]
     return []
 
 

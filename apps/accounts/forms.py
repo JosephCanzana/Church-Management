@@ -237,6 +237,9 @@ class UserForm(forms.Form):
     """Details, role and extension fields shared by person create and edit forms.
 
     actor           -- decides which roles appear in the role list.
+    keep_role       -- the person's current role when it cannot be handed out (a
+                       super-admin): it is shown, read-only, and kept.
+    exclude_pk      -- the person being edited, left out of the duplicate-name check.
     keep_extension  -- id of the extension the person is already in, so it stays
                        selectable even if that extension has since been archived.
     The role decides the extension: coordinator and member need one; admin and
@@ -258,13 +261,28 @@ class UserForm(forms.Form):
         widget=forms.Select(attrs={"class": "input"}),
     )
 
-    def __init__(self, *args, actor, keep_extension=None, **kwargs):
+    def __init__(self, *args, actor, keep_extension=None, keep_role=None, exclude_pk=None, **kwargs):
         super().__init__(*args, **kwargs)
-        self.fields["role"].choices = [(r, Role(r).label) for r in assignable_roles(actor)]
+        self.exclude_pk = exclude_pk
+        roles = list(assignable_roles(actor))
+        if keep_role and keep_role not in roles:
+            roles.insert(0, keep_role)
+            self.fields["role"].disabled = True     # the value comes from `initial`
+        self.fields["role"].choices = [(r, Role(r).label) for r in roles]
         allowed = Q(archived_at__isnull=True)
         if keep_extension:
             allowed |= Q(pk=keep_extension)
         self.fields["extension"].queryset = Extension.objects.filter(allowed).order_by("name")
+
+    # Names are stored lowercase with single spaces; the pages show them in name case.
+    def clean_first_name(self):
+        return clean_text(self.cleaned_data.get("first_name"))
+
+    def clean_middle_name(self):
+        return clean_text(self.cleaned_data.get("middle_name"))
+
+    def clean_last_name(self):
+        return clean_text(self.cleaned_data.get("last_name"))
 
     def clean(self):
         cleaned = super().clean()
@@ -274,6 +292,16 @@ class UserForm(forms.Form):
                 self.add_error("extension", "Choose an extension for this role.")
         elif role:
             cleaned["extension"] = None
+
+        names_ok = cleaned.get("first_name") and cleaned.get("last_name") and not any(
+            n in self.errors for n in ("first_name", "middle_name", "last_name", "birth_date")
+        )
+        if names_ok:
+            # Imported here: the services import the models, never the forms.
+            from .services.users import duplicate_message
+            message = duplicate_message(cleaned, exclude_pk=self.exclude_pk)
+            if message:
+                self.add_error(None, message)
         return cleaned
 
 
@@ -283,7 +311,7 @@ class UserCreateForm(UserForm):
     password = forms.CharField(
         required=False, strip=False, label="Password",
         widget=forms.PasswordInput(attrs={"class": "input", "autocomplete": "new-password"}, render_value=False),
-        help_text="Leave empty to use the default password, or to generate one that is shown once.",
+        help_text="Leave empty to use your default password for this role, or a generated one shown once.",
     )
     activated = forms.BooleanField(
         required=False, label="Skip activation",
@@ -339,3 +367,51 @@ class UserFilterForm(forms.Form):
         required=False, choices=SORT_CHOICES, label="Sort by",
         widget=forms.Select(attrs={"class": "input"}),
     )
+
+
+class DefaultPasswordsForm(forms.Form):
+    """The signed-in person's own default passwords: one optional password and one Remove tick per role.
+
+    roles -- the roles this person keeps a default for (permissions.default_password_roles).
+    An empty password field leaves that default as it is. `changes` is what to save.
+    """
+
+    MIN_LENGTH = 8
+
+    def __init__(self, *args, roles, **kwargs):
+        super().__init__(*args, **kwargs)
+        self.roles = list(roles)
+        for role in self.roles:
+            label = Role(role).label
+            self.fields[f"password_{role}"] = forms.CharField(
+                required=False, strip=False, label=f"{label} default password",
+                widget=forms.PasswordInput(
+                    attrs={"class": "input", "autocomplete": "new-password"}, render_value=False,
+                ),
+            )
+            self.fields[f"clear_{role}"] = forms.BooleanField(
+                required=False, label="Remove",
+                widget=forms.CheckboxInput(attrs={"class": "size-4 accent-accent"}),
+            )
+
+    def clean(self):
+        cleaned = super().clean()
+        for role in self.roles:
+            password = cleaned.get(f"password_{role}") or ""
+            if password and cleaned.get(f"clear_{role}"):
+                self.add_error(f"password_{role}", "Type a password or tick Remove, not both.")
+            elif password and len(password) < self.MIN_LENGTH:
+                self.add_error(f"password_{role}", f"Use at least {self.MIN_LENGTH} characters.")
+        return cleaned
+
+    @property
+    def changes(self):
+        """{role: ("set", password) | ("clear", None)} for what the person filled in."""
+        out = {}
+        for role in self.roles:
+            password = self.cleaned_data.get(f"password_{role}") or ""
+            if password:
+                out[role] = ("set", password)
+            elif self.cleaned_data.get(f"clear_{role}"):
+                out[role] = ("clear", None)
+        return out

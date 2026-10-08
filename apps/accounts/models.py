@@ -9,6 +9,7 @@ from django.db.models import F, Q, Value
 from django.db.models.functions import Coalesce, Lower
 
 from apps.core.models import ArchivableModel, TimestampedModel, archived_matches_status
+from apps.core.text import person_name
 
 
 class Role(models.TextChoices):
@@ -159,7 +160,8 @@ class User(AbstractBaseUser, TimestampedModel, ArchivableModel):
 
     @property
     def full_name(self):
-        return " ".join(p for p in (self.first_name, self.middle_name, self.last_name) if p)
+        """First, middle and last name for display (stored lowercase, shown in name case)."""
+        return person_name(self.first_name, self.middle_name, self.last_name)
 
     def __str__(self):
         return f"{self.full_name} ({self.account_id})"
@@ -210,26 +212,29 @@ class ExtensionSpecialRoleLimit(models.Model):
 
 # -------------------------------------------------------- default passwords
 class DefaultPassword(models.Model):
+    """A default password kept by one person for the roles beneath them.
+
+    Personal: coordinator A may keep one password for their members and
+    coordinator B another; the super-admin keeps their own for admins,
+    coordinators and members. Used when that person creates or resets someone and
+    types no password. Hash only, never plain text.
+    """
+
     class AppliesTo(models.TextChoices):
         ADMIN = "admin", "Admin"
         COORDINATOR = "coordinator", "Coordinator"
         MEMBER = "member", "Member"
 
-    extension = models.ForeignKey(
-        Extension, null=True, blank=True, on_delete=models.CASCADE,
-        related_name="default_passwords",
-    )  # NULL = global
+    owner = models.ForeignKey(User, on_delete=models.CASCADE, related_name="default_passwords")
     applies_to_role = models.CharField(max_length=20, choices=AppliesTo.choices)
     password_hash = models.CharField(max_length=255)   # hash only, never plain text
-    set_by = models.ForeignKey(User, null=True, blank=True, on_delete=models.SET_NULL, related_name="+")
     updated_at = models.DateTimeField(auto_now=True)
 
     class Meta:
         db_table = "default_password"
         constraints = [
             models.UniqueConstraint(
-                Coalesce(F("extension"), Value(0)), F("applies_to_role"),
-                name="uq_default_password",
+                fields=["owner", "applies_to_role"], name="uq_default_password",
             ),
         ]
 

@@ -1,16 +1,23 @@
 <!--
 accounts/superadmin/user_list.html
-Super-admin list of people: search, filters, sort, paging and bulk actions.
+Super-admin list of people: filters in a modal, aligned rows, paging and bulk actions.
 Extends base_app.html. Blocks filled: title, page_title, content.
+The signed-in super-admin is not in this list (the view leaves them out).
+Filters (search, status, role, extension, sort) live in the "filters" modal, like the
+extension list; the badge on the Filters button counts how many differ from the defaults.
 Bulk selection: the checkboxes (name="ids") and the action buttons live in ONE post
 form. Alpine counts the ticked boxes and shows the action bar. Each button confirms
 through data-confirm; "{n}" in its text becomes the count (static/js/ui.js). The
 server skips anyone an action does not apply to and reports why.
+Rows are a grid from `lg` up (checkbox, name, role, extension, status) so the columns
+line up from row to row; below `lg` the details stack under the name.
 Context: form (UserFilterForm), page (Page of User), total, status, bulk_buttons,
-querystring (filters without page), full_querystring (filters with page),
-submit_token (one-time token for the bulk form), secrets (show-once data or None).
+active_filters (how many filters differ from the defaults), querystring (filters without
+page), full_querystring (filters with page), submit_token (one-time token for the bulk
+form), secrets (show-once data or None).
 -->
 {% extends "base_app.html" %}
+{% load ui_tags %}
 
 {% block title %}People{% endblock %}
 {% block page_title %}People{% endblock %}
@@ -18,44 +25,32 @@ submit_token (one-time token for the bulk form), secrets (show-once data or None
 {% block content %}
 <div class="flex flex-wrap items-center justify-between gap-3">
   <p class="text-sm text-txt-secondary">{{ total }} {% if total == 1 %}person{% else %}people{% endif %}</p>
-  <a href="{% url 'superadmin:user_create' %}" class="btn btn-primary">
-    {% include 'includes/icon.html' with name='user-plus' class='size-4' %}
-    New person
-  </a>
+  <div class="flex flex-wrap items-center gap-2">
+    {% if active_filters %}
+    <a href="{% url 'superadmin:user_list' %}" class="btn btn-ghost">Clear filters</a>
+    {% endif %}
+    <button type="button" class="btn btn-secondary" x-data @click="$store.ui.openModal('filters')"
+            aria-haspopup="dialog">
+      {% include 'includes/icon.html' with name='funnel' class='size-4' %}
+      Filters
+      {% if active_filters %}
+      <span class="rounded-full bg-primary px-2 py-0.5 text-xs font-medium text-on-primary"
+            aria-label="{{ active_filters }} active">{{ active_filters }}</span>
+      {% endif %}
+    </button>
+    <a href="{% url 'superadmin:default_passwords' %}" class="btn btn-secondary">
+      {% include 'includes/icon.html' with name='key' class='size-4' %}
+      Default passwords
+    </a>
+    <a href="{% url 'superadmin:user_create' %}" class="btn btn-primary">
+      {% include 'includes/icon.html' with name='user-plus' class='size-4' %}
+      New person
+    </a>
+  </div>
 </div>
 
-<form method="get" class="mt-4 grid gap-3 sm:grid-cols-2 lg:grid-cols-6 lg:items-end" role="search">
-  <div class="sm:col-span-2">
-    <label for="{{ form.q.id_for_label }}" class="label">{{ form.q.label }}</label>
-    {{ form.q }}
-  </div>
-  <div>
-    <label for="{{ form.status.id_for_label }}" class="label">{{ form.status.label }}</label>
-    {{ form.status }}
-  </div>
-  <div>
-    <label for="{{ form.role.id_for_label }}" class="label">{{ form.role.label }}</label>
-    {{ form.role }}
-  </div>
-  <div>
-    <label for="{{ form.extension.id_for_label }}" class="label">Extension</label>
-    {{ form.extension }}
-  </div>
-  <div>
-    <label for="{{ form.sort.id_for_label }}" class="label">{{ form.sort.label }}</label>
-    {{ form.sort }}
-  </div>
-  <div class="sm:col-span-2 lg:col-span-6">
-    <button type="submit" class="btn btn-secondary">
-      {% include 'includes/icon.html' with name='funnel' class='size-4' %}
-      Apply
-    </button>
-    <a href="{% url 'superadmin:user_list' %}" class="btn btn-ghost">Reset filters</a>
-  </div>
-</form>
-
 {% if page.object_list %}
-<form method="post" action="{% url 'superadmin:user_bulk' %}" class="mt-6"
+<form method="post" action="{% url 'superadmin:user_bulk' %}" class="mt-4"
       x-data="{
         selected: 0,
         sync() { this.selected = this.$root.querySelectorAll('input[name=ids]:checked').length },
@@ -83,28 +78,27 @@ submit_token (one-time token for the bulk form), secrets (show-once data or None
   </div>
 
   <ul class="card divide-y divide-border p-0">
-    <li class="flex items-center gap-3 px-5 py-3 text-sm text-txt-secondary">
+    {# Header row: the same grid as the people rows, so the column titles sit over their columns. #}
+    <li class="grid grid-cols-[auto_minmax(0,1fr)] items-center gap-x-4 px-5 py-3 text-sm text-txt-secondary lg:grid-cols-[auto_minmax(0,2fr)_8rem_minmax(0,1.5fr)_7.5rem]">
       <input type="checkbox" data-select-all class="size-4 accent-accent"
              x-on:change="toggleAll($event.target.checked)" id="select-all">
       <label for="select-all">Select everyone on this page</label>
+      <span class="hidden lg:block" aria-hidden="true">Role</span>
+      <span class="hidden lg:block" aria-hidden="true">Extension</span>
+      <span class="hidden lg:block" aria-hidden="true">Status</span>
     </li>
     {% for person in page.object_list %}
-    <li class="flex flex-wrap items-center gap-x-4 gap-y-2 px-5 py-3.5">
-      {% if person.pk != request.user.pk %}
+    <li class="grid grid-cols-[auto_minmax(0,1fr)] items-center gap-x-4 gap-y-1 px-5 py-3.5 lg:grid-cols-[auto_minmax(0,2fr)_8rem_minmax(0,1.5fr)_7.5rem]">
       <input type="checkbox" name="ids" value="{{ person.pk }}" class="size-4 accent-accent"
              x-on:change="sync()" aria-label="Select {{ person.full_name }}">
-      {% else %}
-      <span class="size-4" aria-hidden="true"></span>
-      {% endif %}
-      <div class="min-w-0 flex-1 basis-52">
+      <div class="min-w-0">
         <a href="{% url 'superadmin:user_detail' person.pk %}"
-           class="font-medium text-txt-primary hover:underline focus-visible:outline-2 focus-visible:outline-accent">{{ person.full_name }}</a>
-        {% if person.pk == request.user.pk %}<span class="text-sm text-txt-secondary">(you)</span>{% endif %}
+           class="block truncate font-medium text-txt-primary hover:underline focus-visible:outline-2 focus-visible:outline-accent">{{ person.full_name }}</a>
         <p class="font-mono text-sm text-txt-secondary">{{ person.account_id }}</p>
       </div>
-      <p class="basis-28 text-sm text-txt-secondary">{{ person.get_role_display }}</p>
-      <p class="basis-44 truncate text-sm text-txt-secondary">{{ person.extension.name|default:"No extension" }}</p>
-      <span class="rounded-full border px-2.5 py-0.5 text-xs
+      <p class="col-start-2 text-sm text-txt-secondary lg:col-auto">{{ person.get_role_display }}</p>
+      <p class="col-start-2 min-w-0 truncate text-sm text-txt-secondary lg:col-auto">{% if person.extension %}{{ person.extension.name|title_case }}{% else %}No extension{% endif %}</p>
+      <span class="col-start-2 w-fit rounded-full border px-2.5 py-0.5 text-xs lg:col-auto
         {% if person.status == 'suspended' %}border-warning text-warning
         {% elif person.status == 'archived' %}border-border bg-surface-alt text-txt-secondary
         {% elif person.status == 'active' %}border-success text-success
@@ -117,9 +111,42 @@ submit_token (one-time token for the bulk form), secrets (show-once data or None
 {% else %}
 <div class="card mt-6 text-center">
   <p class="font-medium text-txt-primary">No people found</p>
-  <p class="mt-1 text-sm text-txt-secondary">Try a different search or filter, or add someone new.</p>
+  <p class="mt-1 text-sm text-txt-secondary">
+    {% if active_filters %}Try a different search or filter.{% else %}Add the first person to get started.{% endif %}
+  </p>
 </div>
 {% endif %}
+
+{% modal "filters" title="Filter people" %}
+<form method="get" role="search" class="grid gap-4">
+  <div>
+    <label for="{{ form.q.id_for_label }}" class="label">{{ form.q.label }}</label>
+    {{ form.q }}
+  </div>
+  <div class="grid gap-4 sm:grid-cols-2">
+    <div>
+      <label for="{{ form.status.id_for_label }}" class="label">{{ form.status.label }}</label>
+      {{ form.status }}
+    </div>
+    <div>
+      <label for="{{ form.role.id_for_label }}" class="label">{{ form.role.label }}</label>
+      {{ form.role }}
+    </div>
+    <div>
+      <label for="{{ form.extension.id_for_label }}" class="label">Extension</label>
+      {{ form.extension }}
+    </div>
+    <div>
+      <label for="{{ form.sort.id_for_label }}" class="label">{{ form.sort.label }}</label>
+      {{ form.sort }}
+    </div>
+  </div>
+  <div class="mt-2 flex flex-wrap items-center justify-between gap-3">
+    <a href="{% url 'superadmin:user_list' %}" class="btn btn-ghost">Clear all</a>
+    <button type="submit" class="btn btn-primary">Apply filters</button>
+  </div>
+</form>
+{% endmodal %}
 
 {% if secrets %}{{ secrets|json_script:"secrets-data" }}{% endif %}
 {% endblock %}

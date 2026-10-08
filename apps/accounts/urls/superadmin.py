@@ -6,6 +6,7 @@ The super-admin's own home page (/superadmin/) stays in dashboards.urls.
 """
 from django.urls import path
 
+from ..views import default_passwords as defaults
 from ..views import superadmin as views
 from ..views import users as people
 
@@ -26,6 +27,7 @@ urlpatterns = [
     path("extensions/<int:pk>/delete/", views.extension_delete, name="extension_delete"),
 
     # people
+    path("default-passwords/", defaults.default_passwords, name="default_passwords"),
     path("users/", people.user_list, name="user_list"),
     path("users/new/", people.user_create, name="user_create"),
     path("users/bulk/", people.user_bulk, name="user_bulk"),
