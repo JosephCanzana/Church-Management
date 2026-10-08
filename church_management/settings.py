@@ -11,7 +11,7 @@ https://docs.djangoproject.com/en/6.1/ref/settings/
 """
 
 from pathlib import Path
-from decouple import config
+from decouple import config, Csv
 
 # Build paths inside the project like this: BASE_DIR / 'subdir'.
 BASE_DIR = Path(__file__).resolve().parent.parent
@@ -26,7 +26,9 @@ SECRET_KEY = config("SECRET_KEY")
 # SECURITY WARNING: don't run with debug turned on in production!
 DEBUG = config("DEBUG", default=False, cast=bool)
 
-ALLOWED_HOSTS = []
+# Comma-separated in .env. Empty is fine in dev (DEBUG=True allows localhost/127.0.0.1).
+ALLOWED_HOSTS = config("ALLOWED_HOSTS", default="", cast=Csv())
+CSRF_TRUSTED_ORIGINS = config("CSRF_TRUSTED_ORIGINS", default="", cast=Csv())
 
 # Application definition
 
@@ -140,6 +142,7 @@ USE_TZ = True
 
 STATIC_URL = 'static/'
 STATICFILES_DIRS = [BASE_DIR / "static"]
+STATIC_ROOT = BASE_DIR / "staticfiles"  # collectstatic target (served by Caddy in production)
 
 MEDIA_URL = 'media/'
 MEDIA_ROOT = BASE_DIR / 'media'
@@ -164,3 +167,18 @@ LOGIN_URL = "accounts:login"
 LOGIN_REDIRECT_URL = "/"
 
 AUTH_USER_MODEL = "accounts.User"
+
+# Production hardening. Caddy ends HTTPS and tells Django the original scheme.
+if not DEBUG:
+    SECURE_PROXY_SSL_HEADER = ("HTTP_X_FORWARDED_PROTO", "https")
+    SESSION_COOKIE_SECURE = True
+    CSRF_COOKIE_SECURE = True
+
+# Send logs to the console so `docker compose logs` shows errors.
+# (With DEBUG=False Django's defaults would otherwise drop tracebacks.)
+LOGGING = {
+    "version": 1,
+    "disable_existing_loggers": False,
+    "handlers": {"console": {"class": "logging.StreamHandler"}},
+    "root": {"handlers": ["console"], "level": config("LOG_LEVEL", default="INFO")},
+}

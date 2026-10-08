@@ -1,0 +1,19 @@
+# Patterns are relative to the build context = the repo root.
+.git
+.gitignore
+**/.env
+**/.env.*
+venv/
+.venv/
+__pycache__/
+*.pyc
+.vscode/
+.idea/
+# runtime data and generated files (the image builds its own)
+production/data/
+media/
+staticfiles/
+static/css/output.css
+theme/tailwindcss
+docker-compose*.yml
+production/docker-compose*.yml

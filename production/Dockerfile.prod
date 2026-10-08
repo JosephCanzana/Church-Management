@@ -1,0 +1,62 @@
+# Production image for Church-Management.
+# Lives in production/ but is built with the REPO ROOT as context
+# (see docker-compose.prod.yml: context ".." + dockerfile "production/Dockerfile.prod").
+# Your dev Dockerfile is untouched; this one is separate.
+
+# ---------- Stage 1: build the CSS (output.css is not committed) ----------
+FROM debian:bookworm-slim AS assets
+ARG TAILWIND_VERSION=latest
+ARG TARGETARCH
+RUN apt-get update \
+    && apt-get install -y --no-install-recommends make curl ca-certificates \
+    && rm -rf /var/lib/apt/lists/*
+WORKDIR /src
+COPY . .
+# Same download as README step 3, but picks the right binary for the CPU.
+# Set TAILWIND_VERSION (for example v4.1.11) to pin it instead of "latest".
+RUN set -eu; \
+    case "${TARGETARCH:-amd64}" in amd64) T=x64 ;; arm64) T=arm64 ;; *) echo "unsupported arch" >&2; exit 1 ;; esac; \
+    if [ "$TAILWIND_VERSION" = "latest" ]; then \
+      URL="https://github.com/tailwindlabs/tailwindcss/releases/latest/download/tailwindcss-linux-$T"; \
+    else \
+      URL="https://github.com/tailwindlabs/tailwindcss/releases/download/$TAILWIND_VERSION/tailwindcss-linux-$T"; \
+    fi; \
+    curl -fsSL -o theme/tailwindcss "$URL"; \
+    chmod +x theme/tailwindcss
+# Same download as README step 4, only if the file is not already in the repo.
+RUN mkdir -p static/js \
+    && { [ -f static/js/alpine.min.js ] || curl -fsSL -o static/js/alpine.min.js https://cdn.jsdelivr.net/npm/alpinejs@3.14.9/dist/cdn.min.js; }
+# Uses YOUR Makefile target, so the build matches what you run in dev.
+RUN make tailwind-build
+
+# ---------- Stage 2: runtime ----------
+FROM python:3.12-slim
+ENV PYTHONDONTWRITEBYTECODE=1 \
+    PYTHONUNBUFFERED=1
+# Match these to the host user that owns production/data (run `id -u` and `id -g`).
+ARG APP_UID=1000
+ARG APP_GID=1000
+RUN groupadd -g "$APP_GID" app && useradd -u "$APP_UID" -g app -d /app app
+WORKDIR /app
+
+# psycopg2-binary and pillow ship wheels, so no compilers or libpq headers are needed.
+COPY requirements.txt .
+RUN pip install --no-cache-dir -r requirements.txt gunicorn
+
+COPY --chown=app:app . .
+COPY --from=assets --chown=app:app /src/static/css/output.css /app/static/css/output.css
+COPY --from=assets --chown=app:app /src/static/js/alpine.min.js /app/static/js/alpine.min.js
+RUN mkdir -p /app/staticfiles /app/media \
+    && chown app:app /app/staticfiles /app/media \
+    && chmod +x /app/production/deploy/entrypoint.sh
+
+USER app
+EXPOSE 8000
+ENTRYPOINT ["/app/production/deploy/entrypoint.sh"]
+# gthread: a slow upload (big PowerPoint) ties up a thread, not a whole worker.
+CMD ["gunicorn", "church_management.wsgi:application", \
+     "--bind", "0.0.0.0:8000", \
+     "--worker-class", "gthread", "--workers", "2", "--threads", "4", \
+     "--timeout", "120", \
+     "--access-logfile", "-", \
+     "--forwarded-allow-ips", "*"]

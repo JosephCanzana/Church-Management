@@ -1,0 +1,64 @@
+# Production stack: db + web (gunicorn) + scheduler (nightly jobs).
+# TLS and the public hostname are handled by your existing Caddy (see deploy/Caddyfile.snippet).
+# Run from INSIDE the production/ folder (so .env and ./data resolve here):
+#   cd production && docker compose -f docker-compose.prod.yml up -d --build
+# This stack reads production/.env (copy of env.production.example), not the repo-root dev .env.
+name: church-management
+
+x-app: &app
+  build:
+    context: ..                              # repo root: needs requirements.txt, apps/, theme/, Makefile
+    dockerfile: production/Dockerfile.prod
+    args:
+      APP_UID: ${APP_UID:-1000}
+      APP_GID: ${APP_GID:-1000}
+  image: church-management:prod
+  restart: unless-stopped
+  env_file: .env
+  volumes:
+    # Bind mounts (production/data/...) so the host Caddy can serve them. Create them first: mkdir -p data/static data/media
+    - ./data/static:/app/staticfiles
+    - ./data/media:/app/media
+
+services:
+  db:
+    image: postgres:16-alpine
+    restart: unless-stopped
+    env_file: .env
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    # No ports published: only the other containers can reach the database.
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U $${POSTGRES_USER} -d $${POSTGRES_DB}"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+  web:
+    <<: *app
+    ports:
+      # Localhost only. Your host-network Caddy reaches it at localhost:8090.
+      - "127.0.0.1:${WEB_PORT:-8090}:8000"
+    depends_on:
+      db:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "python", "-c", "import socket; socket.create_connection(('127.0.0.1', 8000), 3)"]
+      interval: 15s
+      timeout: 5s
+      retries: 10
+      start_period: 60s
+
+  scheduler:
+    <<: *app
+    command: ["python", "production/deploy/scheduler.py"]
+    environment:
+      # web already migrates and collects static files
+      RUN_MIGRATIONS: "0"
+      RUN_COLLECTSTATIC: "0"
+    depends_on:
+      web:
+        condition: service_healthy
+
+volumes:
+  postgres_data:
