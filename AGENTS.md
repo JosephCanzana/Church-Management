@@ -165,8 +165,9 @@ with. Only create a new app if the answer is "none".
   automatic archive with `archive_reason='inactive'`. Restore and unsuspend go back to `active` when
   `must_change_password` is false, otherwise to `not_activated`. Deactivate = back to `not_activated` with
   `must_change_password=True`.
-- **Default passwords:** hash only. Most specific wins: extension default, else
-  global; a typed custom password always overrides.
+- **Default passwords:** hash only, and personal: each person who manages others keeps their own, one per role
+  beneath them (`DefaultPassword.owner` + `applies_to_role`). Used when that person creates or resets someone and
+  types nothing; a typed custom password always overrides. No global or per-extension default.
 - **Special-role limits** are enforced in a transaction with the extension row
   locked.
 - **Uploaded attendance/tithes** are locked; only an admin reopens them
@@ -448,8 +449,9 @@ still in use), `archive_inactive_users`, `auto_transfer_extension`,
 - **Coordinators:** archiving a coordinator frees the seat and makes them a member; a person leaving or entering a
   seat updates `Extension.coordinator` in the same transaction; creating a coordinator into a seat that is taken is refused.
 - **Passwords:** shown once, never stored, logged or put in the session. Order used: typed (min 8 characters), else the
-  stored default (extension first, then global), else a generated 12-character password. A reset forces a change at next
+  else the acting person's own default for the role, else a generated 12-character password, else a generated 12-character password. A reset forces a change at next
   login and ends the person's sessions (the hash changes). "Skip activation" on create is for test accounts until the
   activation flow exists.
 - **Pages that can show a password** (`user_create`, `user_reset_password`, `user_bulk`) are `never_cache` and render the
   dialog in the POST response (`json_script:"secrets-data"`), not a redirect.
+- Names are stored lowercase (core.text.clean_text), shown with name_case/person_name, and checked for duplicates (same first, middle and last name, unless both have different birth dates). The super-admin role cannot be handed out from a screen.
