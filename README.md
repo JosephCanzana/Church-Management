@@ -69,24 +69,31 @@ App: http://127.0.0.1:8001/  Admin: http://127.0.0.1:8001/admin/
 
 ```
 church_management/   # settings package (config only, not an app)
-core/                # shared abstract models, site settings, retention policy, purge job
-audit/               # audit_log (append-only)
-accounts/            # extensions, custom User, roles, default passwords, email tokens, app navigation
-theming/             # themes (light + dark palettes) and per-user display settings
-pages/               # landing page content, donation info, latest JIL video
-bible/               # verse of the day, chapters read
-faith/               # goals, check-ins, daily activity, streaks
-events/              # events and reminders
-resources/           # monthly themes, weekly PowerPoint, general resources
-attendance/          # attendance sheets, members, first timers
-tithes/              # tithes and offering records
-buddy/               # accountability partners
-prayer/              # prayer requests and replies
-notifications/       # bell, preferences, admin alerts
-dashboards/          # temporary role landing pages (no models)
+apps/                # Python package containing all Django apps
+  core/              # shared abstract models, site settings, retention policy, purge job
+  audit/             # audit_log (append-only)
+  accounts/          # extensions, custom User, roles, default passwords, email tokens, app navigation
+  theming/            # themes (light + dark palettes) and per-user display settings
+  pages/              # landing page content, donation info, latest JIL video
+  bible/              # verse of the day, chapters read
+  faith/              # goals, check-ins, daily activity, streaks
+  events/             # events and reminders
+  resources/          # monthly themes, weekly PowerPoint, general resources
+  attendance/         # attendance sheets, members, first timers
+  tithes/             # tithes and offering records
+  buddy/              # accountability partners
+  prayer/             # prayer requests and replies
+  notifications/      # bell, preferences, admin alerts
+  dashboards/         # temporary role landing pages (no models)
 templates/  static/  theme/
 docs/                # schema.sql, flows.md, verify.sql (reference)
 ```
+
+Import app code through its package path, for example `apps.accounts.models`
+or `apps.core.services`. Django app labels stay short (`accounts`, `core`,
+etc.); keep those short labels in `AUTH_USER_MODEL`, migration dependencies,
+model relations, and URL namespaces. The package prefix is for Python imports
+and dotted settings paths, not a change to database/table or migration labels.
 
 | App | Tables |
 |---|---|
@@ -198,18 +205,17 @@ for the super-admin only. Only users with `is_staff=True` can open it.
 ## Verifying the install
 
 ```bash
-# 0. login and audit tests
-docker compose exec web python manage.py test accounts audit -v 2
-
-# 1. config + models match migrations (both must print nothing bad)
+# Configuration and migration consistency
 docker compose exec web python manage.py check
 docker compose exec web python manage.py makemigrations --check --dry-run
 
-# 2. full schema test suite (uses a throwaway test database)
-docker compose exec web python manage.py test core.test_schema -v 2
+# Run the complete test suite using a throwaway test database
+docker compose exec web python manage.py test
 ```
-The suite checks all 43 tables, seed data, purge triggers, account-id
-generation, login, delete rules and the database constraints.
+To run a specific test module, use its full Python module path, for example
+`docker compose exec web python manage.py test apps.accounts.tests -v 2`.
+To select by Django app label, use the short label, for example
+`docker compose exec web python manage.py test accounts audit -v 2`.
 
 ### Checking the role redirects
 1. Log in as each role. You should land on `/superadmin/`, `/admin/`, `/coordinator/` or

@@ -39,21 +39,21 @@ INSTALLED_APPS = [
     'django.contrib.staticfiles',
     'django.contrib.postgres',
     # Our stuff
-    'accounts',
-    'attendance',
-    'audit',
-    'bible',
-    'buddy',
-    'core',
-    'events',
-    'faith',
-    'notifications',
-    'pages',
-    'prayer',
-    'resources',
-    'theming.apps.ThemingConfig',
-    'tithes',
-    'dashboards'
+    'apps.accounts',
+    'apps.attendance',
+    'apps.audit',
+    'apps.bible',
+    'apps.buddy',
+    'apps.core',
+    'apps.events',
+    'apps.faith',
+    'apps.notifications',
+    'apps.pages',
+    'apps.prayer',
+    'apps.resources',
+    'apps.theming.apps.ThemingConfig',
+    'apps.tithes',
+    'apps.dashboards'
 ]
 
 MIDDLEWARE = [
@@ -79,7 +79,7 @@ TEMPLATES = [
                 'django.template.context_processors.request',
                 'django.contrib.auth.context_processors.auth',
                 'django.contrib.messages.context_processors.messages',
-                "accounts.context_processors.navigation",  
+                "apps.accounts.context_processors.navigation",
             ],
         },
     },
@@ -156,7 +156,7 @@ MAILERS = {
 
 # Use our backend so people can log in with an account id OR a verified email.
 # It also keeps /django-admin/ login working (it accepts Django's "username" argument).
-AUTHENTICATION_BACKENDS = ["accounts.backends.AccountIdOrEmailBackend"]
+AUTHENTICATION_BACKENDS = ["apps.accounts.backends.AccountIdOrEmailBackend"]
 
 # Where Django sends people who are not logged in, and where login lands by default.
 LOGIN_URL = "accounts:login"

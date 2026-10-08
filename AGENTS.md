@@ -30,14 +30,20 @@ Python 3.12, Django 5.1+ (tested on 5.2 and 6.0), PostgreSQL 16, Tailwind CSS
 
 ## Repository layout
 - `church_management/`: project package (settings, urls, asgi/wsgi). Config only.
-- One folder per app (below). Standard files per app: `models.py`,
+- `apps/`: Python package containing all Django apps (`accounts/`, `core/`,
+  `attendance/`, etc.). Import app code through `apps.<app>`, for example
+  `from apps.core.models import ...`; use `apps.<app>.apps.<AppConfig>` for
+  explicit AppConfig paths and `apps.<app>.<module>` for dotted settings paths.
+  Keep each Django app label short (`accounts`, `core`, etc.): labels are used
+  by `AUTH_USER_MODEL`, migration dependencies, relations, and URL namespaces.
+- Standard files per app: `models.py`,
   `services.py` (business logic), `views.py`, `urls.py`, `forms.py`,
   `permissions.py`, `management/commands/` (jobs).
 - `templates/` (project-level: `base.html`, `base_public.html`, `base_app.html`,
   `includes/` with `public_navbar.html`, `footer.html`, `logo.html`, `icon.html`,
   `sidebar.html`, `sidebar_rail.html`, `sidebar_utilities.html`, `nav_link.html`, `brand_mark.html`, `topbar.html`, `bottom_nav.html`, `messages.html`, `modal.html`, `breadcrumb.html`).
   Page templates that belong to one app go in that app's `templates/<app>/` folder
-  (e.g. `pages/templates/pages/landing.html`, `accounts/templates/accounts/login.html`).
+  (e.g. `apps/pages/templates/pages/landing.html`, `apps/accounts/templates/accounts/login.html`).
 - `static/`: `css/input.css` (Tailwind source and design tokens), `css/themes.css`
   (dark overrides), `css/output.css` (generated, not committed), `fonts/`,
   `icons/sprite.svg`, `images/` (logos), `js/alpine.min.js`, `js/ui.js` (toast and
@@ -53,12 +59,19 @@ docker compose exec web python manage.py createsuperuser   # Enter at "Account i
 docker compose exec web python manage.py seed_superadmin   # dev only: super-admin from SEED_SUPERADMIN_* in .env
 docker compose exec web python manage.py check
 docker compose exec web python manage.py makemigrations --check --dry-run
-docker compose exec web python manage.py test core.test_schema -v 2
+docker compose exec web python manage.py test
+docker compose exec web python manage.py test apps.core.test_text -v 2
 make tailwind-watch    # separate terminal
 make tailwind-build
 ```
 App at http://127.0.0.1:8001/ (use `127.0.0.1`, not `localhost`).
 `.env` is read with python-decouple; keys are in `.env.example`.
+
+Use `python manage.py test` to run the complete test suite. Test module paths
+include the Python package prefix (for example, `apps.accounts.tests`), while
+app-label test selection uses the short Django label (for example,
+`python manage.py test accounts audit`). Do not rewrite short labels in model
+references, migrations, or URL namespaces when moving or reorganizing app code.
 
 ## Settings that must stay true
 - `AUTH_USER_MODEL = 'accounts.User'`, set before the first migrate. Never change
