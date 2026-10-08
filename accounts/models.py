@@ -21,6 +21,7 @@ class Role(models.TextChoices):
 class Status(models.TextChoices):
     NOT_ACTIVATED = "not_activated", "Not activated"
     ACTIVE = "active", "Active"
+    SUSPENDED = "suspended", "Suspended"
     ARCHIVED = "archived", "Archived"
 
 
@@ -143,7 +144,8 @@ class User(AbstractBaseUser, TimestampedModel, ArchivableModel):
     @property
     def is_active(self):
         # not_activated users must still be able to log in to set a password
-        return self.status != Status.ARCHIVED
+        # suspended people stay blocked until a super-admin lifts the suspension
+        return self.status not in (Status.ARCHIVED, Status.SUSPENDED)
 
     @property
     def is_staff(self):

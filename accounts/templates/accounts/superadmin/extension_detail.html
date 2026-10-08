@@ -132,6 +132,17 @@ when the extension is archived).
       {{ member_count }} active{% if archived_people_count %}, {{ archived_people_count }} archived{% endif %}
     </p>
   </div>
+  <div class="mt-2 flex flex-wrap gap-2">
+    {% if not extension.archived_at %}
+    <a href="{% url 'superadmin:user_create' %}?extension={{ extension.pk }}" class="btn btn-secondary">
+      {% include 'includes/icon.html' with name='user-plus' class='size-4' %}
+      Add a person
+    </a>
+    {% endif %}
+    <a href="{% url 'superadmin:user_list' %}?extension={{ extension.pk }}&amp;status=all" class="btn btn-ghost">
+      View in People
+    </a>
+  </div>
   {% if members %}
   <ul class="mt-3 divide-y divide-border">
     {% for person in members %}

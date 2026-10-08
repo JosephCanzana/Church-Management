@@ -10,7 +10,15 @@ Why `save(update_fields=...)` everywhere: the purge trigger
 in the column list for it to fire. And a plain `save()` would write the stale
 in-memory `purge_at` back over the value the trigger just computed.
 """
+import random
+import re
+import secrets
+from datetime import timedelta
+
+from django.db import connection
 from django.utils import timezone
+
+from .models import SubmissionToken
 
 
 class ServiceError(Exception):
@@ -54,3 +62,37 @@ def force_delete(instance):
     if not instance.is_archived:
         raise ServiceError("Only archived records can be deleted.")
     instance.delete()
+
+
+# ------------------------------------------------------- one-time form tokens
+# Stops the SAME form submission from running twice (double click, two tabs, a
+# refresh that re-posts), including two requests that arrive at the same instant.
+# The page puts new_submission_token() in a hidden field; the service calls
+# consume_submission_token() INSIDE its transaction.atomic(). The token is the
+# primary key of submission_token, so a second simultaneous insert waits for the
+# first, then fails, and the duplicate returns False. If the first transaction
+# rolls back (the action failed), its token disappears too, so retrying works.
+TOKEN_PATTERN = re.compile(r"^[A-Za-z0-9_-]{16,64}$")
+TOKEN_KEEP_DAYS = 2
+
+
+def new_submission_token():
+    """A fresh random token for a form to carry in a hidden field."""
+    return secrets.token_urlsafe(24)
+
+
+def consume_submission_token(token):
+    """Record `token` as used. True the first time, False for a replay.
+
+    Must be called inside transaction.atomic(). A missing or oddly shaped token
+    raises ServiceError (the form is stale or was tampered with).
+    """
+    if not connection.in_atomic_block:
+        raise RuntimeError("consume_submission_token() must run inside transaction.atomic().")
+    if not token or not TOKEN_PATTERN.match(token):
+        raise ServiceError("This form has expired. Reload the page and try again.")
+    _, created = SubmissionToken.objects.get_or_create(token=token)
+    if random.random() < 0.02:  # tidy up now and then; no separate job needed
+        cutoff = timezone.now() - timedelta(days=TOKEN_KEEP_DAYS)
+        SubmissionToken.objects.filter(created_at__lt=cutoff).delete()
+    return created

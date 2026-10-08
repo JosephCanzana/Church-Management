@@ -1,0 +1,125 @@
+<!--
+accounts/superadmin/user_list.html
+Super-admin list of people: search, filters, sort, paging and bulk actions.
+Extends base_app.html. Blocks filled: title, page_title, content.
+Bulk selection: the checkboxes (name="ids") and the action buttons live in ONE post
+form. Alpine counts the ticked boxes and shows the action bar. Each button confirms
+through data-confirm; "{n}" in its text becomes the count (static/js/ui.js). The
+server skips anyone an action does not apply to and reports why.
+Context: form (UserFilterForm), page (Page of User), total, status, bulk_buttons,
+querystring (filters without page), full_querystring (filters with page),
+submit_token (one-time token for the bulk form), secrets (show-once data or None).
+-->
+{% extends "base_app.html" %}
+
+{% block title %}People{% endblock %}
+{% block page_title %}People{% endblock %}
+
+{% block content %}
+<div class="flex flex-wrap items-center justify-between gap-3">
+  <p class="text-sm text-txt-secondary">{{ total }} {% if total == 1 %}person{% else %}people{% endif %}</p>
+  <a href="{% url 'superadmin:user_create' %}" class="btn btn-primary">
+    {% include 'includes/icon.html' with name='user-plus' class='size-4' %}
+    New person
+  </a>
+</div>
+
+<form method="get" class="mt-4 grid gap-3 sm:grid-cols-2 lg:grid-cols-6 lg:items-end" role="search">
+  <div class="sm:col-span-2">
+    <label for="{{ form.q.id_for_label }}" class="label">{{ form.q.label }}</label>
+    {{ form.q }}
+  </div>
+  <div>
+    <label for="{{ form.status.id_for_label }}" class="label">{{ form.status.label }}</label>
+    {{ form.status }}
+  </div>
+  <div>
+    <label for="{{ form.role.id_for_label }}" class="label">{{ form.role.label }}</label>
+    {{ form.role }}
+  </div>
+  <div>
+    <label for="{{ form.extension.id_for_label }}" class="label">Extension</label>
+    {{ form.extension }}
+  </div>
+  <div>
+    <label for="{{ form.sort.id_for_label }}" class="label">{{ form.sort.label }}</label>
+    {{ form.sort }}
+  </div>
+  <div class="sm:col-span-2 lg:col-span-6">
+    <button type="submit" class="btn btn-secondary">
+      {% include 'includes/icon.html' with name='funnel' class='size-4' %}
+      Apply
+    </button>
+    <a href="{% url 'superadmin:user_list' %}" class="btn btn-ghost">Reset filters</a>
+  </div>
+</form>
+
+{% if page.object_list %}
+<form method="post" action="{% url 'superadmin:user_bulk' %}" class="mt-6"
+      x-data="{
+        selected: 0,
+        sync() { this.selected = this.$root.querySelectorAll('input[name=ids]:checked').length },
+        toggleAll(checked) { this.$root.querySelectorAll('input[name=ids]').forEach(i => i.checked = checked); this.sync() },
+        clear() { this.toggleAll(false); this.$root.querySelector('[data-select-all]').checked = false },
+      }">
+  {% csrf_token %}
+  <input type="hidden" name="submit_token" value="{{ submit_token }}">
+  <input type="hidden" name="qs" value="{{ full_querystring }}">
+
+  <div x-show="selected > 0" x-cloak
+       class="sticky top-16 z-20 mb-3 flex flex-wrap items-center gap-2 rounded-xl border border-border-strong bg-surface p-3"
+       role="region" aria-label="Actions for the selected people">
+    <p class="mr-2 text-sm font-medium" aria-live="polite"><span x-text="selected"></span> selected</p>
+    {% for b in bulk_buttons %}
+    <button type="submit" name="action" value="{{ b.value }}"
+            class="btn {% if b.danger %}btn-danger{% else %}btn-secondary{% endif %}"
+            data-confirm="{{ b.message }}" data-confirm-title="{{ b.title }}"
+            data-confirm-text="{{ b.label }}"{% if b.danger %} data-confirm-danger{% endif %}>
+      {% include 'includes/icon.html' with name=b.icon class='size-4' %}
+      {{ b.label }}
+    </button>
+    {% endfor %}
+    <button type="button" class="btn btn-ghost ml-auto" x-on:click="clear()">Clear selection</button>
+  </div>
+
+  <ul class="card divide-y divide-border p-0">
+    <li class="flex items-center gap-3 px-5 py-3 text-sm text-txt-secondary">
+      <input type="checkbox" data-select-all class="size-4 accent-accent"
+             x-on:change="toggleAll($event.target.checked)" id="select-all">
+      <label for="select-all">Select everyone on this page</label>
+    </li>
+    {% for person in page.object_list %}
+    <li class="flex flex-wrap items-center gap-x-4 gap-y-2 px-5 py-3.5">
+      {% if person.pk != request.user.pk %}
+      <input type="checkbox" name="ids" value="{{ person.pk }}" class="size-4 accent-accent"
+             x-on:change="sync()" aria-label="Select {{ person.full_name }}">
+      {% else %}
+      <span class="size-4" aria-hidden="true"></span>
+      {% endif %}
+      <div class="min-w-0 flex-1 basis-52">
+        <a href="{% url 'superadmin:user_detail' person.pk %}"
+           class="font-medium text-txt-primary hover:underline focus-visible:outline-2 focus-visible:outline-accent">{{ person.full_name }}</a>
+        {% if person.pk == request.user.pk %}<span class="text-sm text-txt-secondary">(you)</span>{% endif %}
+        <p class="font-mono text-sm text-txt-secondary">{{ person.account_id }}</p>
+      </div>
+      <p class="basis-28 text-sm text-txt-secondary">{{ person.get_role_display }}</p>
+      <p class="basis-44 truncate text-sm text-txt-secondary">{{ person.extension.name|default:"No extension" }}</p>
+      <span class="rounded-full border px-2.5 py-0.5 text-xs
+        {% if person.status == 'suspended' %}border-warning text-warning
+        {% elif person.status == 'archived' %}border-border bg-surface-alt text-txt-secondary
+        {% elif person.status == 'active' %}border-success text-success
+        {% else %}border-border-strong text-txt-secondary{% endif %}">{{ person.get_status_display }}</span>
+    </li>
+    {% endfor %}
+  </ul>
+</form>
+{% include 'includes/pagination.html' with page=page querystring=querystring %}
+{% else %}
+<div class="card mt-6 text-center">
+  <p class="font-medium text-txt-primary">No people found</p>
+  <p class="mt-1 text-sm text-txt-secondary">Try a different search or filter, or add someone new.</p>
+</div>
+{% endif %}
+
+{% if secrets %}{{ secrets|json_script:"secrets-data" }}{% endif %}
+{% endblock %}

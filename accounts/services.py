@@ -47,7 +47,7 @@ def _log_login_failure(request, identifier):
     (looked up from the database, not copied from the form) and a reason code.
 
     The reason code is worked out here by looking the account up again. It is
-    one of: "unknown_account", "bad_password", "archived". audit_log has no
+    one of: "unknown_account", "bad_password", "archived", "suspended". audit_log has no
     free-form details column, so it goes in `after`.
     """
     user = find_user(identifier)
@@ -55,6 +55,8 @@ def _log_login_failure(request, identifier):
         reason = "unknown_account"
     elif user.status == Status.ARCHIVED:
         reason = "archived"
+    elif user.status == Status.SUSPENDED:
+        reason = "suspended"
     else:
         reason = "bad_password"
 

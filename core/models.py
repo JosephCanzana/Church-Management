@@ -75,3 +75,21 @@ class RetentionPolicy(models.Model):
 
     def __str__(self):
         return self.entity_type
+
+
+class SubmissionToken(models.Model):
+    """A form submission that has already been processed (see core.services).
+
+    The token is the primary key, so the database itself refuses to record the
+    same submission twice, even for two requests arriving at the same moment.
+    Old rows are removed by consume_submission_token() as it goes.
+    """
+    token = models.CharField(max_length=64, primary_key=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        db_table = "submission_token"
+        indexes = [models.Index(fields=["created_at"], name="ix_submission_token_created")]
+
+    def __str__(self):
+        return self.token[:8]

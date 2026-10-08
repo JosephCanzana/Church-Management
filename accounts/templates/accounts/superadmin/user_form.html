@@ -1,0 +1,87 @@
+<!--
+accounts/superadmin/user_form.html
+Create (person is None) or edit (person is set) a person.
+The extension field only shows for roles that need one (coordinator, member); the
+server decides, the page only hides what does not apply. Passwords are set here
+only when creating; for an existing person use Reset password on the detail page.
+Extends base_app.html. Blocks filled: title, page_title, content.
+Context: form (UserCreateForm or UserEditForm), person (User or None),
+submit_token (create only: one-time token so a double submit creates one person).
+-->
+{% extends "base_app.html" %}
+
+{% block title %}{% if person %}Edit {{ person.full_name }}{% else %}New person{% endif %}{% endblock %}
+{% block page_title %}{% if person %}Edit person{% else %}New person{% endif %}{% endblock %}
+
+{% block content %}
+<form method="post" class="card max-w-2xl" novalidate
+      x-data="{ role: '{{ form.role.value|default:'member'|escapejs }}' }">
+  {% csrf_token %}
+  {% if not person %}<input type="hidden" name="submit_token" value="{{ submit_token }}">{% endif %}
+
+  {% if form.non_field_errors %}
+  <div class="mb-5 rounded-lg border border-error p-3 text-sm text-error" role="alert">
+    {% for error in form.non_field_errors %}<p>{{ error }}</p>{% endfor %}
+  </div>
+  {% endif %}
+
+  <h2 class="text-base font-semibold">Name</h2>
+  <div class="mt-3 grid gap-4 sm:grid-cols-3">
+    {% for field in form %}{% if field.name == "first_name" or field.name == "middle_name" or field.name == "last_name" %}
+    <div>
+      <label for="{{ field.id_for_label }}" class="label">{{ field.label }}{% if not field.field.required %} <span class="font-normal text-txt-secondary">(optional)</span>{% endif %}</label>
+      {{ field }}
+      {% for error in field.errors %}<p class="field-error">{{ error }}</p>{% endfor %}
+    </div>
+    {% endif %}{% endfor %}
+  </div>
+
+  <div class="mt-4 sm:max-w-xs">
+    <label for="{{ form.birth_date.id_for_label }}" class="label">Birth date <span class="font-normal text-txt-secondary">(optional)</span></label>
+    {{ form.birth_date }}
+    {% for error in form.birth_date.errors %}<p class="field-error">{{ error }}</p>{% endfor %}
+  </div>
+
+  <h2 class="mt-8 text-base font-semibold">Role and extension</h2>
+  <div class="mt-3 grid gap-4 sm:grid-cols-2">
+    <div>
+      <label for="{{ form.role.id_for_label }}" class="label">Role</label>
+      {{ form.role }}
+      {% for error in form.role.errors %}<p class="field-error">{{ error }}</p>{% endfor %}
+    </div>
+    <div x-show="role === 'coordinator' || role === 'member'" x-cloak>
+      <label for="{{ form.extension.id_for_label }}" class="label">Extension</label>
+      {{ form.extension }}
+      {% for error in form.extension.errors %}<p class="field-error">{{ error }}</p>{% endfor %}
+    </div>
+  </div>
+  <p class="field-help" x-show="role === 'super_admin' || role === 'admin'" x-cloak>
+    Admins and super-admins do not belong to an extension.
+  </p>
+
+  {% if not person %}
+  <h2 class="mt-8 text-base font-semibold">Sign-in</h2>
+  <div class="mt-3 sm:max-w-sm">
+    <label for="{{ form.password.id_for_label }}" class="label">Password <span class="font-normal text-txt-secondary">(optional)</span></label>
+    {{ form.password }}
+    {% for error in form.password.errors %}<p class="field-error">{{ error }}</p>{% endfor %}
+    <p class="field-help">{{ form.password.help_text }}</p>
+  </div>
+  <div class="mt-4">
+    <label class="flex items-start gap-3 text-sm">
+      {{ form.activated }}
+      <span>
+        <span class="font-medium">{{ form.activated.label }}</span>
+        <span class="mt-0.5 block text-txt-secondary">{{ form.activated.help_text }}</span>
+      </span>
+    </label>
+  </div>
+  {% endif %}
+
+  <div class="mt-8 flex flex-wrap items-center gap-3">
+    <button type="submit" class="btn btn-primary">{% if person %}Save changes{% else %}Create person{% endif %}</button>
+    <a href="{% if person %}{% url 'superadmin:user_detail' person.pk %}{% else %}{% url 'superadmin:user_list' %}{% endif %}"
+       class="btn btn-ghost">Cancel</a>
+  </div>
+</form>
+{% endblock %}

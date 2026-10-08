@@ -6,7 +6,7 @@ Church-Management is a Django + PostgreSQL system for Jesus Is Lord Church
 attendance, tithes and offering, faith goals and Bible streaks, accountability
 buddies, prayer requests, events, resources, notifications and audit logging.
 
-**Status:** all 14 apps and 42 models exist, with migrations and seed data.
+**Status:** all 14 apps and 43 models exist, with migrations and seed data.
 `core.test_schema` verifies them. The base templates, design tokens, light/dark
 toggle, the public landing page (static copy for now) and the redesigned login page exist. Services, views and forms are
 mostly not built yet. The login is built (`accounts/backends.py`, `services.py`,
@@ -15,7 +15,7 @@ mostly not built yet. The login is built (`accounts/backends.py`, `services.py`,
 are not built yet; the "Forgot password?" link on the login page is a placeholder
 (`href="#"`). The Log in buttons on the landing page hardcode `/login/`; switch them to
 `{% url 'accounts:login' %}`. Next: the real activation flow, forgot/reset password,
-then features on top of the models. `role_required` exists (`accounts/decorators.py`). Super-admin extension management is built (`/superadmin/extensions/`); user management is next. A global toast and confirm
+then features on top of the models. `role_required` exists (`accounts/decorators.py`). Super-admin extension management is built (`/superadmin/extensions/`); user management is built (`/superadmin/users/`). A global toast and confirm
 dialog (`static/js/ui.js`, rendered by `includes/messages.html`) report results and
 guard destructive actions.
 
@@ -146,8 +146,11 @@ with. Only create a new app if the answer is "none".
   `url_has_allowed_host_and_scheme` passes. Post-login landing URLs are in
   `decorators.ROLE_HOME_NAMES` (the `dashboards` routes). Brute-force
   throttling is not built yet.
-- **Status:** `not_activated -> active -> archived`. "Inactive for a year" is an
-  automatic archive with `archive_reason='inactive'`.
+- **Status:** `not_activated -> active -> archived`, plus `suspended` (a reversible login block set by the
+  super-admin; never purged; `User.is_active` is false, so open sessions end at once). "Inactive for a year" is an
+  automatic archive with `archive_reason='inactive'`. Restore and unsuspend go back to `active` when
+  `must_change_password` is false, otherwise to `not_activated`. Deactivate = back to `not_activated` with
+  `must_change_password=True`.
 - **Default passwords:** hash only. Most specific wins: extension default, else
   global; a typed custom password always overrides.
 - **Special-role limits** are enforced in a transaction with the extension row
@@ -383,3 +386,27 @@ still in use), `archive_inactive_users`, `auto_transfer_extension`,
 - **UI pieces:** `.btn-danger` (destructive buttons), `includes/pagination.html` (Page + `querystring`), and
   `$store.ui.showSecrets({title, message, headers, rows})` for show-once data such as generated passwords (or hand it
   over with `json_script:"secrets-data"`). The secrets dialog only closes with its own button.
+
+## Super-admin user management
+- **Where:** `accounts/services_users.py` (rules), `accounts/views_users.py` (screens), forms in `accounts/forms.py`,
+  templates `accounts/templates/accounts/superadmin/user_*.html`, routes in `accounts/urls_superadmin.py`
+  (`/superadmin/users/...`). Permission helpers (`assignable_roles`, `can_manage_users`) are in `accounts/permissions.py`.
+- **One-time form tokens (`submission_token` table, 43rd table):** a form that must not run twice (create a person,
+  reset a password, any bulk action) carries `new_submission_token()` in a hidden field; the service calls
+  `consume_submission_token()` INSIDE its `transaction.atomic()`. The token is the primary key, so two simultaneous
+  identical requests cannot both pass; a failed action rolls its token back so a retry works. Single actions that are
+  naturally idempotent (archive, suspend, ...) check the current state under a row lock instead and need no token.
+- **Bulk actions:** `run_bulk()`, max 100 people, each person in its own transaction in ascending id order. Anyone the
+  action does not apply to (yourself, wrong status, gone) is skipped with a reason; it never fails the rest. One audit
+  row per person, plus one `account.bulk_archive` summary row when two or more are archived. Bulk reset shows all new
+  passwords in one show-once dialog.
+- **Guards:** you cannot archive, suspend, deactivate, reset, delete or change the role of yourself; the last active
+  super-admin cannot be archived, suspended, deactivated or demoted (checked under a lock on all super-admin rows).
+- **Coordinators:** archiving a coordinator frees the seat and makes them a member; a person leaving or entering a
+  seat updates `Extension.coordinator` in the same transaction; creating a coordinator into a seat that is taken is refused.
+- **Passwords:** shown once, never stored, logged or put in the session. Order used: typed (min 8 characters), else the
+  stored default (extension first, then global), else a generated 12-character password. A reset forces a change at next
+  login and ends the person's sessions (the hash changes). "Skip activation" on create is for test accounts until the
+  activation flow exists.
+- **Pages that can show a password** (`user_create`, `user_reset_password`, `user_bulk`) are `never_cache` and render the
+  dialog in the POST response (`json_script:"secrets-data"`), not a redirect.

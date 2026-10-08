@@ -77,9 +77,12 @@ document.addEventListener('submit', async (e) => {
   const msg = form.dataset.confirm || e.submitter?.dataset.confirm;
   if (!msg || form.dataset.confirmed) return;
   e.preventDefault();
+  // "{n}" in the title or message becomes the number of ticked people (bulk actions).
+  const count = form.querySelectorAll('input[name="ids"]:checked').length;
+  const fill = (text) => (text ? text.replaceAll('{n}', count) : text);
   const ok = await Alpine.store('ui').confirm({
-    title: form.dataset.confirmTitle || e.submitter?.dataset.confirmTitle,
-    message: msg,
+    title: fill(form.dataset.confirmTitle || e.submitter?.dataset.confirmTitle),
+    message: fill(msg),
     confirmText: form.dataset.confirmText || e.submitter?.dataset.confirmText,
     danger: (form.dataset.confirmDanger ?? e.submitter?.dataset.confirmDanger) !== undefined,
   });

@@ -90,7 +90,7 @@ docs/                # schema.sql, flows.md, verify.sql (reference)
 
 | App | Tables |
 |---|---|
-| `core` | `site_setting`, `retention_policy` |
+| `core` | `site_setting`, `retention_policy`, `submission_token` |
 | `audit` | `audit_log` |
 | `accounts` | `extension`, `app_user`, `special_role`, `user_special_role`, `extension_special_role_limit`, `default_password`, `email_token`, `user_extension_history` |
 | `theming` | `theme`, `theme_palette`, `user_settings` |
@@ -105,7 +105,7 @@ docs/                # schema.sql, flows.md, verify.sql (reference)
 | `prayer` | `prayer_request`, `prayer_reply` |
 | `notifications` | `notification`, `notification_preference`, `notification_rule` |
 
-42 tables in total (`dashboards` has none). Table names are fixed with `db_table` and match
+43 tables in total (`dashboards` has none). Table names are fixed with `db_table` and match
 `docs/schema.sql`.
 
 ## Roles and routes
@@ -127,7 +127,7 @@ which only says which role it is) until the real dashboards exist. Opening anoth
 role's page sends you back to your own. Where each role lands is set in
 `accounts/decorators.py` (`ROLE_HOME_NAMES`).
 
-The super-admin also manages extensions at `/superadmin/extensions/` (create, edit, archive, restore, delete, assign a coordinator). Users follow in the next step. These pages are super-admin only.
+The super-admin also manages extensions at `/superadmin/extensions/` (create, edit, archive, restore, delete, assign a coordinator) and people at `/superadmin/users/` (create, edit, search, filter, sort, suspend, deactivate, reset password, archive, restore, delete, with multi-select bulk actions). These pages are super-admin only.
 
 Django's built-in admin lives at `/django-admin/` (not `/admin/`) and is
 for the super-admin only. Only users with `is_staff=True` can open it.
@@ -198,7 +198,7 @@ docker compose exec web python manage.py makemigrations --check --dry-run
 # 2. full schema test suite (uses a throwaway test database)
 docker compose exec web python manage.py test core.test_schema -v 2
 ```
-The suite checks all 42 tables, seed data, purge triggers, account-id
+The suite checks all 43 tables, seed data, purge triggers, account-id
 generation, login, delete rules and the database constraints.
 
 ### Checking the role redirects

@@ -53,6 +53,9 @@
   --color-on-accent:      #FFFFFF;
 }
 
+/* Keeps Alpine-controlled elements (modals, bars) hidden until Alpine has started. */
+[x-cloak] { display: none !important; }
+
 /* Reusable pieces, built only from the tokens above. */
 @layer components {
   .btn {

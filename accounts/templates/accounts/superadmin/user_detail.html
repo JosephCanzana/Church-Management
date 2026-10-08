@@ -1,0 +1,165 @@
+<!--
+accounts/superadmin/user_detail.html
+One person for the super-admin: details, status, extension history, and the actions
+(edit, reset password, suspend, deactivate, archive, restore, delete). Every action is
+a POST form; destructive ones confirm through data-confirm (the server still enforces
+the rules, including "not yourself" and "not the last super-admin").
+Extends base_app.html. Blocks filled: title, page_title, content.
+Context: person, history (extension history rows), is_self, submit_token (for the reset
+password form), secrets (show-once data after a create or reset, or None).
+-->
+{% extends "base_app.html" %}
+
+{% block title %}{{ person.full_name }}{% endblock %}
+{% block page_title %}{{ person.full_name }}{% endblock %}
+
+{% block content %}
+<div class="flex flex-wrap items-center justify-between gap-3">
+  <a href="{% url 'superadmin:user_list' %}" class="btn btn-ghost -ml-3">
+    {% include 'includes/icon.html' with name='arrow-left' class='size-4' %}
+    All people
+  </a>
+
+  <div class="flex flex-wrap items-center gap-2">
+    {% if person.status == 'archived' %}
+      <form method="post" action="{% url 'superadmin:user_restore' person.pk %}">
+        {% csrf_token %}
+        <button type="submit" class="btn btn-secondary">
+          {% include 'includes/icon.html' with name='arrow-uturn-left' class='size-4' %}
+          Restore
+        </button>
+      </form>
+      {% if not is_self %}
+      <form method="post" action="{% url 'superadmin:user_delete' person.pk %}">
+        {% csrf_token %}
+        <button type="submit" class="btn btn-danger"
+                data-confirm="This permanently deletes {{ person.full_name }}. It cannot be undone."
+                data-confirm-title="Delete this person?"
+                data-confirm-text="Delete permanently" data-confirm-danger>
+          {% include 'includes/icon.html' with name='trash' class='size-4' %}
+          Delete
+        </button>
+      </form>
+      {% endif %}
+    {% else %}
+      <a href="{% url 'superadmin:user_edit' person.pk %}" class="btn btn-secondary">
+        {% include 'includes/icon.html' with name='pencil-square' class='size-4' %}
+        Edit
+      </a>
+      {% if not is_self %}
+      <form method="post" action="{% url 'superadmin:user_reset_password' person.pk %}">
+        {% csrf_token %}
+        <input type="hidden" name="submit_token" value="{{ submit_token }}">
+        <button type="submit" class="btn btn-secondary"
+                data-confirm="{{ person.full_name }} gets a new password, shown once. Their open sessions end and they must change it at next login."
+                data-confirm-title="Reset the password?" data-confirm-text="Reset password">
+          {% include 'includes/icon.html' with name='key' class='size-4' %}
+          Reset password
+        </button>
+      </form>
+      {% if person.status == 'suspended' %}
+      <form method="post" action="{% url 'superadmin:user_unsuspend' person.pk %}">
+        {% csrf_token %}
+        <button type="submit" class="btn btn-secondary">
+          {% include 'includes/icon.html' with name='play-circle' class='size-4' %}
+          Unsuspend
+        </button>
+      </form>
+      {% else %}
+      <form method="post" action="{% url 'superadmin:user_suspend' person.pk %}">
+        {% csrf_token %}
+        <button type="submit" class="btn btn-secondary"
+                data-confirm="{{ person.full_name }} cannot log in until you lift the suspension. Nothing is deleted."
+                data-confirm-title="Suspend this person?" data-confirm-text="Suspend">
+          {% include 'includes/icon.html' with name='pause-circle' class='size-4' %}
+          Suspend
+        </button>
+      </form>
+      {% endif %}
+      {% if person.status == 'active' %}
+      <form method="post" action="{% url 'superadmin:user_deactivate' person.pk %}">
+        {% csrf_token %}
+        <button type="submit" class="btn btn-secondary"
+                data-confirm="{{ person.full_name }} goes back to 'not activated' and must activate again."
+                data-confirm-title="Deactivate this person?" data-confirm-text="Deactivate">
+          {% include 'includes/icon.html' with name='power' class='size-4' %}
+          Deactivate
+        </button>
+      </form>
+      {% endif %}
+      <form method="post" action="{% url 'superadmin:user_archive' person.pk %}">
+        {% csrf_token %}
+        <button type="submit" class="btn btn-secondary"
+                data-confirm="{{ person.full_name }} will be archived and can no longer log in. You can restore them later."
+                data-confirm-title="Archive this person?" data-confirm-text="Archive">
+          {% include 'includes/icon.html' with name='archive-box' class='size-4' %}
+          Archive
+        </button>
+      </form>
+      {% endif %}
+    {% endif %}
+  </div>
+</div>
+
+{% if person.status == 'archived' %}
+<div class="card mt-4 bg-surface-alt" role="status">
+  <p class="text-sm">
+    This person is archived and cannot log in{% if person.purge_at %}. They will be permanently deleted on {{ person.purge_at|date:"j F Y" }}{% endif %}.
+    Restore them to edit or suspend them.
+  </p>
+</div>
+{% elif person.status == 'suspended' %}
+<div class="card mt-4 bg-surface-alt" role="status">
+  <p class="text-sm">This person is suspended and cannot log in. Nothing has been removed.</p>
+</div>
+{% endif %}
+
+<div class="mt-6 grid gap-6 lg:grid-cols-2">
+  <section class="card" aria-labelledby="details-heading">
+    <h2 id="details-heading" class="text-base font-semibold">Details</h2>
+    <dl class="mt-3 grid grid-cols-[auto_1fr] gap-x-6 gap-y-2 text-sm">
+      <dt class="text-txt-secondary">Account ID</dt><dd class="font-mono">{{ person.account_id }}</dd>
+      <dt class="text-txt-secondary">Role</dt><dd>{{ person.get_role_display }}</dd>
+      <dt class="text-txt-secondary">Status</dt><dd>{{ person.get_status_display }}</dd>
+      <dt class="text-txt-secondary">Extension</dt>
+      <dd>
+        {% if person.extension %}
+        <a href="{% url 'superadmin:extension_detail' person.extension.pk %}" class="hover:underline">{{ person.extension.name }}</a>
+        {% else %}No extension{% endif %}
+      </dd>
+      <dt class="text-txt-secondary">Birth date</dt><dd>{{ person.birth_date|date:"j F Y"|default:"Not set" }}</dd>
+      <dt class="text-txt-secondary">Email</dt>
+      <dd>{% if person.email %}{{ person.email }}{% else %}Not verified{% endif %}</dd>
+    </dl>
+  </section>
+
+  <section class="card" aria-labelledby="activity-heading">
+    <h2 id="activity-heading" class="text-base font-semibold">Activity</h2>
+    <dl class="mt-3 grid grid-cols-[auto_1fr] gap-x-6 gap-y-2 text-sm">
+      <dt class="text-txt-secondary">Last login</dt><dd>{{ person.last_login|date:"j F Y, g:i a"|default:"Never" }}</dd>
+      <dt class="text-txt-secondary">Created</dt><dd>{{ person.created_at|date:"j F Y" }}</dd>
+      <dt class="text-txt-secondary">Password</dt>
+      <dd>{% if person.must_change_password %}Must be changed at next login{% else %}Set by the person{% endif %}</dd>
+    </dl>
+  </section>
+</div>
+
+<section class="card mt-6" aria-labelledby="history-heading">
+  <h2 id="history-heading" class="text-base font-semibold">Extension history</h2>
+  {% if history %}
+  <ul class="mt-3 divide-y divide-border text-sm">
+    {% for row in history %}
+    <li class="flex flex-wrap items-center justify-between gap-2 py-2.5">
+      <span>{{ row.extension.name|default:"An extension that was deleted" }}
+        <span class="text-txt-secondary">({{ row.get_reason_display|lower }})</span></span>
+      <span class="text-txt-secondary">{{ row.from_date|date:"j M Y" }} to {% if row.to_date %}{{ row.to_date|date:"j M Y" }}{% else %}now{% endif %}</span>
+    </li>
+    {% endfor %}
+  </ul>
+  {% else %}
+  <p class="mt-3 text-sm text-txt-secondary">No extension history.</p>
+  {% endif %}
+</section>
+
+{% if secrets %}{{ secrets|json_script:"secrets-data" }}{% endif %}
+{% endblock %}
