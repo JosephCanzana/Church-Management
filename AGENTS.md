@@ -11,10 +11,10 @@ buddies, prayer requests, events, resources, notifications and audit logging.
 toggle, the public landing page (static copy for now) and the redesigned login page exist. Services, views and forms are
 mostly not built yet. The login is built (`accounts/backends.py`, `services.py`,
 `forms.py`, `views.py`, `urls.py`; routes `/accounts/login/`, `/accounts/logout/`, `/accounts/activate/`);
-`/activate/` is a placeholder until the activation flow exists. Forgot-password and reset
+ `/activate/` is the built activation page (new password + confirm). Forgot-password and reset
 are not built yet; the "Forgot password?" link on the login page is a placeholder
 (`href="#"`). The Log in buttons on the landing page hardcode `/login/`; switch them to
-`{% url 'accounts:login' %}`. Next: the real activation flow, forgot/reset password,
+`{% url 'accounts:login' %}`. Next: forgot/reset password,
 then features on top of the models. `role_required` exists (`accounts/decorators.py`). Super-admin extension management is built (`/superadmin/extensions/`); user management is built (`/superadmin/users/`). A global toast and confirm
 dialog (`static/js/ui.js`, rendered by `includes/messages.html`) report results and
 guard destructive actions.
@@ -178,6 +178,13 @@ with. Only create a new app if the answer is "none".
   something happened; the linked page does the permission check. Anonymous
   prayer requests hide the sender in UI/API but keep `user_id`.
 - **Enumeration:** forgot-password always shows the same message.
+- **Activation:** `accounts/services/activation.py` (`user_needs_activation`, `activate_account`), form `ActivationForm`,
+  view `activate_view`, template `accounts/activate.html`. A person must activate when `status=not_activated` OR
+  `must_change_password=True` (a reset leaves the status `active`). `activate_account` locks the row, sets the password,
+  clears `must_change_password`, turns `not_activated` into `active`, re-signs the session
+  (`update_session_auth_hash`) and logs `account.activated` (flag logged as `needs_activation`). It is idempotent, and
+  suspended or archived accounts are left alone. `ActivationRequiredMiddleware` (`accounts/middleware.py`, after
+  `MessageMiddleware`) redirects everything except `accounts:activate` and `accounts:logout` while activation is pending.
 
 ## Nightly jobs (each is a management command in its own app)
 `purge_archived` (core, children first, files before rows, skips extensions
@@ -450,8 +457,8 @@ still in use), `archive_inactive_users`, `auto_transfer_extension`,
   seat updates `Extension.coordinator` in the same transaction; creating a coordinator into a seat that is taken is refused.
 - **Passwords:** shown once, never stored, logged or put in the session. Order used: typed (min 8 characters), else the
   else the acting person's own default for the role, else a generated 12-character password, else a generated 12-character password. A reset forces a change at next
-  login and ends the person's sessions (the hash changes). "Skip activation" on create is for test accounts until the
-  activation flow exists.
+  login and ends the person's sessions (the hash changes). "Skip activation" on create is for test accounts that should not
+  go through the activation page.
 - **Pages that can show a password** (`user_create`, `user_reset_password`, `user_bulk`) are `never_cache` and render the
   dialog in the POST response (`json_script:"secrets-data"`), not a redirect.
 - Names are stored lowercase (core.text.clean_text), shown with name_case/person_name, and checked for duplicates (same first, middle and last name, unless both have different birth dates). The super-admin role cannot be handed out from a screen.

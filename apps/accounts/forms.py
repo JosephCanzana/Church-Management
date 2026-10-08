@@ -8,6 +8,7 @@ business rule lives in `accounts/services.py`.
 import re
 
 from django import forms
+from django.contrib.auth.password_validation import validate_password
 from django.core.exceptions import ValidationError
 from django.core.validators import validate_email
 
@@ -415,3 +416,33 @@ class DefaultPasswordsForm(forms.Form):
             elif self.cleaned_data.get(f"clear_{role}"):
                 out[role] = ("clear", None)
         return out
+
+# ============================================================ activation
+class ActivationForm(forms.Form):
+    """Choose a new password (twice) to finish activation.
+
+    user -- the signed-in person. Used to refuse reusing the temporary
+    password and for Django's password validators (length, common
+    passwords, all-numeric, similarity to the person's own details).
+    """
+
+    new_password = forms.CharField(strip=False, widget=forms.PasswordInput, label="New password")
+    confirm_password = forms.CharField(strip=False, widget=forms.PasswordInput, label="Confirm password")
+
+    def __init__(self, *args, user, **kwargs):
+        super().__init__(*args, **kwargs)
+        self.user = user
+
+    def clean_new_password(self):
+        value = self.cleaned_data["new_password"]
+        if self.user.check_password(value):
+            raise ValidationError("Choose a password different from your temporary one.")
+        validate_password(value, self.user)  # raises ValidationError with every problem
+        return value
+
+    def clean(self):
+        cleaned = super().clean()
+        new, confirm = cleaned.get("new_password"), cleaned.get("confirm_password")
+        if new and confirm and new != confirm:
+            self.add_error("confirm_password", "The two passwords do not match.")
+        return cleaned

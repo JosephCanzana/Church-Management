@@ -125,9 +125,12 @@ and dotted settings paths, not a change to database/table or migration labels.
 | Member      | `/home/`         | Personal pages (attendance, tithes, prayer, etc.)|
 
 Login: `/accounts/login/` (account id or verified email), `/accounts/logout/` (POST only)
-and `/accounts/activate/` (placeholder until activation is built). Forgot-password and
+and `/accounts/activate/` (choose a new password and confirm it). Forgot-password and
 reset are not built yet; the link on the login page is a placeholder. People with a
-temporary or never-set password are sent to `/accounts/activate/` after logging in.
+temporary or never-set password are sent to `/accounts/activate/` after logging in, and
+`ActivationRequiredMiddleware` keeps them there (only that page and logout stay open) until
+they set their own password. Activating turns `not_activated` into `active` and clears
+`must_change_password`.
 
 After login each role lands on its own temporary page (served by the `dashboards` app,
 which only says which role it is) until the real dashboards exist. Opening another

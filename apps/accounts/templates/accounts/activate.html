@@ -1,0 +1,113 @@
+<!--
+  accounts/activate.html: the page where a person sets their own password.
+  Extends: base_public.html (fills the title and content blocks). That layout
+  centers the content block inside main, so this page sets only its own width.
+  Context variables: form (ActivationForm, bound or unbound). The signed-in
+  user comes from the auth context processor as user.
+  Who sees it: people with a temporary password (not activated, or password
+  reset). Everyone else is redirected to their home page by the view.
+  Fields: new password and confirm password. Both are never echoed back.
+  Show password: an Alpine.js checkbox switches both inputs between type
+  password and type text. It stays hidden until Alpine loads (x-cloak), so
+  without JavaScript the fields simply stay masked.
+  Log out: a separate POST form below the card, because logout is POST only.
+  The footer include sits in normal flow, so the section keeps bottom padding.
+  Note: this comment contains no template tags on purpose, because anything
+  inside an HTML comment that looks like a tag would still be executed.
+-->
+{% extends "base_public.html" %}
+
+{% block title %}Set your password{% endblock %}
+
+{% block content %}
+<section class="my-auto w-full max-w-md self-center pb-12">
+  <div class="mb-8 text-center">
+    <h1 class="text-4xl font-semibold leading-tight tracking-tight text-txt-primary sm:text-5xl">
+      Set your password
+    </h1>
+    <p class="mx-auto mt-4 max-w-sm text-lg leading-relaxed text-txt-secondary">
+      Welcome, {{ user.full_name }}. Choose a password only you know to activate your account.
+    </p>
+    <p class="mt-2 text-base text-txt-secondary">
+      Account ID: <span class="font-mono tracking-wider text-txt-primary">{{ user.account_id }}</span>
+    </p>
+  </div>
+
+  <div class="rounded-2xl border border-border bg-surface p-6 sm:p-8">
+    <form method="post" action="{% url 'accounts:activate' %}" class="space-y-6" novalidate x-data="{ show: false }">
+      {% csrf_token %}
+
+      {% if form.non_field_errors %}
+        <div class="flex items-start gap-3 rounded-lg border border-error px-4 py-3 text-base text-error" role="alert">
+          <span class="mt-0.5 shrink-0">
+            {% include "includes/icon.html" with name="exclamation-circle" class="h-5 w-5" %}
+          </span>
+          <div>
+            {% for error in form.non_field_errors %}<p>{{ error }}</p>{% endfor %}
+          </div>
+        </div>
+      {% endif %}
+
+      <div>
+        <label for="id_new_password" class="label text-base">New password</label>
+        <input
+          type="password"
+          x-bind:type="show ? 'text' : 'password'"
+          name="new_password"
+          id="id_new_password"
+          class="input px-4 py-3.5 text-base {% if form.new_password.errors %}input-error{% endif %}"
+          autocomplete="new-password"
+          {% if form.new_password.errors %}aria-invalid="true" aria-describedby="new_password_help"{% endif %}
+          required
+          autofocus
+        >
+        {% if form.new_password.errors %}
+          <div id="new_password_help" class="mt-2 space-y-1 text-base text-error" role="alert">
+            {% for error in form.new_password.errors %}<p>{{ error }}</p>{% endfor %}
+          </div>
+        {% else %}
+          <p class="mt-2 text-base text-txt-secondary">
+            Use at least 8 characters. Avoid common passwords and all-number passwords.
+          </p>
+        {% endif %}
+      </div>
+
+      <div>
+        <label for="id_confirm_password" class="label text-base">Confirm password</label>
+        <input
+          type="password"
+          x-bind:type="show ? 'text' : 'password'"
+          name="confirm_password"
+          id="id_confirm_password"
+          class="input px-4 py-3.5 text-base {% if form.confirm_password.errors %}input-error{% endif %}"
+          autocomplete="new-password"
+          {% if form.confirm_password.errors %}aria-invalid="true" aria-describedby="confirm_password_help"{% endif %}
+          required
+        >
+        {% if form.confirm_password.errors %}
+          <div id="confirm_password_help" class="mt-2 space-y-1 text-base text-error" role="alert">
+            {% for error in form.confirm_password.errors %}<p>{{ error }}</p>{% endfor %}
+          </div>
+        {% endif %}
+        <div class="mt-4">
+          <label x-cloak class="inline-flex cursor-pointer select-none items-center gap-2.5 text-base text-txt-secondary">
+            <input type="checkbox" x-model="show" class="h-5 w-5 rounded border-border-strong accent-accent">
+            Show passwords
+          </label>
+        </div>
+      </div>
+
+      <button type="submit" class="btn btn-primary w-full py-3.5 text-base">Activate account</button>
+    </form>
+  </div>
+
+  <form method="post" action="{% url 'accounts:logout' %}" class="mt-6 text-center">
+    {% csrf_token %}
+    <button type="submit" class="text-base text-txt-secondary underline underline-offset-4 hover:text-txt-primary">
+      Not you? Log out
+    </button>
+  </form>
+</section>
+
+{% include "includes/footer.html" %}
+{% endblock %}

@@ -1,9 +1,10 @@
-"""accounts.views: login, logout and the activation placeholder.
+"""accounts.views: login, logout and account activation.
 
 Views stay thin: read the request, call a form and a service, then render a
 page or redirect. Business rules live in `accounts/services.py`. The role
 guard and the role home URLs live in `accounts/decorators.py` (one copy only).
 """
+from django.contrib import messages
 from django.contrib.auth import logout
 from django.contrib.auth.decorators import login_required
 from django.shortcuts import redirect, render
@@ -13,8 +14,9 @@ from django.views.decorators.cache import never_cache
 from django.views.decorators.http import require_http_methods, require_POST
 
 from ..decorators import home_url_for
-from ..forms import GENERIC_LOGIN_ERROR, LoginForm
+from ..forms import GENERIC_LOGIN_ERROR, ActivationForm, LoginForm
 from ..services import attempt_login
+from ..services.activation import activate_account, user_needs_activation
 
 
 def post_login_redirect(request, user, needs_activation):
@@ -83,10 +85,23 @@ def logout_view(request):
 
 
 @login_required
+@never_cache
+@require_http_methods(["GET", "POST"])
 def activate_view(request):
-    """PLACEHOLDER for the activation flow (set your own password).
+    """Let someone with a temporary password choose their own (set password, confirm).
 
-    Login sends not-activated and must-change-password users here. Replace
-    this view with the real activation form in the next task.
+    Login and ActivationRequiredMiddleware send not-activated and
+    must-change-password people here. Anyone else goes to their home page.
     """
-    return render(request, "accounts/activate_placeholder.html")
+    user = request.user
+    if not user_needs_activation(user):
+        return redirect(home_url_for(user))
+
+    form = ActivationForm(request.POST or None, user=user)
+    if request.method == "POST" and form.is_valid():
+        result = activate_account(request, user, form.cleaned_data["new_password"])
+        if result.changed:
+            messages.success(request, "Your account is active. Welcome!")
+        return redirect(home_url_for(request.user))
+
+    return render(request, "accounts/activate.html", {"form": form})
