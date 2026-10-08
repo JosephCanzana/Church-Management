@@ -21,6 +21,7 @@ RUN set -eu; \
     else \
       URL="https://github.com/tailwindlabs/tailwindcss/releases/download/$TAILWIND_VERSION/tailwindcss-linux-$T"; \
     fi; \
+    mkdir -p theme; \
     curl -fsSL -o theme/tailwindcss "$URL"; \
     chmod +x theme/tailwindcss
 # Same download as README step 4, only if the file is not already in the repo.
