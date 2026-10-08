@@ -1,6 +1,4 @@
-"""accounts.views_superadmin: the super-admin management screens.
-
-Today: extensions. User management is added here next.
+"""accounts.views.superadmin: the super-admin extension management screens.
 
 Names shown in messages go through `title_case` because extension text is
 stored in lowercase (see `core.text`).
@@ -25,10 +23,10 @@ from django.views.decorators.http import require_http_methods, require_POST
 from apps.core.services import ServiceError
 from apps.core.text import title_case
 
-from .decorators import role_required
-from .forms import AssignCoordinatorForm, ExtensionFilterForm, ExtensionForm
-from .models import Extension, Role, Status, User
-from .services import (
+from ..decorators import role_required
+from ..forms import AssignCoordinatorForm, ExtensionFilterForm, ExtensionForm
+from ..models import Extension, Role, Status, User
+from ..services import (
     archive_extension,
     assign_coordinator,
     bulk_archive_extensions,

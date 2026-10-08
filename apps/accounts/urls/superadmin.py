@@ -1,13 +1,13 @@
-"""accounts.urls_superadmin: URLs for the super-admin management screens.
+"""accounts.urls.superadmin: URLs for the super-admin management screens.
 
-Included from the project urls with:  path("superadmin/", include("accounts.urls_superadmin"))
+Included from the project urls with:  path("superadmin/", include("apps.accounts.urls.superadmin"))
 The `superadmin` namespace lets templates use {% url 'superadmin:extension_list' %}.
 The super-admin's own home page (/superadmin/) stays in dashboards.urls.
 """
 from django.urls import path
 
-from . import views_superadmin as views
-from . import views_users as people
+from ..views import superadmin as views
+from ..views import users as people
 
 app_name = "superadmin"
 

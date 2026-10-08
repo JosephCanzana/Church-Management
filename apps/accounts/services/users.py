@@ -1,6 +1,6 @@
-"""accounts.services_users: business rules for managing people (super-admin).
+"""accounts.services.users: business rules for managing people (super-admin).
 
-Same conventions as accounts/services.py: every function checks permission
+Same conventions as accounts.services: every function checks permission
 first, does its work in `transaction.atomic()`, writes `log_action()` in the
 same transaction, and reports a rule failure as ServiceError (a message that is
 safe to show). Actions on a person who is already in the wanted state return
@@ -26,10 +26,10 @@ from apps.audit.services import log_action
 from apps.core import services as core_services
 from apps.core.services import ServiceError, consume_submission_token
 
-from .models import (
+from ..models import (
     ArchiveReason, DefaultPassword, Extension, Role, Status, User, UserExtensionHistory,
 )
-from .permissions import assignable_roles, require_user_manager
+from ..permissions import assignable_roles, require_user_manager
 
 ROLES_WITH_EXTENSION = (Role.COORDINATOR, Role.MEMBER)
 USER_DETAIL_FIELDS = ("first_name", "middle_name", "last_name", "birth_date")

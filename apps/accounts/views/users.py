@@ -1,6 +1,6 @@
-"""accounts.views_users: the super-admin screens for managing people.
+"""accounts.views.users: the super-admin screens for managing people.
 
-Same rules as views_superadmin.py: every view is wrapped in
+Every view is wrapped in
 role_required(SUPER_ADMIN), the services check permission again, destructive
 actions are POST-only, and an action on someone who is already in the wanted
 state (or already gone) answers calmly instead of failing.
@@ -22,10 +22,10 @@ from django.views.decorators.http import require_http_methods, require_POST
 
 from apps.core.services import ServiceError, new_submission_token
 
-from .decorators import role_required
-from .forms import UserCreateForm, UserEditForm, UserFilterForm
-from .models import Role, Status, User, UserExtensionHistory
-from .services_users import (
+from ..decorators import role_required
+from ..forms import UserCreateForm, UserFilterForm, UserForm
+from ..models import Role, Status, User, UserExtensionHistory
+from ..services.users import (
     archive_user,
     create_user,
     deactivate_user,
@@ -211,7 +211,7 @@ def user_edit(request, pk):
         "last_name": person.last_name, "birth_date": person.birth_date,
         "role": person.role, "extension": person.extension_id,
     }
-    form = UserEditForm(
+    form = UserForm(
         request.POST or None, actor=request.user, initial=initial,
         keep_extension=person.extension_id,
     )

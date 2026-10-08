@@ -1,16 +1,17 @@
-"""accounts.test_extension_address: address rules, cleaning, required fields and bulk actions.
+"""accounts.tests.test_extension_address: address, cleaning and bulk-action tests.
 
 The first class needs no database. The others use the throwaway test database like
-core.test_schema does. Run with:  python manage.py test accounts.test_extension_address
+core.test_schema does. Run with:
+    docker compose exec web python manage.py test apps.accounts.tests.test_extension_address
 """
 from django.test import RequestFactory, SimpleTestCase, TestCase
 
 from apps.core.services import ServiceError
 
-from . import address
-from .forms import ExtensionForm
-from .models import Extension, Role, Status, User
-from .services import (
+from .. import address
+from ..forms import ExtensionForm
+from ..models import Extension, Role, Status, User
+from ..services import (
     archive_extension,
     bulk_archive_extensions,
     bulk_delete_extensions,

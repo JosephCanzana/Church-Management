@@ -5,7 +5,7 @@ The extension field only shows for roles that need one (coordinator, member); th
 server decides, the page only hides what does not apply. Passwords are set here
 only when creating; for an existing person use Reset password on the detail page.
 Extends base_app.html. Blocks filled: title, page_title, content.
-Context: form (UserCreateForm or UserEditForm), person (User or None),
+Context: form (UserCreateForm or UserForm), person (User or None),
 submit_token (create only: one-time token so a double submit creates one person).
 -->
 {% extends "base_app.html" %}

@@ -1,7 +1,7 @@
-"""accounts.test_superadmin_extensions: extension management (super-admin).
+"""accounts.tests.test_superadmin_extensions: extension management (super-admin).
 
 Run with:
-    docker compose exec web python manage.py test accounts.test_superadmin_extensions -v 2
+    docker compose exec web python manage.py test apps.accounts.tests.test_superadmin_extensions -v 2
 
 The test database is built from the real migrations, so the purge trigger and
 the seeded retention policy (extension: 365 days) are present.
@@ -47,6 +47,21 @@ def archive_person(person):
 def audit(action):
     """Audit rows for one action name."""
     return AuditLog.objects.filter(action=action)
+
+
+def extension_form_data(**overrides):
+    """A valid Philippines extension form payload, with selected fields overridden."""
+    fields = {
+        "name": "Cabanatuan",
+        "street": "Main Street",
+        "barangay": "Sumacab Norte",
+        "municipality": "Cabanatuan City",
+        "province": "Nueva Ecija",
+        "country": "Philippines",
+        "postal_code": "3100",
+    }
+    fields.update(overrides)
+    return fields
 
 
 class ExtensionServiceTests(TestCase):
@@ -250,9 +265,12 @@ class ExtensionViewTests(TestCase):
 
     def test_create_redirects_to_the_new_extension(self):
         response = self.client.post(reverse("superadmin:extension_create"), {
-            "name": "  Gapan   Church ", "street": "Main Street",
-            "barangay": "San Lorenzo (Pob.)", "municipality": "City of Gapan",
-            "province": "Nueva Ecija", "country": "Philippines", "postal_code": "3105",
+            **extension_form_data(
+                name="  Gapan   Church ",
+                barangay="San Lorenzo (Pob.)",
+                municipality="City of Gapan",
+                postal_code="3105",
+            ),
         })
         ext = Extension.objects.get(name="gapan church")
         self.assertRedirects(
@@ -262,9 +280,7 @@ class ExtensionViewTests(TestCase):
 
     def test_create_rejects_a_name_that_differs_only_by_case(self):
         response = self.client.post(reverse("superadmin:extension_create"), {
-            "name": "cabanatuan", "street": "Main Street", "barangay": "Sumacab Norte",
-            "municipality": "Cabanatuan City", "province": "Nueva Ecija",
-            "country": "Philippines", "postal_code": "3100",
+            **extension_form_data(name="cabanatuan"),
         })
         self.assertEqual(response.status_code, 200)
         self.assertContains(response, "already exists")
@@ -273,9 +289,7 @@ class ExtensionViewTests(TestCase):
     def test_edit_saves_changes(self):
         url = reverse("superadmin:extension_edit", args=[self.ext.pk])
         response = self.client.post(url, {
-            "name": "Cabanatuan", "street": "Main Street", "barangay": "Dalampang",
-            "municipality": "Cabanatuan City", "province": "Nueva Ecija",
-            "country": "Philippines", "postal_code": "3100",
+            **extension_form_data(barangay="Dalampang"),
         })
         self.assertRedirects(
             response, reverse("superadmin:extension_detail", args=[self.ext.pk]),

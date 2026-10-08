@@ -12,9 +12,9 @@ from django.utils.http import url_has_allowed_host_and_scheme
 from django.views.decorators.cache import never_cache
 from django.views.decorators.http import require_http_methods, require_POST
 
-from .decorators import home_url_for
-from .forms import GENERIC_LOGIN_ERROR, LoginForm
-from .services import attempt_login
+from ..decorators import home_url_for
+from ..forms import GENERIC_LOGIN_ERROR, LoginForm
+from ..services import attempt_login
 
 
 def post_login_redirect(request, user, needs_activation):

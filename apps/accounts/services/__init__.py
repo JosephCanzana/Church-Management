@@ -23,10 +23,10 @@ from apps.core import services as core_services
 from apps.core.services import ServiceError
 from apps.core.text import clean_text, title_case
 
-from .address import check_address
-from .backends import find_user
-from .models import Extension, Role, Status, User
-from .permissions import require_extension_manager
+from ..address import check_address
+from ..backends import find_user
+from ..models import Extension, Role, Status, User
+from ..permissions import require_extension_manager
 
 
 # ============================================================ login

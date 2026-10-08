@@ -1,7 +1,7 @@
-"""accounts.test_superadmin_users: user management (super-admin).
+"""accounts.tests.test_superadmin_users: user management (super-admin).
 
 Run with:
-    docker compose exec web python manage.py test accounts.test_superadmin_users -v 2
+    docker compose exec web python manage.py test apps.accounts.tests.test_superadmin_users -v 2
 
 Covers the one-time token, create / update, every status change, bulk actions,
 the pages, and one real two-thread race. The last class is a TransactionTestCase
@@ -20,7 +20,7 @@ from django.test import TestCase, TransactionTestCase
 from django.urls import reverse
 from django.utils import timezone
 
-from apps.accounts import services_users as svc
+from apps.accounts.services import users as svc
 from apps.accounts.models import (
     ArchiveReason, DefaultPassword, Extension, Role, Status, User, UserExtensionHistory,
 )

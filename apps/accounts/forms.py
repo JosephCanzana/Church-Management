@@ -234,7 +234,7 @@ class AssignCoordinatorForm(forms.Form):
 
 # ================================================================== people
 class UserForm(forms.Form):
-    """Details, role and extension of a person. Base of the create and edit forms.
+    """Details, role and extension fields shared by person create and edit forms.
 
     actor           -- decides which roles appear in the role list.
     keep_extension  -- id of the extension the person is already in, so it stays
@@ -296,10 +296,6 @@ class UserCreateForm(UserForm):
         if value and len(value) < 8:
             raise ValidationError("Use at least 8 characters, or leave it empty.")
         return value
-
-
-class UserEditForm(UserForm):
-    """Existing person. Passwords are changed with Reset password, not here."""
 
 
 class UserFilterForm(forms.Form):

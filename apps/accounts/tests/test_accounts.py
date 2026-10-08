@@ -1,7 +1,7 @@
-"""accounts.tests: tests for the login, logout and activation redirect.
+"""accounts.tests.test_accounts: tests for login, logout and activation redirect.
 
 Run with:
-    docker compose exec web python manage.py test accounts -v 2
+    docker compose exec web python manage.py test apps.accounts.tests.test_accounts -v 2
 """
 import os
 from io import StringIO
