@@ -9,3 +9,4 @@ static/js/alpine.min.js
 *.log
 /production/data/
 /production/.env
+/media/*

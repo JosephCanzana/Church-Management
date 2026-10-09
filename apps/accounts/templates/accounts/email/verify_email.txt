@@ -1,0 +1,7 @@
+Hello {{ name }},
+
+Please verify this email address for your {{ site_name }} account by opening the link below and pressing "Confirm email". You must be logged in.
+
+{{ link }}
+
+The link works for {{ minutes }} minutes. If you did not ask for this, you can ignore this message and nothing will change.

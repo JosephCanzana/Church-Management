@@ -1,0 +1,39 @@
+<!--
+  accounts/verify_email.html: the page the emailed verification link opens.
+  Extends: base_app.html (fills title, page_title and content).
+  Context: email (the address being verified, or None when the link is invalid,
+  expired, already used or belongs to someone else), token (the raw value from the URL).
+  Why a button: opening the link only SHOWS this page. Verifying is a POST, so mail
+  scanners that open links automatically cannot confirm an address by accident.
+  The page itself is the confirmation step, so the button has no extra dialog.
+  Note: this comment contains no template tags on purpose.
+-->
+{% extends "base_app.html" %}
+
+{% block title %}Confirm your email{% endblock %}
+{% block page_title %}Confirm your email{% endblock %}
+
+{% block content %}
+<section class="mx-auto w-full max-w-md rounded-2xl border border-border bg-surface p-6 sm:p-8">
+  {% if email %}
+    <h2 class="text-xl font-semibold text-txt-primary">Verify this email address?</h2>
+    <p class="mt-3 break-all text-lg font-medium text-txt-primary">{{ email }}</p>
+    <p class="mt-3 text-base text-txt-secondary">
+      After you confirm, you can log in with this email as well as your account ID.
+    </p>
+    <form method="post" action="{% url 'accounts:verify_email' token %}" class="mt-6">
+      {% csrf_token %}
+      <button type="submit" class="btn btn-primary w-full py-3 text-base">Confirm email</button>
+    </form>
+  {% else %}
+    <h2 class="text-xl font-semibold text-txt-primary">This link cannot be used</h2>
+    <p class="mt-3 text-base text-txt-secondary">
+      It may have expired, been replaced by a newer link, already been used, or been sent to a different account.
+      Request a new link from your profile.
+    </p>
+  {% endif %}
+  <p class="mt-6 text-center">
+    <a href="{% url 'accounts:profile' %}" class="text-base text-txt-secondary underline underline-offset-4 hover:text-txt-primary">Back to your profile</a>
+  </p>
+</section>
+{% endblock %}

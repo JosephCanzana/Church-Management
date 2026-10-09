@@ -144,7 +144,7 @@ STATIC_URL = 'static/'
 STATICFILES_DIRS = [BASE_DIR / "static"]
 STATIC_ROOT = BASE_DIR / "staticfiles"  # collectstatic target (served by Caddy in production)
 
-MEDIA_URL = 'media/'
+MEDIA_URL = '/media/'
 MEDIA_ROOT = BASE_DIR / 'media'
 
 DEFAULT_AUTO_FIELD = 'django.db.models.BigAutoField'
@@ -152,11 +152,37 @@ DEFAULT_AUTO_FIELD = 'django.db.models.BigAutoField'
 # Email
 # https://docs.djangoproject.com/en/6.1/topics/email/#topic-email-configuration
 
-MAILERS = {
-    'default': {
-        'BACKEND': 'django.core.mail.backends.console.EmailBackend',
-    },
-}
+# Real mail only when a Gmail address and App Password are set in .env;
+# otherwise links are printed in `docker compose logs web` (dev).
+# Do NOT name settings EMAIL_HOST_USER etc.: Django 6.1 forbids them with MAILERS.
+_smtp_user = config("EMAIL_HOST_USER", default="")
+_smtp_password = config("EMAIL_HOST_PASSWORD", default="")
+if _smtp_user and _smtp_password:
+    MAILERS = {
+        "default": {
+            "BACKEND": "django.core.mail.backends.smtp.EmailBackend",
+            "OPTIONS": {
+                "host": config("EMAIL_HOST", default="smtp.gmail.com"),
+                "port": config("EMAIL_PORT", default=587, cast=int),
+                "use_tls": True,
+                "username": _smtp_user,
+                "password": _smtp_password,
+                "timeout": 15,
+            },
+        },
+    }
+else:
+    MAILERS = {"default": {"BACKEND": "django.core.mail.backends.console.EmailBackend"}}
+
+DEFAULT_FROM_EMAIL = config("DEFAULT_FROM_EMAIL", default=_smtp_user or "Church Management <noreply@localhost>")
+
+# Base address for links inside emails. Local default uses 127.0.0.1, not localhost.
+SITE_URL = config("SITE_URL", default="http://127.0.0.1:8001")
+
+# Email verification limits (accounts/services/profile.py).
+VERIFY_LINK_MINUTES = 60
+VERIFY_RESEND_SECONDS = 60
+VERIFY_MAX_PER_HOUR = 10
 
 # Use our backend so people can log in with an account id OR a verified email.
 # It also keeps /django-admin/ login working (it accepts Django's "username" argument).

@@ -1,6 +1,7 @@
 {% comment %}
 topbar.html: right-hand side of the app header, on the frame color. A notification bell (placeholder link for now),
-then the signed-in user: a solid initials badge, plus name and role from sm up.
+then the signed-in user as a link to their profile: the profile photo (or a solid initials badge when there is none),
+plus name and role from sm up.
 The bell shows a dot when a context variable unread_count is above zero; nothing provides it yet, so no dot appears.
 The header, the menu button and the page title live in base_app.html, because a block inside an included file never overrides anything.
 The light/dark toggle and log out are in sidebar_utilities.html.
@@ -14,11 +15,17 @@ Usage: {% include 'includes/topbar.html' %}
     {% include 'includes/icon.html' with name='bell' class='size-6' %}
     {% if unread_count %}<span class="absolute right-2.5 top-2.5 size-2.5 rounded-full bg-error ring-2 ring-shell"></span>{% endif %}
   </a>
-  <div class="flex min-w-0 items-center gap-3">
-    <span class="flex size-9 shrink-0 items-center justify-center rounded-full bg-primary text-sm font-semibold text-on-primary" aria-hidden="true">{{ user.first_name|slice:":1"|upper }}{{ user.last_name|slice:":1"|upper }}</span>
+  <a href="{% url 'accounts:profile' %}"
+     class="flex min-w-0 items-center gap-3 rounded-full py-1 pl-1 pr-1 transition-colors hover:bg-txt-primary/5 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-accent sm:pr-4"
+     aria-label="Your profile">
+    {% if user.profile_image %}
+      <img src="{{ user.profile_image.url }}" alt="" class="size-9 shrink-0 rounded-full object-cover">
+    {% else %}
+      <span class="flex size-9 shrink-0 items-center justify-center rounded-full bg-primary text-sm font-semibold text-on-primary" aria-hidden="true">{{ user.first_name|slice:":1"|upper }}{{ user.last_name|slice:":1"|upper }}</span>
+    {% endif %}
     <div class="hidden min-w-0 max-w-48 leading-tight sm:block">
       <p class="truncate text-sm font-medium text-txt-primary">{{ user.first_name }} {{ user.last_name }}</p>
       <p class="truncate text-sm text-txt-secondary">{{ user.get_role_display }}</p>
     </div>
-  </div>
+  </a>
 </div>

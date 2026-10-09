@@ -6,12 +6,14 @@ correct is decided by the backend in `accounts/backends.py`, and every
 business rule lives in `accounts/services.py`.
 """
 import re
+from datetime import date
 from functools import cached_property
 
 from django import forms
 from django.contrib.auth.password_validation import validate_password
 from django.core.exceptions import ValidationError
 from django.core.validators import validate_email
+from django.utils import timezone
 
 from django.db.models import Q
 
@@ -512,6 +514,100 @@ class ActivationForm(forms.Form):
         if self.user.check_password(value):
             raise ValidationError("Choose a password different from your temporary one.")
         validate_password(value, self.user)  # raises ValidationError with every problem
+        return value
+
+    def clean(self):
+        cleaned = super().clean()
+        new, confirm = cleaned.get("new_password"), cleaned.get("confirm_password")
+        if new and confirm and new != confirm:
+            self.add_error("confirm_password", "The two passwords do not match.")
+        return cleaned
+
+# ============================================================ profile
+PHOTO_MAX_BYTES = 2 * 1024 * 1024
+PHOTO_FORMATS = {"JPEG", "PNG", "WEBP"}
+BIRTH_DATE_EARLIEST = date(1900, 1, 1)
+
+
+class ProfileDetailsForm(forms.Form):
+    """The only details a person edits themselves: birth date and photo.
+
+    user -- the signed-in person. Needed because a birth date that is already
+    set cannot be removed. The photo is optional: leaving it empty keeps the
+    current one. Shape checks only (size, format); the service re-encodes it.
+    """
+
+    birth_date = forms.DateField(
+        required=False,
+        widget=forms.DateInput(attrs={"class": "input", "type": "date"}, format="%Y-%m-%d"),
+    )
+    photo = forms.ImageField(required=False)
+
+    def __init__(self, *args, user, **kwargs):
+        super().__init__(*args, **kwargs)
+        self.user = user
+        self.fields["birth_date"].initial = user.birth_date
+        self.fields["birth_date"].widget.attrs["max"] = timezone.localdate().isoformat()
+
+    def clean_birth_date(self):
+        value = self.cleaned_data.get("birth_date")
+        if value is None:
+            if self.user.birth_date:
+                raise ValidationError("Birth date cannot be removed once it is set.")
+            return None
+        if value > timezone.localdate():
+            raise ValidationError("Birth date cannot be in the future.")
+        if value < BIRTH_DATE_EARLIEST:
+            raise ValidationError("Enter a valid birth date.")
+        return value
+
+    def clean_photo(self):
+        photo = self.cleaned_data.get("photo")
+        if not photo:
+            return None
+        if photo.size > PHOTO_MAX_BYTES:
+            raise ValidationError("The photo must be 2 MB or smaller.")
+        image_format = getattr(getattr(photo, "image", None), "format", None)
+        if image_format not in PHOTO_FORMATS:
+            raise ValidationError("Use a JPG, PNG or WebP photo.")
+        return photo
+
+
+class ProfileEmailForm(forms.Form):
+    """One email address to verify (a new one, or a replacement for the current one)."""
+
+    email = forms.EmailField(
+        max_length=254,
+        widget=forms.EmailInput(attrs={
+            "class": "input px-4 py-3 text-base", "autocomplete": "email",
+            "inputmode": "email", "autocapitalize": "none",
+        }),
+    )
+
+    def clean_email(self):
+        return self.cleaned_data["email"].strip().lower()
+
+
+class ChangePasswordForm(forms.Form):
+    """Current password, then the new one twice.
+
+    Whether the current password is right is decided by the service (it also
+    audits wrong attempts); this form checks the shape of the new password.
+    """
+
+    current_password = forms.CharField(strip=False, widget=forms.PasswordInput, label="Current password")
+    new_password = forms.CharField(strip=False, widget=forms.PasswordInput, label="New password")
+    confirm_password = forms.CharField(strip=False, widget=forms.PasswordInput, label="Confirm new password")
+
+    def __init__(self, *args, user, **kwargs):
+        super().__init__(*args, **kwargs)
+        self.user = user
+
+    def clean_new_password(self):
+        value = self.cleaned_data["new_password"]
+        if self.user.check_password(value):
+            raise ValidationError("Choose a password different from your current one.")
+        validate_password(value, self.user)  # raises ValidationError listing every problem
         return value
 
     def clean(self):
