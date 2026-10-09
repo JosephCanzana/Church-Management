@@ -90,7 +90,7 @@ moving or reorganizing app code.
 | `core` | `site_setting`, `retention_policy` | Abstract bases (`TimestampedModel`, `ArchivableModel`), `archived_matches_status()`, generic archive / restore / force-delete, nightly `purge_archived`, permission hierarchy helpers, retention screen |
 | `audit` | `audit_log` | `log_action()` in `audit/services.py` (strips sensitive keys, sends `action_logged` from `audit/signals.py`), log viewer, `cleanup_audit_log` |
 | `accounts` | `extension`, `app_user`, `special_role`, `user_special_role`, `extension_special_role_limit`, `default_password`, `email_token`, `user_extension_history` | Login/logout/activation, forgot + reset password, email verification, profile, create/manage accounts, extensions, special roles and limits, default passwords, `archive_inactive_users`, `auto_transfer_extension`, `cleanup_email_tokens`, `mark_attended()` |
-| `theming` | `theme`, `theme_palette`, `user_settings` | Theme CRUD (both palettes in one transaction), contrast warning, CSS generation + cache, context processor; `UserSettings` row created by `signals.py` |
+| `theming` | `theme`, `theme_palette`, `user_settings` | Theme CRUD (both palettes in one transaction), contrast warning (including `highlight` / `on_highlight`), CSS generation + cache, context processor; `UserSettings` row created by `signals.py` |
 | `pages` | `church_content`, `landing_image`, `donation_account`, `jil_video` | Landing page (`get_landing_context()` in `pages/services.py`, a default for every block) and terms editing, donation page, `fetch_jil_videos` |
 | `bible` | `daily_verse`, `bible_chapter_read` | Reader, API.bible / scrollmapper client, daily verse, `record_chapter_read()` |
 | `faith` | `goal`, `goal_checkin`, `user_daily_activity`, `user_streak` | Goals, check-ins, consistency, heatmap, streak rules, `complete_ended_goals` |
@@ -197,7 +197,7 @@ still in use), `archive_inactive_users`, `auto_transfer_extension`,
 - Colors come from CSS custom properties (design tokens) generated from the
   active `theme_palette`, never raw Tailwind palette classes or `dark:`. Use
   utilities such as `bg-bg`, `bg-surface`, `text-txt-primary`,
-  `text-txt-secondary`, `border-border`, `bg-accent`. Light/dark is the
+  `text-txt-secondary`, `border-border`, `bg-accent`, `bg-highlight`. Light/dark is the
   `data-mode` / `.dark` state, not a Tailwind variant.
 - Icons: self-hosted Heroicons sprite,
   `<use href="{% static 'icons/sprite.svg' %}#name">`. No icon fonts or CDNs.
@@ -230,11 +230,11 @@ still in use), `archive_inactive_users`, `auto_transfer_extension`,
   `font-mono` is JetBrains Mono (account ids, amounts). Change a font by editing
   `--font-main` / `--font-mono` and the matching `@font-face` in `input.css`.
 - Reusable component classes live in `input.css` under `@layer components`:
-  `.btn`, `.btn-primary`, `.btn-secondary`, `.btn-ghost`, `.label`, `.input`,
+  `.btn`, `.btn-primary`, `.btn-secondary`, `.btn-ghost`, `.btn-highlight`, `.label`, `.input`,
   `.input-error`, `.field-error`, `.field-help`, `.card`. Use them before writing
   new one-off utility strings, and build new ones from tokens only.
-- `--color-on-primary` and `--color-on-accent` are the text colors for filled
-  primary and accent surfaces; use them instead of `text-white`.
+- `--color-on-primary`, `--color-on-accent` and `--color-on-highlight` are the text colors for filled
+  primary, accent and highlight surfaces; use them instead of `text-white`.
 - Light/dark: `base.html` sets `data-mode` and `.dark` on `<html>` from
   `localStorage` (falling back to the system setting) before first paint, and
   exposes `window.toggleMode()`. When `user_settings` is wired up, the server
@@ -351,12 +351,14 @@ still in use), `archive_inactive_users`, `auto_transfer_extension`,
 - **Content lookup:** `ChurchContent` is unique per `(key, language)`. The page tries the visitor's language,
   then English, then Filipino, and skips rows with an empty body. Loaders import models lazily inside
   functions. If a model field is renamed, edit only the loader in `services.py`.
-- **Colors use tokens only, and `input.css` / `themes.css` are not edited for this page** (other themes
-  exist and would not define new tokens). The navy "deep" sections are `bg-txt-primary text-surface`:
+- **Colors use tokens only.** The navy "deep" sections are `bg-txt-primary text-surface`:
   `txt-primary` is dark in light mode and light in dark mode, so they flip by themselves in every theme.
-  Brand gold is the one exception: `--lp-gold`, `--lp-gold-soft` and `--lp-on-gold` are defined once on the
-  page wrapper and used for fills, lines and button backgrounds only, never for text (it is unreadable on
-  the flipped light sections). Use `bg-[var(--lp-gold)]` and `text-[color:var(--lp-on-gold)]`.
+  The brand gold is the `highlight` token (`--color-highlight`, `--color-highlight-soft`,
+  `--color-on-highlight`), defined in `input.css` (light default), `themes.css` (dark) and `theme_palette`
+  (`highlight`, `on_highlight`; the soft shade is derived with `color-mix()`), so every theme can change it.
+  Use it for fills, lines and button backgrounds only, never for text (it is unreadable on the flipped
+  light sections): `bg-highlight`, `border-highlight`, `hover:bg-highlight-soft`, and always
+  `text-on-highlight` for text on top of it. Never name a token after its color.
 - **Full width:** the wrapper uses `-mx-4 -my-10` to cancel the `px-4 py-10` that `base_public.html` puts on
   `main`. If that padding changes, change both numbers (or add a `main_padding` block to the base).
 - **In-page anchors:** `#about`, `#church`, `#theme`, `#buddy`, `#whats-inside`, `#watch`, `#prayer`, `#give`,

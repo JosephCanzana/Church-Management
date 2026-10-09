@@ -7,10 +7,10 @@
     about (mission, vision, values: each title and body), theme (month, title, description, url),
     video (youtube_video_id, title, thumbnail_url), give_accounts (list of active DonationAccount),
     member_features, serving_features, buddy_points, footer.
-  Colors: only the design tokens every theme defines, so it follows any theme and light/dark mode.
+  Colors: only design tokens, so it follows any theme and light/dark mode (accent fills use highlight).
   The navy "deep" sections use bg-txt-primary with text-surface: txt-primary is dark in light mode
-  and light in dark mode, so those sections flip by themselves. The one exception is brand gold,
-  defined once on the wrapper (same in light and dark) and used for fills only, never for text.
+  and light in dark mode, so those sections flip by themselves. The accent fill is the
+  highlight token (bg-highlight, text-on-highlight), used for fills and lines only, never for text.
   Full width: the wrapper cancels the padding base_public.html puts on main (px-4 py-10).
   The long footer is part of this page; base_public.html's own footer follows it as the copyright line.
 -->
@@ -21,7 +21,7 @@
 {% block main_align %}items-stretch{% endblock %}
 
 {% block content %}
-<div class="-mx-4 -my-10 w-full overflow-hidden text-txt-primary" style="--lp-gold:#D4AF56;--lp-gold-soft:#E5C978;--lp-on-gold:#0B1220">
+<div class="-mx-4 -my-10 w-full overflow-hidden text-txt-primary">
 
   {% comment %} HERO: deep section, welcome text, and the photo carousel (or a logo panel until photos exist). {% endcomment %}
   <section class="relative overflow-hidden bg-txt-primary text-surface" aria-label="Welcome">
@@ -31,15 +31,15 @@
     <div class="relative mx-auto grid w-full max-w-6xl items-center gap-10 px-4 py-16 sm:px-6 md:grid-cols-[1.05fr_.95fr] md:gap-12 md:py-24">
       <div class="max-w-xl">
         <p class="flex items-center gap-3 text-sm font-bold uppercase tracking-[.25em]">
-          <span class="h-0.5 w-7 bg-[var(--lp-gold)]" aria-hidden="true"></span>Welcome to
+          <span class="h-0.5 w-7 bg-highlight" aria-hidden="true"></span>Welcome to
         </p>
-        <span class="mt-5 inline-flex size-20 items-center justify-center rounded-full border border-[color:var(--lp-gold)] bg-surface/10">
+        <span class="mt-5 inline-flex size-20 items-center justify-center rounded-full border border-highlight bg-surface/10">
           {% include "includes/logo.html" with variant="mark" size="size-10" decorative=True %}
         </span>
         <h1 class="mt-5 text-4xl font-extrabold leading-[1.06] tracking-tight sm:text-5xl lg:text-6xl">{{ hero.title }}</h1>
         <p class="mt-5 text-lg leading-relaxed text-surface/80">{{ hero.intro }}</p>
         <div class="mt-8 flex flex-wrap gap-3">
-          <a href="#buddy" class="btn min-h-11 bg-[var(--lp-gold)] px-6 font-bold uppercase tracking-wider text-[color:var(--lp-on-gold)] hover:bg-[var(--lp-gold-soft)]">Learn more</a>
+          <a href="#buddy" class="btn min-h-11 bg-highlight px-6 font-bold uppercase tracking-wider text-on-highlight hover:bg-highlight-soft">Learn more</a>
           <a href="{% url 'accounts:login' %}" class="btn min-h-11 border border-surface px-6 font-bold uppercase tracking-wider text-surface hover:bg-surface hover:text-txt-primary">Log in</a>
         </div>
       </div>
@@ -74,8 +74,8 @@
             </figure>
             {% endfor %}
             {% if hero_images|length > 1 %}
-            <button type="button" class="absolute left-2 top-1/2 flex size-11 -translate-y-1/2 items-center justify-center rounded-full border border-surface/40 bg-txt-primary/80 text-2xl text-surface hover:bg-[var(--lp-gold)] hover:text-[color:var(--lp-on-gold)]" @click="prev()" aria-label="Previous photo"><span aria-hidden="true">‹</span></button>
-            <button type="button" class="absolute right-2 top-1/2 flex size-11 -translate-y-1/2 items-center justify-center rounded-full border border-surface/40 bg-txt-primary/80 text-2xl text-surface hover:bg-[var(--lp-gold)] hover:text-[color:var(--lp-on-gold)]" @click="next()" aria-label="Next photo"><span aria-hidden="true">›</span></button>
+            <button type="button" class="absolute left-2 top-1/2 flex size-11 -translate-y-1/2 items-center justify-center rounded-full border border-surface/40 bg-txt-primary/80 text-2xl text-surface hover:bg-highlight hover:text-on-highlight" @click="prev()" aria-label="Previous photo"><span aria-hidden="true">‹</span></button>
+            <button type="button" class="absolute right-2 top-1/2 flex size-11 -translate-y-1/2 items-center justify-center rounded-full border border-surface/40 bg-txt-primary/80 text-2xl text-surface hover:bg-highlight hover:text-on-highlight" @click="next()" aria-label="Next photo"><span aria-hidden="true">›</span></button>
             {% endif %}
           </div>
         </div>
@@ -83,7 +83,7 @@
         <div class="mt-2 flex justify-center">
           {% for img in hero_images %}
           <button type="button" class="flex size-11 items-center justify-center" @click="c = {{ forloop.counter0 }}" aria-label="Show photo {{ forloop.counter }}" :aria-current="c === {{ forloop.counter0 }}">
-            <span class="h-2 rounded-full transition-all" :class="c === {{ forloop.counter0 }} ? 'w-6 bg-[var(--lp-gold)]' : 'w-2 bg-surface/40'"></span>
+            <span class="h-2 rounded-full transition-all" :class="c === {{ forloop.counter0 }} ? 'w-6 bg-highlight' : 'w-2 bg-surface/40'"></span>
           </button>
           {% endfor %}
         </div>
@@ -103,9 +103,9 @@
     {% comment %} JESUS IS LORD CHURCH: the title strip with two quick doors into the page. {% endcomment %}
     <section class="border-t border-border bg-surface-alt py-14">
       <div class="mx-auto grid w-full max-w-6xl gap-6 px-4 sm:px-6 md:grid-cols-[1fr_1.35fr_1fr]">
-        <a href="#whats-inside" class="block rounded-lg border border-border bg-surface p-6 transition-colors hover:border-[color:var(--lp-gold)]">
+        <a href="#whats-inside" class="block rounded-lg border border-border bg-surface p-6 transition-colors hover:border-highlight">
           <h3 class="flex items-center gap-3 text-base font-bold uppercase tracking-wider text-txt-primary">
-            <span class="flex size-9 items-center justify-center rounded-full bg-[var(--lp-gold)] text-[color:var(--lp-on-gold)]">{% include "includes/icon.html" with name="fire" class="size-5" %}</span>Grow in faith
+            <span class="flex size-9 items-center justify-center rounded-full bg-highlight text-on-highlight">{% include "includes/icon.html" with name="fire" class="size-5" %}</span>Grow in faith
           </h3>
           <p class="mt-2 text-base text-txt-secondary">Set goals, check in daily, and keep your Bible reading streak going.</p>
         </a>
@@ -113,9 +113,9 @@
           <h2 class="text-3xl font-extrabold tracking-tight text-txt-primary sm:text-4xl">Jesus Is Lord Church</h2>
           <p class="mt-2 text-base font-semibold text-txt-secondary">Rooted in the Word. Growing in love. Serving our community.</p>
         </div>
-        <a href="#whats-inside" class="block rounded-lg border border-border bg-surface p-6 transition-colors hover:border-[color:var(--lp-gold)]">
+        <a href="#whats-inside" class="block rounded-lg border border-border bg-surface p-6 transition-colors hover:border-highlight">
           <h3 class="flex items-center gap-3 text-base font-bold uppercase tracking-wider text-txt-primary">
-            <span class="flex size-9 items-center justify-center rounded-full bg-[var(--lp-gold)] text-[color:var(--lp-on-gold)]">{% include "includes/icon.html" with name="users" class="size-5" %}</span>Serve together
+            <span class="flex size-9 items-center justify-center rounded-full bg-highlight text-on-highlight">{% include "includes/icon.html" with name="users" class="size-5" %}</span>Serve together
           </h3>
           <p class="mt-2 text-base text-txt-secondary">Attendance, tithes and members for each extension, without the paperwork.</p>
         </a>
@@ -126,21 +126,21 @@
     <section class="border-t border-border bg-surface py-16" aria-label="Mission, vision and core values">
       <div class="mx-auto grid w-full max-w-6xl gap-9 px-4 sm:px-6 md:grid-cols-3">
         <article class="flex flex-col text-center">
-          <div class="order-first mb-5 flex h-44 items-center justify-center rounded-lg bg-txt-primary text-surface"><span class="flex size-20 items-center justify-center rounded-full bg-[var(--lp-gold)] text-[color:var(--lp-on-gold)]">{% include "includes/icon.html" with name="hand-raised" class="size-10" %}</span></div>
+          <div class="order-first mb-5 flex h-44 items-center justify-center rounded-lg bg-txt-primary text-surface"><span class="flex size-20 items-center justify-center rounded-full bg-highlight text-on-highlight">{% include "includes/icon.html" with name="hand-raised" class="size-10" %}</span></div>
           <h3 class="text-xl font-bold uppercase tracking-wide text-txt-primary">{{ about.mission.title }}</h3>
-          <span class="mx-auto my-3 block h-[3px] w-10 bg-[var(--lp-gold)]" aria-hidden="true"></span>
+          <span class="mx-auto my-3 block h-[3px] w-10 bg-highlight" aria-hidden="true"></span>
           <p class="text-base leading-relaxed text-txt-secondary">{{ about.mission.body|linebreaksbr }}</p>
         </article>
         <article class="flex flex-col text-center">
-          <div class="order-first mb-5 flex h-44 items-center justify-center rounded-lg bg-txt-primary text-surface"><span class="flex size-20 items-center justify-center rounded-full bg-[var(--lp-gold)] text-[color:var(--lp-on-gold)]">{% include "includes/icon.html" with name="book-open" class="size-10" %}</span></div>
+          <div class="order-first mb-5 flex h-44 items-center justify-center rounded-lg bg-txt-primary text-surface"><span class="flex size-20 items-center justify-center rounded-full bg-highlight text-on-highlight">{% include "includes/icon.html" with name="book-open" class="size-10" %}</span></div>
           <h3 class="text-xl font-bold uppercase tracking-wide text-txt-primary">{{ about.vision.title }}</h3>
-          <span class="mx-auto my-3 block h-[3px] w-10 bg-[var(--lp-gold)]" aria-hidden="true"></span>
+          <span class="mx-auto my-3 block h-[3px] w-10 bg-highlight" aria-hidden="true"></span>
           <p class="text-base leading-relaxed text-txt-secondary">{{ about.vision.body|linebreaksbr }}</p>
         </article>
         <article class="flex flex-col text-center">
-          <div class="order-first mb-5 flex h-44 items-center justify-center rounded-lg bg-txt-primary text-surface"><span class="flex size-20 items-center justify-center rounded-full bg-[var(--lp-gold)] text-[color:var(--lp-on-gold)]">{% include "includes/icon.html" with name="fire" class="size-10" %}</span></div>
+          <div class="order-first mb-5 flex h-44 items-center justify-center rounded-lg bg-txt-primary text-surface"><span class="flex size-20 items-center justify-center rounded-full bg-highlight text-on-highlight">{% include "includes/icon.html" with name="fire" class="size-10" %}</span></div>
           <h3 class="text-xl font-bold uppercase tracking-wide text-txt-primary">{{ about.values.title }}</h3>
-          <span class="mx-auto my-3 block h-[3px] w-10 bg-[var(--lp-gold)]" aria-hidden="true"></span>
+          <span class="mx-auto my-3 block h-[3px] w-10 bg-highlight" aria-hidden="true"></span>
           <p class="text-base leading-relaxed text-txt-secondary">{{ about.values.body|linebreaksbr }}</p>
         </article>
       </div>
@@ -153,12 +153,12 @@
     <div class="mx-auto grid w-full max-w-6xl items-center gap-12 px-4 sm:px-6 md:grid-cols-2 md:gap-14">
       <div>
         <h2 id="church-heading" class="text-3xl font-extrabold leading-tight tracking-tight text-txt-primary sm:text-4xl">{{ church_intro.title }}</h2>
-        <span class="my-4 block h-[3px] w-10 bg-[var(--lp-gold)]" aria-hidden="true"></span>
+        <span class="my-4 block h-[3px] w-10 bg-highlight" aria-hidden="true"></span>
         <p class="max-w-xl text-lg leading-relaxed text-txt-secondary">{{ church_intro.body }}</p>
         <ul class="mt-8 space-y-5">
           {% for p in church_points %}
           <li class="flex gap-4">
-            <span class="flex size-10 shrink-0 items-center justify-center rounded-full bg-[var(--lp-gold)] text-[color:var(--lp-on-gold)]">{% include "includes/icon.html" with name=p.icon class="size-5" %}</span>
+            <span class="flex size-10 shrink-0 items-center justify-center rounded-full bg-highlight text-on-highlight">{% include "includes/icon.html" with name=p.icon class="size-5" %}</span>
             <div>
               <h3 class="font-bold text-txt-primary">{{ p.title }}</h3>
               <p class="mt-1 text-base text-txt-secondary">{{ p.text }}</p>
@@ -186,7 +186,7 @@
         <div class="relative flex min-h-56 items-center justify-center overflow-hidden bg-txt-primary p-9 text-center text-surface">
           <div class="pointer-events-none absolute size-72 rounded-full bg-accent/20 blur-3xl" aria-hidden="true"></div>
           <div class="relative">
-            <p class="flex items-center justify-center gap-3 text-sm font-extrabold uppercase tracking-[.22em]"><span class="h-0.5 w-6 bg-[var(--lp-gold)]" aria-hidden="true"></span>{{ theme.month|date:"F Y" }}</p>
+            <p class="flex items-center justify-center gap-3 text-sm font-extrabold uppercase tracking-[.22em]"><span class="h-0.5 w-6 bg-highlight" aria-hidden="true"></span>{{ theme.month|date:"F Y" }}</p>
             <p class="mt-3 break-words text-3xl font-black uppercase leading-tight sm:text-4xl">{{ theme.title }}</p>
           </div>
         </div>
@@ -214,7 +214,7 @@
         <ul class="mt-6 space-y-3">
           {% for p in buddy_points %}
           <li class="flex items-start gap-4 rounded-xl border border-border bg-surface p-4">
-            <span class="flex size-10 shrink-0 items-center justify-center rounded-full bg-[var(--lp-gold)] text-[color:var(--lp-on-gold)]">{% include "includes/icon.html" with name=p.icon class="size-5" %}</span>
+            <span class="flex size-10 shrink-0 items-center justify-center rounded-full bg-highlight text-on-highlight">{% include "includes/icon.html" with name=p.icon class="size-5" %}</span>
             <div>
               <h3 class="font-bold text-txt-primary">{{ p.title }}</h3>
               <p class="mt-1 text-base text-txt-secondary">{{ p.text }}</p>
@@ -244,7 +244,7 @@
         <ul class="mt-8 space-y-6">
           {% for f in member_features %}
           <li class="flex gap-4">
-            <span class="flex size-10 shrink-0 items-center justify-center rounded-lg bg-[var(--lp-gold)] text-[color:var(--lp-on-gold)]">{% include "includes/icon.html" with name=f.icon class="size-5" %}</span>
+            <span class="flex size-10 shrink-0 items-center justify-center rounded-lg bg-highlight text-on-highlight">{% include "includes/icon.html" with name=f.icon class="size-5" %}</span>
             <div>
               <h3 class="font-medium text-txt-primary">{{ f.title }}</h3>
               <p class="mt-1 text-base text-txt-secondary">{{ f.text }}</p>
@@ -279,7 +279,7 @@
         <button type="button" class="relative block aspect-video w-full bg-txt-primary" x-show="!play" @click="play = true" aria-label="Play: {{ video.title }}">
           <img src="{{ video.thumbnail_url }}" alt="" class="absolute inset-0 size-full object-cover" loading="lazy">
           <span class="absolute inset-0 bg-txt-primary/40" aria-hidden="true"></span>
-          <span class="absolute left-1/2 top-1/2 flex size-[4.5rem] -translate-x-1/2 -translate-y-1/2 items-center justify-center rounded-full bg-[var(--lp-gold)] text-2xl text-[color:var(--lp-on-gold)] shadow-xl" aria-hidden="true">▶</span>
+          <span class="absolute left-1/2 top-1/2 flex size-[4.5rem] -translate-x-1/2 -translate-y-1/2 items-center justify-center rounded-full bg-highlight text-2xl text-on-highlight shadow-xl" aria-hidden="true">▶</span>
         </button>
         <template x-if="play">
           <iframe class="aspect-video w-full" src="https://www.youtube-nocookie.com/embed/{{ video.youtube_video_id }}?autoplay=1" title="{{ video.title }}" allow="autoplay; encrypted-media; picture-in-picture" allowfullscreen></iframe>
@@ -297,20 +297,20 @@
     <div class="relative mx-auto w-full max-w-2xl px-4 text-center sm:px-6">
       <h2 id="prayer-heading" class="text-3xl font-bold sm:text-4xl">Prayer request</h2>
       <p class="mt-4 text-base leading-relaxed text-surface/80">We are a church whose heartbeat is prayer. Log in to send a request to your coordinator. Keep it private or send it anonymously, and read their reply in the app.</p>
-      <div class="mt-8"><a href="{% url 'accounts:login' %}" class="btn min-h-12 bg-[var(--lp-gold)] px-8 font-extrabold uppercase tracking-wider text-[color:var(--lp-on-gold)] hover:bg-[var(--lp-gold-soft)]">Log in to send a request</a></div>
+      <div class="mt-8"><a href="{% url 'accounts:login' %}" class="btn min-h-12 bg-highlight px-8 font-extrabold uppercase tracking-wider text-on-highlight hover:bg-highlight-soft">Log in to send a request</a></div>
     </div>
   </section>
 
   {% comment %} SUPPORT THE MINISTRY: QR codes on the left when there are any, account details on the right. {% endcomment %}
   <section id="give" class="grid md:grid-cols-2" aria-labelledby="give-heading">
-    <div class="flex min-h-56 flex-wrap items-center justify-center gap-5 bg-[var(--lp-gold-soft)] p-8">
+    <div class="flex min-h-56 flex-wrap items-center justify-center gap-5 bg-highlight-soft p-8">
       {% for acct in give_accounts %}{% if acct.qr_image %}
       <figure class="m-0 text-center">
         <img src="{{ acct.qr_image.url }}" alt="QR code for {{ acct.payment_app }}" class="size-36 rounded-lg border border-border bg-surface object-contain p-1" loading="lazy">
-        <figcaption class="mt-2 text-base font-medium text-[color:var(--lp-on-gold)]">{{ acct.payment_app }}</figcaption>
+        <figcaption class="mt-2 text-base font-medium text-on-highlight">{{ acct.payment_app }}</figcaption>
       </figure>
       {% endif %}{% endfor %}
-      {% if not give_accounts %}<span class="border border-[color:var(--lp-on-gold)] px-4 py-2 text-sm font-extrabold uppercase tracking-widest text-[color:var(--lp-on-gold)]">Support the ministry</span>{% endif %}
+      {% if not give_accounts %}<span class="border border-on-highlight px-4 py-2 text-sm font-extrabold uppercase tracking-widest text-on-highlight">Support the ministry</span>{% endif %}
     </div>
 
     <div class="flex flex-col justify-center gap-4 bg-txt-primary px-6 py-14 text-surface sm:px-[9%]">

@@ -52,6 +52,11 @@
   --color-accent-soft:    #E8F1FC;
   --color-on-accent:      #FFFFFF;
 
+    /* Brand highlight: fills, lines and icon badges. Never for text. */
+  --color-highlight:       #D4AF56;
+  --color-highlight-soft:  color-mix(in oklab, var(--color-highlight) 75%, white);
+  --color-on-highlight:    #0B1220;
+
   /* The frame that floats above the page: icon rail, sidebar panel, header, bottom bar. It is the surface color with a
      hint of the primary color, so it is lighter than the page in light mode and in dark mode (higher layers are lighter),
      and it follows custom themes. Its depth comes from the shadows in the templates. */
@@ -74,6 +79,7 @@
   .btn-ghost     { @apply text-txt-secondary hover:bg-surface-alt hover:text-txt-primary; }
   /* Destructive actions (delete). Uses the error token; text color flips with the mode. */
   .btn-danger    { @apply bg-error text-on-primary hover:opacity-90; }
+  .btn-highlight { @apply bg-highlight text-on-highlight hover:bg-highlight-soft; }
 
   .label { @apply mb-1.5 block text-sm font-medium text-txt-primary; }
   .input {
