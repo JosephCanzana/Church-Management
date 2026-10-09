@@ -25,7 +25,7 @@ from django.utils import timezone
 from django.utils.translation import get_language
 
 DEFAULT_HERO = {
-    "title": "Jesus Is Lord Church Worldwide",
+    "title": "Jesus Is Lord Church",
     "intro": (
         "A church family committed to knowing God, growing in faith, "
         "serving others, and sharing the hope of Jesus Christ."
@@ -143,7 +143,7 @@ BUDDY_POINTS = [
 
 # The long footer shown at the bottom of the landing page.
 FOOTER = {
-    "brand": "Jesus Is Lord Church Worldwide",
+    "brand": "Jesus Is Lord Church",
     "blurb": "A church family growing in faith, love, worship, prayer, and service.",
     "more": [
         {"label": "Copyright", "url": "#"},
