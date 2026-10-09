@@ -499,7 +499,19 @@ still in use), `archive_inactive_users`, `auto_transfer_extension`,
 - **Guards:** you cannot archive, suspend, deactivate, reset, delete or change the role of yourself; the last active
   super-admin cannot be archived, suspended, deactivated or demoted (checked under a lock on all super-admin rows).
 - **Coordinators:** archiving a coordinator frees the seat and makes them a member; a person leaving or entering a
-  seat updates `Extension.coordinator` in the same transaction; creating a coordinator into a seat that is taken is refused.
+  seat updates `Extension.coordinator` in the same transaction. Putting a coordinator into a seat that is taken is
+  refused UNLESS the form sent `replace_coordinator` (the confirmation dialog in `user_form.html`): then the old
+  coordinator stays in that extension as a member (`_free_taken_seat`, audit rows `account.role_change` and
+  `extension.coordinator_change`). The user form's extension is a text box with a datalist (`UserForm.extension_data`)
+  plus a hidden id field, so the service still receives an Extension object.
+- **People inside one extension (detail page):** only transfer IN. There is no remove, archive or transfer-out on this
+  page (people leave an extension by being transferred into another one; archiving a person is done from the people
+  screens). The "Transfer people in" button opens a right-hand panel (search + tick list of everyone from every extension,
+  capped at `ADD_OPTION_LIMIT`), and Transfer asks for confirmation (`$store.ui.confirm`) first. `move_person` (someone
+  from ANOTHER extension needs `confirmed=True`; a moving coordinator frees the old seat and arrives as a member;
+  special roles are cleared) and `transfer_people_in` (max 100, one transaction per person, one-time token, skipped
+  rows explained). Only members and coordinators belong to an extension; admins and super-admins never do.
+  Route: `/superadmin/extensions/<pk>/people/add/`.
 - **Passwords:** shown once, never stored, logged or put in the session. Order used: typed (min 8 characters), else the
   else the acting person's own default for the role, else a generated 12-character password, else a generated 12-character password. A reset forces a change at next
   login and ends the person's sessions (the hash changes). "Skip activation" on create is for test accounts that should not

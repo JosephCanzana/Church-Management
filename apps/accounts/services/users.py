@@ -25,7 +25,7 @@ from django.utils import timezone
 from apps.audit.services import log_action
 from apps.core import services as core_services
 from apps.core.services import ServiceError, consume_submission_token
-from apps.core.text import clean_text
+from apps.core.text import clean_text, title_case
 
 from ..validators import generate_strong_password, validate_strong_password
 
@@ -223,6 +223,42 @@ def _log_person(action, actor, request, person, **kwargs):
     )
 
 
+def _free_taken_seat(actor, request, ext, replace):
+    """Make room in `ext` for a new coordinator by demoting the current one.
+
+    Called with the extension row already locked. Without `replace` (the person
+    did not confirm in the dialog) the seat stays taken and this refuses, so the
+    server is the final guard and the dialog is only the polite part. The old
+    coordinator stays in the extension as a member. Returns the old coordinator
+    (or None). The caller puts the new coordinator in the seat and calls
+    `_log_coordinator_change`.
+    """
+    if not replace:
+        raise ServiceError(
+            f"{title_case(ext.name)} already has a coordinator. Confirm the replacement to continue."
+        )
+    old = User.objects.select_for_update().filter(pk=ext.coordinator_id).first()
+    if old is not None and old.role == Role.COORDINATOR:
+        old.role = Role.MEMBER
+        old.save(update_fields=["role", "updated_at"])
+        _log_person("account.role_change", actor, request, old,
+                    before={"role": Role.COORDINATOR}, after={"role": Role.MEMBER})
+    ext.coordinator = None
+    ext.save(update_fields=["coordinator", "updated_at"])
+    return old
+
+
+def _log_coordinator_change(actor, request, ext, old, new):
+    """One audit row saying who the coordinator of `ext` was and is now."""
+    log_action(
+        "extension.coordinator_change", actor=actor, request=request,
+        entity_type="extension", entity_id=ext.pk, entity_label=title_case(ext.name),
+        extension_id=ext.pk,
+        before={"coordinator": old.account_id if old else None},
+        after={"coordinator": new.account_id},
+    )
+
+
 # ---------------------------------------------------------------------- create
 @dataclass
 class CreateResult:
@@ -238,8 +274,10 @@ def create_user(actor, request, data, *, token):
                  creates nothing.
     activated -- True skips activation (status active, no forced password
                  change). Meant for test accounts.
-    Coordinators: the extension must not already have one; the new person is
-    set as its coordinator in the same transaction.
+    Coordinators: the new person is set as the coordinator of the extension in the
+    same transaction. If the seat is taken, `data["replace_coordinator"]` (ticked by
+    the confirmation dialog) demotes the old coordinator to a member of that
+    extension; without it the request is refused.
     """
     require_user_manager(actor)
     data = normalize_details(data)
@@ -255,11 +293,12 @@ def create_user(actor, request, data, *, token):
             return CreateResult(duplicate=True)
 
         ext = _lock_extensions([wanted.pk]).get(wanted.pk) if wanted is not None else None
+        replaced = None
         if wanted is not None:
             if ext is None or ext.is_archived:
                 raise ServiceError("Choose an extension that is not archived.")
             if role == Role.COORDINATOR and ext.coordinator_id:
-                raise ServiceError(f"{ext.name} already has a coordinator. Remove or replace them first.")
+                replaced = _free_taken_seat(actor, request, ext, data.get("replace_coordinator"))
 
         _refuse_duplicate(data)
 
@@ -286,6 +325,8 @@ def create_user(actor, request, data, *, token):
             if role == Role.COORDINATOR:
                 ext.coordinator = person
                 ext.save(update_fields=["coordinator", "updated_at"])
+                if replaced is not None:
+                    _log_coordinator_change(actor, request, ext, replaced, person)
 
         _log_person(
             "account.create", actor, request, person,
@@ -307,7 +348,9 @@ def update_user(actor, request, ref, data):
     Rules: no role change on yourself; the last active super-admin keeps their
     role; a coordinator seat is cleared when someone leaves it and taken when
     someone enters it (an extension has one coordinator); moving extension
-    closes the open history row and opens a new one.
+    closes the open history row and opens a new one. Taking a seat that is
+    already filled needs `data["replace_coordinator"]` (the confirmation
+    dialog); the old coordinator then becomes a member of that extension.
     """
     require_user_manager(actor)
     data = normalize_details(data)
@@ -319,6 +362,12 @@ def update_user(actor, request, ref, data):
     with transaction.atomic():
         current_ext_id = User.objects.filter(pk=ref.pk).values_list("extension_id", flat=True).first()
         exts = _lock_extensions([current_ext_id, wanted.pk if wanted else None])
+        # Lock order: people in ascending id order. The coordinator who may be
+        # replaced is locked together with this person before _lock_person.
+        seat = exts[wanted.pk].coordinator_id if wanted is not None and wanted.pk in exts else None
+        list(User.objects.select_for_update()
+             .filter(pk__in=[p for p in (ref.pk, seat) if p]).order_by("pk")
+             .values_list("pk", flat=True))
         locked = _lock_person(ref.pk)
         person = locked.person
         if person.status == Status.ARCHIVED:
@@ -350,10 +399,13 @@ def update_user(actor, request, ref, data):
                 _refuse_last_super_admin(locked, "change the role of")
         if ext_changed and new_ext is not None and new_ext.is_archived:
             raise ServiceError("Choose an extension that is not archived.")
-        if new_role == Role.COORDINATOR and new_ext.coordinator_id not in (None, person.pk):
-            raise ServiceError(f"{new_ext.name} already has a coordinator. Remove or replace them first.")
         if not (details_changed or role_changed or ext_changed):
             return person, False
+
+        # The seat is wanted but taken: demote its coordinator (only when confirmed).
+        replaced = None
+        if new_role == Role.COORDINATOR and new_ext.coordinator_id not in (None, person.pk):
+            replaced = _free_taken_seat(actor, request, new_ext, data.get("replace_coordinator"))
 
         # Leaving the coordinator seat (a different role, or a different extension).
         if (
@@ -372,6 +424,8 @@ def update_user(actor, request, ref, data):
         if new_role == Role.COORDINATOR and new_ext.coordinator_id != person.pk:
             new_ext.coordinator = person
             new_ext.save(update_fields=["coordinator", "updated_at"])
+            if replaced is not None:
+                _log_coordinator_change(actor, request, new_ext, replaced, person)
 
         if ext_changed:
             UserExtensionHistory.objects.filter(user=person, to_date__isnull=True).update(
@@ -579,6 +633,121 @@ def force_delete_user(actor, request, ref):
             "This person is still referenced by other records, so they cannot be deleted yet."
         )
     return None, True
+
+
+# ------------------------------------------------- people inside one extension
+def _clear_special_roles(person):
+    """Delete the person's special roles (attendance, tithes); returns how many.
+
+    Special roles have a limit per extension, so they never travel with someone
+    to another extension.
+    """
+    from ..models import UserSpecialRole   # imported here: only moves need it
+
+    removed, _ = UserSpecialRole.objects.filter(user=person).delete()
+    return removed
+
+
+def move_person(actor, request, person_ref, target_ref, *, confirmed=False, expected_from=None):
+    """Put a person in `target` (transfer in from another extension, or add someone who has none). Returns (person, changed).
+
+    Rules:
+      - Only members and coordinators belong to an extension (admins and
+        super-admins never do), the person must not be archived, the target
+        must not be archived.
+      - Someone who already belongs to ANOTHER extension is moved only when
+        `confirmed` is true (the dialog "this person is from another extension").
+      - A moving coordinator frees the seat of the old extension and arrives as
+        a member; their special roles are cleared.
+      - `expected_from` (an extension id) makes the call fail calmly when the
+        person is no longer in the extension the page showed.
+    Lock order: extensions ascending, then the person.
+    """
+    require_user_manager(actor)
+    with transaction.atomic():
+        current = User.objects.filter(pk=person_ref.pk).values_list("extension_id", flat=True).first()
+        exts = _lock_extensions([current, target_ref.pk])
+        person = _lock_person(person_ref.pk).person
+        target = exts.get(target_ref.pk)
+        if target is None:
+            raise ServiceError("That extension no longer exists.")
+        if target.is_archived:
+            raise ServiceError("Choose an extension that is not archived.")
+        if person.status == Status.ARCHIVED:
+            raise ServiceError(f"{person.full_name} is archived. Restore them first.")
+        if person.role not in ROLES_WITH_EXTENSION:
+            raise ServiceError(f"{person.full_name} is an {Role(person.role).label.lower()} and does not belong to an extension.")
+        if expected_from is not None and person.extension_id != expected_from:
+            raise ServiceError(f"{person.full_name} is no longer in this extension.")
+        if person.extension_id == target.pk:
+            return person, False
+        old = exts.get(person.extension_id)
+        if old is not None and not confirmed:
+            raise ServiceError(
+                f"{person.full_name} belongs to {title_case(old.name)}. Confirm the move to continue."
+            )
+
+        old_role, old_ext_id = person.role, person.extension_id
+        if old is not None and old.coordinator_id == person.pk:
+            old.coordinator = None
+            old.save(update_fields=["coordinator", "updated_at"])
+        person.role = Role.MEMBER
+        person.extension = target
+        cleared = _clear_special_roles(person)
+        person.save(update_fields=["role", "extension", "updated_at"])
+
+        UserExtensionHistory.objects.filter(user=person, to_date__isnull=True).update(
+            to_date=timezone.localdate()
+        )
+        UserExtensionHistory.objects.create(
+            user=person, extension=target, from_date=timezone.localdate(),
+            reason=UserExtensionHistory.Reason.MANUAL,
+        )
+        if old_role != Role.MEMBER:
+            _log_person("account.role_change", actor, request, person,
+                        before={"role": old_role}, after={"role": Role.MEMBER})
+        _log_person("account.extension_change", actor, request, person,
+                    before={"extension_id": old_ext_id},
+                    after={"extension_id": target.pk, "special_roles_cleared": cleared})
+    return person, True
+
+
+def transfer_people_in(actor, request, extension, ids, *, token, confirmed=False):
+    """Transfer people INTO one extension (max 100). Returns BulkResult.
+
+    Same contract as `run_bulk`: one transaction per person in ascending id order,
+    anyone it does not apply to is skipped with a reason, and the one-time token
+    is consumed first so a repeated submission does nothing. People who belong to
+    another extension are only moved when `confirmed` is true (the confirmation
+    dialog); the others (no extension) are simply added.
+    """
+    require_user_manager(actor)
+    ids = sorted({int(i) for i in ids})
+    if not ids:
+        raise ServiceError("Select at least one person.")
+    if len(ids) > MAX_BULK:
+        raise ServiceError(f"Select at most {MAX_BULK} people at a time.")
+
+    with transaction.atomic():
+        if not consume_submission_token(token):
+            return BulkResult(duplicate=True)
+
+    result = BulkResult()
+    for pk in ids:
+        person = User.objects.filter(pk=pk).first()
+        if person is None:
+            result.skipped.append((f"#{pk}", "no longer exists"))
+            continue
+        try:
+            _, changed = move_person(actor, request, person, extension, confirmed=confirmed)
+        except ServiceError as exc:
+            result.skipped.append((person.full_name, str(exc)))
+            continue
+        if changed:
+            result.done.append(person.full_name)
+        else:
+            result.skipped.append((person.full_name, "already there"))
+    return result
 
 
 # --------------------------------------------------------------------------- bulk

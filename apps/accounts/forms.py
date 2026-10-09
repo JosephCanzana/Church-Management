@@ -6,6 +6,7 @@ correct is decided by the backend in `accounts/backends.py`, and every
 business rule lives in `accounts/services.py`.
 """
 import re
+from functools import cached_property
 
 from django import forms
 from django.contrib.auth.password_validation import validate_password
@@ -234,6 +235,27 @@ class AssignCoordinatorForm(forms.Form):
         self.fields["user"].queryset = people
 
 
+
+class AddPeopleForm(forms.Form):
+    """Pick the people to transfer INTO one extension (from any extension).
+
+    The page's datalist builds a list of chosen people; each id arrives as a
+    hidden `people` field. Only members and coordinators who are not archived
+    and not already in the extension qualify.
+    """
+
+    people = forms.ModelMultipleChoiceField(queryset=User.objects.none(), widget=forms.MultipleHiddenInput())
+
+    def __init__(self, *args, extension, **kwargs):
+        super().__init__(*args, **kwargs)
+        self.fields["people"].queryset = (
+            User.objects.filter(role__in=[Role.MEMBER, Role.COORDINATOR])
+            .exclude(status=Status.ARCHIVED)
+            .exclude(extension=extension)
+            .select_related("extension")
+        )
+
+
 # ================================================================== people
 class UserForm(forms.Form):
     """Details, role and extension fields shared by person create and edit forms.
@@ -258,10 +280,14 @@ class UserForm(forms.Form):
         widget=forms.DateInput(attrs={"class": "input", "type": "date"}, format="%Y-%m-%d"),
     )
     role = forms.ChoiceField(widget=forms.Select(attrs={"class": "input", "x-model": "role"}))
+    # The page shows a text box with a datalist of extension names and puts the
+    # chosen extension's id in this hidden field (the server still checks the id).
     extension = forms.ModelChoiceField(
-        queryset=Extension.objects.none(), required=False, empty_label="Choose an extension",
-        widget=forms.Select(attrs={"class": "input"}),
+        queryset=Extension.objects.none(), required=False, empty_label=None,
+        widget=forms.HiddenInput(),
     )
+    # Set by the confirmation dialog when a coordinator may replace the current one.
+    replace_coordinator = forms.BooleanField(required=False, widget=forms.HiddenInput())
 
     def __init__(self, *args, actor, keep_extension=None, keep_role=None, exclude_pk=None, **kwargs):
         super().__init__(*args, **kwargs)
@@ -274,7 +300,26 @@ class UserForm(forms.Form):
         allowed = Q(archived_at__isnull=True)
         if keep_extension:
             allowed |= Q(pk=keep_extension)
-        self.fields["extension"].queryset = Extension.objects.filter(allowed).order_by("name")
+        self.fields["extension"].queryset = (
+            Extension.objects.filter(allowed).select_related("coordinator").order_by("name")
+        )
+
+    @cached_property
+    def extension_data(self):
+        """Choosable extensions for the page's datalist and its coordinator warning.
+
+        One dict per extension: id, name (title case), the current coordinator's
+        name ("" when none) and id (None when none).
+        """
+        return [
+            {
+                "id": ext.pk,
+                "name": title_case(ext.name),
+                "coordinator": ext.coordinator.full_name if ext.coordinator else "",
+                "coordinatorId": ext.coordinator_id,
+            }
+            for ext in self.fields["extension"].queryset
+        ]
 
     # Names are stored lowercase with single spaces; the pages show them in name case.
     def clean_first_name(self):

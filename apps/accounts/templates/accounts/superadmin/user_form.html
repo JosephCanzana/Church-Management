@@ -4,7 +4,12 @@ Create (person is None) or edit (person is set) a person.
 The extension field only shows for roles that need one (coordinator, member); the
 server decides, the page only hides what does not apply. Passwords are set here
 only when creating; for an existing person use Reset password on the detail page.
-Extends base_app.html. Blocks filled: title, page_title, content.
+The extension is a text box with a datalist: typing a name shows the matching extensions
+(form.extension_data, title case). The extension's id goes into a hidden field. When the role is
+coordinator and the chosen extension already has one, submitting asks first (confirm dialog,
+$store.ui.confirm) and then sends replace_coordinator=1; the old coordinator becomes a member of
+that extension. The server refuses the replacement without that flag.
+Extends base_app.html. Blocks filled: title, page_title, content, extra_js.
 Context: form (UserCreateForm or UserForm), person (User or None),
 submit_token (create only: one-time token so a double submit creates one person).
 -->
@@ -14,9 +19,13 @@ submit_token (create only: one-time token so a double submit creates one person)
 {% block page_title %}{% if person %}Edit person{% else %}New person{% endif %}{% endblock %}
 
 {% block content %}
+{{ form.extension_data|json_script:"extension-data" }}
 <form method="post" class="card max-w-2xl" novalidate
-      x-data="{ role: '{{ form.role.value|default:'member'|escapejs }}' }">
+      x-data="userForm({ role: '{{ form.role.value|default:'member'|escapejs }}', extId: '{{ form.extension.value|default:''|escapejs }}', personId: '{{ person.pk|default:''|escapejs }}' })"
+      @submit="onSubmit($event)">
   {% csrf_token %}
+  <input type="hidden" name="replace_coordinator" :value="replace ? '1' : ''">
+  <input type="hidden" name="extension" :value="extId">
   {% if not person %}<input type="hidden" name="submit_token" value="{{ submit_token }}">{% endif %}
 
   {% if form.non_field_errors %}
@@ -50,9 +59,23 @@ submit_token (create only: one-time token so a double submit creates one person)
       {% for error in form.role.errors %}<p class="field-error">{{ error }}</p>{% endfor %}
     </div>
     <div x-show="role === 'coordinator' || role === 'member'" x-cloak>
-      <label for="{{ form.extension.id_for_label }}" class="label">Extension</label>
-      {{ form.extension }}
+      <label for="extension-text" class="label">Extension</label>
+      <input type="text" id="extension-text" class="input" list="extension-options" autocomplete="off"
+             placeholder="Start typing an extension name" x-model="typed" @input="pick()">
+      <datalist id="extension-options">
+        {% for ext in form.extension_data %}
+        <option value="{{ ext.name }}">{% if ext.coordinator %}Coordinator: {{ ext.coordinator }}{% else %}No coordinator{% endif %}</option>
+        {% endfor %}
+      </datalist>
       {% for error in form.extension.errors %}<p class="field-error">{{ error }}</p>{% endfor %}
+      <p class="field-error" x-show="typed.trim() && !match" x-cloak style="display:none">
+        No extension has this name. Pick one from the list.
+      </p>
+      <p class="field-help" x-show="taken" x-cloak style="display:none">
+        <span x-text="match && match.name"></span> already has
+        <span x-text="match && match.coordinator"></span> as coordinator. You will be asked to confirm replacing them;
+        they stay in the extension as a member.
+      </p>
     </div>
   </div>
   <p class="field-help" x-show="role === 'admin'" x-cloak>
@@ -84,4 +107,48 @@ submit_token (create only: one-time token so a double submit creates one person)
        class="btn btn-ghost">Cancel</a>
   </div>
 </form>
+{% endblock %}
+
+{% block extra_js %}
+<script>
+document.addEventListener('alpine:init', () => {
+  // Extension datalist + "replace the coordinator?" confirmation for the person form.
+  Alpine.data('userForm', (cfg) => ({
+    role: cfg.role, extId: cfg.extId, personId: cfg.personId,
+    typed: '', replace: false, confirmed: false,
+    options: JSON.parse(document.getElementById('extension-data').textContent),
+
+    init() {
+      const current = this.options.find(o => String(o.id) === String(this.extId));
+      this.typed = current ? current.name : '';
+    },
+    // The extension whose name is typed (exact match, ignoring case), or null.
+    get match() {
+      const t = this.typed.trim().toLowerCase();
+      return this.options.find(o => o.name.toLowerCase() === t) || null;
+    },
+    // Typing or picking a name sets the hidden id (empty when nothing matches).
+    pick() { this.extId = this.match ? String(this.match.id) : ''; this.replace = false; },
+    // A coordinator is wanted for an extension whose seat is held by someone else.
+    get taken() {
+      return this.role === 'coordinator' && !!this.match && !!this.match.coordinatorId
+        && String(this.match.coordinatorId) !== String(this.personId);
+    },
+
+    async onSubmit(event) {
+      if (this.confirmed || !this.taken) return;
+      event.preventDefault();
+      const ok = await Alpine.store('ui').confirm({
+        title: 'Replace the coordinator?',
+        message: `${this.match.name} already has ${this.match.coordinator} as coordinator. `
+          + `${this.match.coordinator} will stay in ${this.match.name} as a member.`,
+        confirmText: 'Replace coordinator', danger: false,
+      });
+      if (!ok) return;
+      this.replace = true; this.confirmed = true;
+      this.$nextTick(() => this.$root.requestSubmit());
+    },
+  }));
+});
+</script>
 {% endblock %}

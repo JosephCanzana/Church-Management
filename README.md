@@ -146,6 +146,11 @@ barangay > postal code > street > building number; everything except the buildin
 province, municipality and barangay are dropdowns that follow each other, filled from `static/data/ph_address.json` (PSGC data;
 the server checks the same file). Extension text is stored in lowercase and shown in title case.
 
+On an extension's detail page, **People** has a "Transfer people in" button that opens a panel on the right: search everyone
+from every extension, tick the people, press Transfer and confirm. Special roles are cleared and a coordinator arrives as a
+member. The page has no remove or transfer-out; to move someone out, transfer them in from the other extension. In the user create/edit form the extension is a datalist; choosing a coordinator for
+an extension that already has one asks for confirmation and then makes the old coordinator a member of that extension.
+
 Django's built-in admin lives at `/django-admin/` (not `/admin/`) and is
 for the super-admin only. Only users with `is_staff=True` can open it.
 

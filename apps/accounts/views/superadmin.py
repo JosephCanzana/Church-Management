@@ -20,11 +20,13 @@ from django.shortcuts import redirect, render
 from django.urls import reverse
 from django.views.decorators.http import require_http_methods, require_POST
 
-from apps.core.services import ServiceError
+from apps.core.services import ServiceError, new_submission_token
 from apps.core.text import title_case
 
 from ..decorators import role_required
-from ..forms import AssignCoordinatorForm, ExtensionFilterForm, ExtensionForm
+from ..forms import (
+    AddPeopleForm, AssignCoordinatorForm, ExtensionFilterForm, ExtensionForm,
+)
 from ..models import Extension, Role, Status, User
 from ..services import (
     archive_extension,
@@ -37,9 +39,11 @@ from ..services import (
     unassign_coordinator,
     update_extension,
 )
+from ..services.users import transfer_people_in
 
 PAGE_SIZE = 25
-DETAIL_MEMBER_LIMIT = 50
+PEOPLE_PAGE_SIZE = 25     # people shown per page on the detail screen
+ADD_OPTION_LIMIT = 1000   # most people offered in the "Add a person" datalist
 BULK_LIMIT = 100          # most rows one bulk request will touch
 NAMES_IN_MESSAGE = 3      # how many names a toast lists before "and N more"
 LIST_PARAMS = ("q", "status", "sort", "page")
@@ -170,7 +174,7 @@ def extension_edit(request, pk):
 @super_admin_only
 @require_http_methods(["GET"])
 def extension_detail(request, pk):
-    """One extension: details, coordinator, members and the action buttons."""
+    """One extension: details, coordinator, people (transfer in) and the action buttons."""
     extension = (
         Extension.objects.select_related("coordinator").filter(pk=pk).first()
     )
@@ -178,10 +182,35 @@ def extension_detail(request, pk):
         return _gone(request)
 
     people = User.objects.filter(extension=extension).exclude(status=Status.ARCHIVED)
+    paginator = Paginator(people.order_by("last_name", "first_name", "pk"), PEOPLE_PAGE_SIZE)
+    people_page = paginator.get_page(request.GET.get("page"))
+
+    add_options = []
+    if not extension.is_archived:
+        # Everyone who could be added, from any extension (the page asks before moving them).
+        candidates = (
+            User.objects.filter(role__in=[Role.MEMBER, Role.COORDINATOR])
+            .exclude(status=Status.ARCHIVED)
+            .exclude(extension=extension)
+            .select_related("extension")
+            .order_by("last_name", "first_name", "pk")[:ADD_OPTION_LIMIT]
+        )
+        add_options = [
+            {
+                "id": p.pk,
+                "name": p.full_name,
+                "account_id": p.account_id,
+                "label": f"{p.full_name} ({p.account_id})",
+                "ext": title_case(p.extension.name) if p.extension else "",
+            }
+            for p in candidates
+        ]
+
     return render(request, "accounts/superadmin/extension_detail.html", {
         "extension": extension,
-        "members": people.order_by("last_name", "first_name", "pk")[:DETAIL_MEMBER_LIMIT],
-        "member_count": people.count(),
+        "members": list(people_page.object_list),
+        "people_page": people_page,
+        "member_count": paginator.count,
         "archived_people_count": User.objects.filter(
             extension=extension, status=Status.ARCHIVED
         ).count(),
@@ -189,6 +218,8 @@ def extension_detail(request, pk):
             None if extension.is_archived
             else AssignCoordinatorForm(extension=extension)
         ),
+        "add_options": add_options,
+        "submit_token": new_submission_token(),
     })
 
 
@@ -260,7 +291,7 @@ def extension_unassign_coordinator(request, pk):
 @super_admin_only
 @require_POST
 def extension_assign_coordinator(request, pk):
-    """Set the coordinator chosen in the detail page's form."""
+    """Set the coordinator chosen in the detail page's form (replaces the current one)."""
     extension = _extension_or_none(pk)
     if extension is None:
         return _gone(request)
@@ -281,6 +312,55 @@ def extension_assign_coordinator(request, pk):
         else:
             messages.info(request, f"{person.full_name} is already the coordinator.")
     return redirect("superadmin:extension_detail", pk=pk)
+
+
+# ------------------------------------------------- people of one extension
+@super_admin_only
+@require_POST
+def extension_person_add(request, pk):
+    """Transfer people INTO this extension (POST: people (ids), confirmed, submit_token).
+
+    `confirmed` is "1" once the dialog said the people may leave their current
+    extension; without it the service skips anyone who belongs to another one.
+    """
+    extension = _extension_or_none(pk)
+    if extension is None:
+        return _gone(request)
+    back = redirect("superadmin:extension_detail", pk=pk)
+    form = AddPeopleForm(request.POST, extension=extension)
+    if not form.is_valid():
+        messages.error(request, "Choose people from the list.")
+        return back
+    people = form.cleaned_data["people"][:BULK_LIMIT]
+    try:
+        result = transfer_people_in(
+            request.user, request, extension, [p.pk for p in people],
+            token=request.POST.get("submit_token", ""),
+            confirmed=request.POST.get("confirmed") == "1",
+        )
+    except ServiceError as exc:
+        messages.error(request, str(exc))
+        return back
+    _report_people_result(request, result, f"transferred to {title_case(extension.name)}")
+    return back
+
+
+def _report_people_result(request, result, verb):
+    """Turn a people BulkResult into a success toast and a warning toast."""
+    if result.duplicate:
+        messages.info(request, "That request was already handled.")
+        return
+    if result.done:
+        count = len(result.done)
+        noun = "person was" if count == 1 else "people were"
+        messages.success(request, f"{count} {noun} {verb}: {_names_sentence(result.done)}.")
+    if result.skipped:
+        shown = [f"{label}: {reason}." for label, reason in result.skipped[: NAMES_IN_MESSAGE + 2]]
+        more = len(result.skipped) - len(shown)
+        messages.warning(
+            request,
+            f"Skipped {len(result.skipped)}. " + " ".join(shown) + (f" And {more} more." if more > 0 else ""),
+        )
 
 
 # ------------------------------------------------------------ bulk actions

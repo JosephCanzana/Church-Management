@@ -22,6 +22,7 @@ urlpatterns = [
          name="extension_assign_coordinator"),
     path("extensions/<int:pk>/coordinator/remove/", views.extension_unassign_coordinator,
          name="extension_unassign_coordinator"),
+    path("extensions/<int:pk>/people/add/", views.extension_person_add, name="extension_person_add"),
     path("extensions/<int:pk>/archive/", views.extension_archive, name="extension_archive"),
     path("extensions/<int:pk>/restore/", views.extension_restore, name="extension_restore"),
     path("extensions/<int:pk>/delete/", views.extension_delete, name="extension_delete"),
