@@ -184,6 +184,15 @@ with. Only create a new app if the answer is "none".
   (`update_session_auth_hash`) and logs `account.activated` (flag logged as `needs_activation`). It is idempotent, and
   suspended or archived accounts are left alone. `ActivationRequiredMiddleware` (`accounts/middleware.py`, after
   `MessageMiddleware`) redirects everything except `accounts:activate` and `accounts:logout` while activation is pending.
+- **Profile:** `/accounts/profile/` (every role; `login_required`, `never_cache`). Services in `accounts/services/profile.py`,
+  views in `accounts/views/profile.py`, forms `ProfileDetailsForm` / `ProfileEmailForm` / `ChangePasswordForm`. Users edit only
+  their birth date and photo. `User.email` is verified only; an unverified address is `pending_email`. A verified address is
+  unique; a pending one is not: when someone verifies it first the others lose it and `accounts.signals.email_released` fires
+  (`notifications/listeners.py` creates the bell item). Links live `VERIFY_LINK_MINUTES` (60), resend gap
+  `VERIFY_RESEND_SECONDS` (60), max `VERIFY_MAX_PER_HOUR` (10); tokens are stored as SHA-256 hashes. The emailed link
+  (`/accounts/verify-email/<token>/`) needs login; GET only shows a page, POST verifies. Mail uses `MAILERS` (Gmail App
+  Password via `.env`; console backend when unset). Never name settings `EMAIL_HOST_USER` etc. with MAILERS in use.
+  Photos are re-encoded to a 512 px square JPEG; old files are deleted after commit.
 
 ## Nightly jobs (each is a management command in its own app)
 `purge_archived` (core, children first, files before rows, skips extensions
