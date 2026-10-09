@@ -182,3 +182,5 @@ LOGGING = {
     "handlers": {"console": {"class": "logging.StreamHandler"}},
     "root": {"handlers": ["console"], "level": config("LOG_LEVEL", default="INFO")},
 }
+
+DEFAULT_PASSWORD_KEY = config("DEFAULT_PASSWORD_KEY")

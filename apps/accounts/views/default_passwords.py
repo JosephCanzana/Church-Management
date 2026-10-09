@@ -1,8 +1,8 @@
 """accounts.views.default_passwords: the signed-in super-admin's own default passwords.
 
 One row per role beneath them. An empty field leaves that default alone; a
-typed one replaces it; Remove deletes it. The stored value is a hash, so the
-page can only say whether a default is set and when it last changed.
+typed one replaces it; Remove deletes it. Each default is also kept encrypted,
+so the page can show the current value (decrypted here, never logged).
 """
 from django.contrib import messages
 from django.core.exceptions import PermissionDenied
@@ -47,13 +47,14 @@ def default_passwords(request):
             return redirect("superadmin:default_passwords")
 
     stored = {row.applies_to_role: row for row in DefaultPassword.objects.filter(owner=request.user)}
-    rows = [
-        {
+    rows = []
+    for role in roles:
+        record = stored.get(role)
+        rows.append({
             "label": Role(role).label,
-            "record": stored.get(role),
+            "record": record,
+            "current": record.plain if record else None,   # decrypted; None for old rows
             "password": form[f"password_{role}"],
             "remove": form[f"clear_{role}"],
-        }
-        for role in roles
-    ]
+        })
     return render(request, "accounts/superadmin/default_passwords.html", {"form": form, "rows": rows})

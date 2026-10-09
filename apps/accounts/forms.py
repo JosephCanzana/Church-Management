@@ -19,6 +19,7 @@ from apps.core.text import clean_text, title_case
 from .address import COUNTRIES, HIERARCHY, PHILIPPINES, canonical_country, check_address
 from .models import Extension, Role, Status, User
 from .permissions import assignable_roles
+from .validators import validate_strong_password, STRONG_PASSWORD_MESSAGE
 
 # One message for every login failure, so the page never reveals whether the
 # account exists, the password was wrong, or the account is archived.
@@ -387,7 +388,12 @@ class DefaultPasswordsForm(forms.Form):
             self.fields[f"password_{role}"] = forms.CharField(
                 required=False, strip=False, label=f"{label} default password",
                 widget=forms.PasswordInput(
-                    attrs={"class": "input", "autocomplete": "new-password"}, render_value=False,
+                    attrs={
+                        "class": "input font-mono",
+                        "autocomplete": "new-password",
+                        "x-bind:type": "show ? 'text' : 'password'",
+                    },
+                    render_value=False,
                 ),
             )
             self.fields[f"clear_{role}"] = forms.BooleanField(
@@ -401,8 +407,11 @@ class DefaultPasswordsForm(forms.Form):
             password = cleaned.get(f"password_{role}") or ""
             if password and cleaned.get(f"clear_{role}"):
                 self.add_error(f"password_{role}", "Type a password or tick Remove, not both.")
-            elif password and len(password) < self.MIN_LENGTH:
-                self.add_error(f"password_{role}", f"Use at least {self.MIN_LENGTH} characters.")
+            elif password:
+                try:
+                    validate_strong_password(password)
+                except ValidationError as e:
+                    self.add_error(f"password_{role}", e)
         return cleaned
 
     @property
@@ -418,6 +427,20 @@ class DefaultPasswordsForm(forms.Form):
         return out
 
 # ============================================================ activation
+def clean_new_password(self):
+    value = self.cleaned_data["new_password"]
+    if self.user.check_password(value):
+        raise ValidationError("Choose a password different from your temporary one.")
+    validate_strong_password(value)
+    validate_password(value, self.user)
+    return value
+
+def clean_password(self):
+    value = self.cleaned_data.get("password") or ""
+    if value:
+        validate_strong_password(value)
+    return value
+
 class ActivationForm(forms.Form):
     """Choose a new password (twice) to finish activation.
 

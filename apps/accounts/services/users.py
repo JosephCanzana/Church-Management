@@ -17,7 +17,7 @@ import secrets
 from collections import namedtuple
 from dataclasses import dataclass, field
 
-from django.core.exceptions import PermissionDenied
+from django.core.exceptions import PermissionDenied, ValidationError
 from django.db import transaction
 from django.db.models import ProtectedError, RestrictedError
 from django.utils import timezone
@@ -26,6 +26,8 @@ from apps.audit.services import log_action
 from apps.core import services as core_services
 from apps.core.services import ServiceError, consume_submission_token
 from apps.core.text import clean_text
+
+from ..validators import generate_strong_password, validate_strong_password
 
 from ..models import (
     ArchiveReason, DefaultPassword, Extension, Role, Status, User, UserExtensionHistory,
@@ -78,15 +80,17 @@ def _default_password_hash(actor, role):
 def _set_initial_password(actor, person, typed):
     """Set `person`'s password: what was typed, else `actor`'s default, else a random one."""
     if typed:
-        if len(typed) < MIN_PASSWORD_LENGTH:
-            raise ServiceError(f"Use at least {MIN_PASSWORD_LENGTH} characters, or leave it empty.")
+        try:
+            validate_strong_password(typed)
+        except ValidationError as exc:
+            raise ServiceError(exc.messages[0])
         person.set_password(typed)
         return PasswordInfo("typed")
     stored = _default_password_hash(actor, person.role)
     if stored:
         person.password = stored          # already a hash; copied, never decoded
         return PasswordInfo("default")
-    value = generate_password()
+    value = generate_strong_password()
     person.set_password(value)
     return PasswordInfo("generated", value)
 
@@ -535,7 +539,7 @@ def _reset_password(actor, request, ref, typed=""):
 def reset_password(actor, request, ref, *, token, typed=""):
     """Reset one person's password. A replayed token returns duplicate=True.
 
-    `typed` is an optional custom password (min 8 characters); empty means the
+    `typed` is an optional custom password (must pass the strong-password rule); empty means the
     actor's default for the person's role, else a generated one.
     """
     require_user_manager(actor)

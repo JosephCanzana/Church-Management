@@ -10,6 +10,8 @@ from django.db.models.functions import Coalesce, Lower
 
 from apps.core.models import ArchivableModel, TimestampedModel, archived_matches_status
 from apps.core.text import person_name
+from django.contrib.auth.hashers import make_password
+from .crypto import decrypt_secret, encrypt_secret
 
 
 class Role(models.TextChoices):
@@ -215,9 +217,8 @@ class DefaultPassword(models.Model):
     """A default password kept by one person for the roles beneath them.
 
     Personal: coordinator A may keep one password for their members and
-    coordinator B another; the super-admin keeps their own for admins,
-    coordinators and members. Used when that person creates or resets someone and
-    types no password. Hash only, never plain text.
+    coordinator B another; t Stored twice: a hash (what is copied onto new accounts) and an encrypted
+    copy (so the owner can see it again). The key is DEFAULT_PASSWORD_KEY in .env.
     """
 
     class AppliesTo(models.TextChoices):
@@ -227,8 +228,19 @@ class DefaultPassword(models.Model):
 
     owner = models.ForeignKey(User, on_delete=models.CASCADE, related_name="default_passwords")
     applies_to_role = models.CharField(max_length=20, choices=AppliesTo.choices)
-    password_hash = models.CharField(max_length=255)   # hash only, never plain text
+    password_hash = models.CharField(max_length=255)
+    password_encrypted = models.TextField(blank=True, default="")   # Fernet token; "" = set before encryption existed
     updated_at = models.DateTimeField(auto_now=True)
+
+    def set_plain(self, plain):
+        """Store `plain` as both the hash and the encrypted copy. Call save() after."""
+        self.password_hash = make_password(plain)
+        self.password_encrypted = encrypt_secret(plain)
+
+    @property
+    def plain(self):
+        """The readable password, or None (old row, or the key changed)."""
+        return decrypt_secret(self.password_encrypted) if self.password_encrypted else None
 
     class Meta:
         db_table = "default_password"
