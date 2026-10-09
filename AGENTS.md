@@ -8,13 +8,12 @@ buddies, prayer requests, events, resources, notifications and audit logging.
 
 **Status:** all 14 apps and 43 models exist, with migrations and seed data.
 `core.test_schema` verifies them. The base templates, design tokens, light/dark
-toggle, the public landing page (static copy for now) and the redesigned login page exist. Services, views and forms are
+toggle, the public landing page (built, with a default for every block until `pages` content is managed) and the redesigned login page exist. Services, views and forms are
 mostly not built yet. The login is built (`accounts/backends.py`, `services.py`,
 `forms.py`, `views.py`, `urls.py`; routes `/accounts/login/`, `/accounts/logout/`, `/accounts/activate/`);
  `/activate/` is the built activation page (new password + confirm). Forgot-password and reset
 are not built yet; the "Forgot password?" link on the login page is a placeholder
-(`href="#"`). The Log in buttons on the landing page hardcode `/login/`; switch them to
-`{% url 'accounts:login' %}`. Next: forgot/reset password,
+(`href="#"`). The landing page Log in buttons use `{% url 'accounts:login' %}`. Next: forgot/reset password,
 then features on top of the models. `role_required` exists (`accounts/decorators.py`). Super-admin extension management is built (`/superadmin/extensions/`); user management is built (`/superadmin/users/`). A global toast and confirm
 dialog (`static/js/ui.js`, rendered by `includes/messages.html`) report results and
 guard destructive actions.
@@ -92,7 +91,7 @@ moving or reorganizing app code.
 | `audit` | `audit_log` | `log_action()` in `audit/services.py` (strips sensitive keys, sends `action_logged` from `audit/signals.py`), log viewer, `cleanup_audit_log` |
 | `accounts` | `extension`, `app_user`, `special_role`, `user_special_role`, `extension_special_role_limit`, `default_password`, `email_token`, `user_extension_history` | Login/logout/activation, forgot + reset password, email verification, profile, create/manage accounts, extensions, special roles and limits, default passwords, `archive_inactive_users`, `auto_transfer_extension`, `cleanup_email_tokens`, `mark_attended()` |
 | `theming` | `theme`, `theme_palette`, `user_settings` | Theme CRUD (both palettes in one transaction), contrast warning, CSS generation + cache, context processor; `UserSettings` row created by `signals.py` |
-| `pages` | `church_content`, `landing_image`, `donation_account`, `jil_video` | Landing page and terms editing, donation page, `fetch_jil_videos` |
+| `pages` | `church_content`, `landing_image`, `donation_account`, `jil_video` | Landing page (`get_landing_context()` in `pages/services.py`, a default for every block) and terms editing, donation page, `fetch_jil_videos` |
 | `bible` | `daily_verse`, `bible_chapter_read` | Reader, API.bible / scrollmapper client, daily verse, `record_chapter_read()` |
 | `faith` | `goal`, `goal_checkin`, `user_daily_activity`, `user_streak` | Goals, check-ins, consistency, heatmap, streak rules, `complete_ended_goals` |
 | `events` | `event` | Event CRUD, change/cancel notices, `send_event_reminders` |
@@ -222,9 +221,9 @@ still in use), `archive_inactive_users`, `auto_transfer_extension`,
   the links stay centered whatever the brand text width; below `md` it is a flex row. The
   mobile menu is `absolute inset-x-0 top-full` under the sticky header, so it overlays the
   page instead of pushing it down. Keep the nav and menu `max-w-*` the same.
-- The Login button and the About / Give links in the public navbar are temporary
-  (`href="#"`). Replace them with `{% url %}` once the views exist; `{% url %}` on a missing
-  route raises `NoReverseMatch`.
+- The navbar Login button uses `{% url 'accounts:login' %}`. The About / Give links are in-page
+  anchors (`#about`, `#give`) that exist only on the landing page; give them real URLs before
+  adding other public pages. `{% url %}` on a missing route raises `NoReverseMatch`.
 - Icons inside Alpine toggles (`x-show`) go in a wrapper `<span>`, since `includes/icon.html`
   only accepts `name` and `class`.
 - Fonts are self-hosted from `static/fonts/`. `font-main` is Space Grotesk (body and UI, declared as `'Grotesk'`);
@@ -294,10 +293,13 @@ still in use), `archive_inactive_users`, `auto_transfer_extension`,
 - Public page sizing: `<main>` already centers and pads the page, so a public page sets only
   its own width (`w-full max-w-*`) and adds no outer padding. If a page is not vertically
   centered, check the real `base_public.html` and the navbar height before adding offsets.
+  The one exception is the landing page, which is full width (see Landing page).
 - Footer (`includes/footer.html`): sits in normal flow (never `fixed`, which covers content on
   short screens), `border-t border-border bg-bg`, `text-txt-secondary` (not `text-txt-muted`,
   which fails contrast). The year comes from `{% now "Y" %}`. A `{% block %}` inside an
   included file overrides nothing; pass values with `{% include ... with church_name="..." %}`.
+  The landing page also has its own long footer block (see Landing page); the shared footer still
+  follows it and acts as the copyright line.
 - App shell layers: the page (`bg-bg`) is the lowest layer. The icon rail and the header are `bg-shell` and float above it:
   a hairline (`border-shell-border`, level across the rail's menu row and the header) plus a soft shadow that falls onto the
   page. The sidebar panel, the mobile bottom bar and its More sheet use the same color and sit higher, with a bigger shadow and
@@ -322,8 +324,51 @@ still in use), `archive_inactive_users`, `auto_transfer_extension`,
   listing `non_field_errors` and `identifier.errors`. The account id input is `font-mono`
   with `autocomplete="username"` and `autocapitalize="none"`; the password is never echoed
   back. Inputs are enlarged with `px-4 py-3.5 text-base` on top of `.input`.
-- Landing page copy is static in the template until the `pages` models feed it. Do not
-  invent church facts (service times, addresses, verses attributed to JIL).
+- Landing page: see the Landing page section. Do not invent church facts (service times,
+  addresses, verses attributed to JIL).
+
+## Landing page
+- **Where:** `apps/pages/views.py` (`landing_view`, thin; the root URL must import that exact name),
+  `apps/pages/services.py` (`get_landing_context()`, all the logic and every default),
+  `apps/pages/templates/pages/landing.html`, tests in `apps/pages/tests/test_landing.py`. Served at `/`.
+- **Every block has a default**, so the page is complete before anything is managed. Managed content wins:
+
+  | Block | Managed source | Default |
+  |---|---|---|
+  | Hero intro | `ChurchContent` key `landing_description` | `DEFAULT_HERO` (title is always the church name) |
+  | Mission / vision / core values | `ChurchContent` keys `mission`, `vision`, `core_values` | `DEFAULT_ABOUT` |
+  | Photos (hero carousel and "Come as you are" gallery) | `LandingImage` (`is_active`, `sort_order`) | `DEFAULT_IMAGES` |
+  | Current month theme | `resources.MonthlyTheme` for this Manila month, `is_published`, not archived | `DEFAULT_THEME` (labels its own month, so it is never mislabeled) |
+  | Latest video | newest `JilVideo` | `DEFAULT_VIDEO_ID` |
+  | Support the ministry | active `DonationAccount` rows | none: a "not published yet" note, nothing invented |
+  | Long footer | none yet | `FOOTER` (move to `site_setting` when it is managed) |
+  | "What's inside", Buddy Buddy, welcome copy | none | `MEMBER_FEATURES`, `SERVING_FEATURES`, `BUDDY_POINTS`, `CHURCH_INTRO`, `CHURCH_POINTS` |
+
+- **Default texts come from the church's own landing draft** (mission, vision, values, theme, addresses,
+  phones, links, photos). Confirm they are official. Change defaults only in `services.py`, never in the
+  template. The welcome copy (`CHURCH_INTRO`, `CHURCH_POINTS`) must stay free of claims about size,
+  history, service times or locations.
+- **Content lookup:** `ChurchContent` is unique per `(key, language)`. The page tries the visitor's language,
+  then English, then Filipino, and skips rows with an empty body. Loaders import models lazily inside
+  functions. If a model field is renamed, edit only the loader in `services.py`.
+- **Colors use tokens only, and `input.css` / `themes.css` are not edited for this page** (other themes
+  exist and would not define new tokens). The navy "deep" sections are `bg-txt-primary text-surface`:
+  `txt-primary` is dark in light mode and light in dark mode, so they flip by themselves in every theme.
+  Brand gold is the one exception: `--lp-gold`, `--lp-gold-soft` and `--lp-on-gold` are defined once on the
+  page wrapper and used for fills, lines and button backgrounds only, never for text (it is unreadable on
+  the flipped light sections). Use `bg-[var(--lp-gold)]` and `text-[color:var(--lp-on-gold)]`.
+- **Full width:** the wrapper uses `-mx-4 -my-10` to cancel the `px-4 py-10` that `base_public.html` puts on
+  `main`. If that padding changes, change both numbers (or add a `main_padding` block to the base).
+- **In-page anchors:** `#about`, `#church`, `#theme`, `#buddy`, `#whats-inside`, `#watch`, `#prayer`, `#give`,
+  `#contact`. The public navbar links to `#about` and `#give`; keep both.
+- **Prayer request is a Log in button, not a form.** A prayer request needs an account (the coordinator
+  receives it), so the landing page never collects one.
+- **External requests:** the video poster loads from `i.ytimg.com` and the default photos from
+  `imagedelivery.net` when the page loads; the player (`youtube-nocookie.com`) loads only after a click.
+- **Footer:** the long footer is part of this page. `base_public.html`'s footer still renders below it as the
+  copyright line. The Privacy Policy link is a `#` placeholder until that page exists.
+- **Before changing the page:** run `docker compose exec web python manage.py test apps.pages.tests.test_landing`
+  and `make tailwind-build` (the template uses new utility classes).
 
 ## Known footguns
 - `migrate` from the host cannot reach `POSTGRES_HOST=db`; run it in the `web`

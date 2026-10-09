@@ -1,149 +1,390 @@
+<!--
+  Public landing page for logged-out visitors, served at "/".
+  Extends base_public.html. Blocks filled: title, main_align, content.
+  Context variables (built by apps/pages/services.py get_landing_context, every block has a default):
+    hero (title, intro), hero_images (list of {url, caption}, also used by the gallery),
+    church_intro (title, body), church_points,
+    about (mission, vision, values: each title and body), theme (month, title, description, url),
+    video (youtube_video_id, title, thumbnail_url), give_accounts (list of active DonationAccount),
+    member_features, serving_features, buddy_points, footer.
+  Colors: only the design tokens every theme defines, so it follows any theme and light/dark mode.
+  The navy "deep" sections use bg-txt-primary with text-surface: txt-primary is dark in light mode
+  and light in dark mode, so those sections flip by themselves. The one exception is brand gold,
+  defined once on the wrapper (same in light and dark) and used for fills only, never for text.
+  Full width: the wrapper cancels the padding base_public.html puts on main (px-4 py-10).
+  The long footer is part of this page; base_public.html's own footer follows it as the copyright line.
+-->
 {% extends "base_public.html" %}
+{% load static %}
 
-{% comment %}
-  Public landing page (logged-out visitors), served at "/".
-  Blocks filled: title, content.
-  Context variables: none yet. The copy is static until the `pages` app
-  (church_content, landing_image) feeds it.
-  Includes used: includes/icon.html (name, class).
-  Links: Login uses a hardcoded "/login/" until the URL name is confirmed;
-  swap it for {% url %} then.
-{% endcomment %}
-
-{% block title %}Welcome{% endblock %}
+{% block title %}{{ hero.title }}{% endblock %}
+{% block main_align %}items-stretch{% endblock %}
 
 {% block content %}
-<div class="mx-auto w-full max-w-6xl px-4 sm:px-6">
+<div class="-mx-4 -my-10 w-full overflow-hidden text-txt-primary" style="--lp-gold:#D4AF56;--lp-gold-soft:#E5C978;--lp-on-gold:#0B1220">
 
-  {% comment %} Hero: what the site is, and the one action a visitor can take. {% endcomment %}
-  <section class="py-16 sm:py-24 max-w-3xl">
-    <h1 class="text-4xl sm:text-5xl font-semibold tracking-tight text-txt-primary">
-      (THIS PAGE IS TEMPORARY)
-      Your church family, together in one place.
-    </h1>
-    <p class="mt-6 text-lg leading-relaxed text-txt-secondary max-w-2xl">
-      Jesus Is Lord Church and its local branches use this site to take attendance,
-      record tithes and offering, share prayer requests, keep up with events, and
-      grow in the Word, one day at a time.
-    </p>
-    <div class="mt-8 flex flex-wrap gap-3">
-      <a href="/login/" class="btn btn-primary">Log in</a>
-      <a href="#whats-inside" class="btn btn-secondary">See what's inside</a>
-    </div>
-    <p class="mt-4 text-sm text-txt-secondary">
-      Log in with your account id or your verified email.
-    </p>
-  </section>
+  {% comment %} HERO: deep section, welcome text, and the photo carousel (or a logo panel until photos exist). {% endcomment %}
+  <section class="relative overflow-hidden bg-txt-primary text-surface" aria-label="Welcome">
+    <div class="pointer-events-none absolute -right-24 -top-24 size-96 rounded-full bg-accent/20 blur-3xl" aria-hidden="true"></div>
+    <div class="pointer-events-none absolute -bottom-48 -right-44 size-[26rem] rounded-full border border-surface/15" aria-hidden="true"></div>
 
-  {% comment %} Two audiences, side by side: members first, then the people who serve them. {% endcomment %}
-  <section id="whats-inside" class="grid gap-12 border-t border-border py-16 md:grid-cols-2 md:gap-16">
+    <div class="relative mx-auto grid w-full max-w-6xl items-center gap-10 px-4 py-16 sm:px-6 md:grid-cols-[1.05fr_.95fr] md:gap-12 md:py-24">
+      <div class="max-w-xl">
+        <p class="flex items-center gap-3 text-sm font-bold uppercase tracking-[.25em]">
+          <span class="h-0.5 w-7 bg-[var(--lp-gold)]" aria-hidden="true"></span>Welcome to
+        </p>
+        <span class="mt-5 inline-flex size-20 items-center justify-center rounded-full border border-[color:var(--lp-gold)] bg-surface/10">
+          {% include "includes/logo.html" with variant="mark" size="size-10" decorative=True %}
+        </span>
+        <h1 class="mt-5 text-4xl font-extrabold leading-[1.06] tracking-tight sm:text-5xl lg:text-6xl">{{ hero.title }}</h1>
+        <p class="mt-5 text-lg leading-relaxed text-surface/80">{{ hero.intro }}</p>
+        <div class="mt-8 flex flex-wrap gap-3">
+          <a href="#buddy" class="btn min-h-11 bg-[var(--lp-gold)] px-6 font-bold uppercase tracking-wider text-[color:var(--lp-on-gold)] hover:bg-[var(--lp-gold-soft)]">Learn more</a>
+          <a href="{% url 'accounts:login' %}" class="btn min-h-11 border border-surface px-6 font-bold uppercase tracking-wider text-surface hover:bg-surface hover:text-txt-primary">Log in</a>
+        </div>
+      </div>
 
-    <div>
-      <h2 class="text-2xl font-semibold text-txt-primary">For every member</h2>
-      <p class="mt-2 text-txt-secondary">Tools for your own walk with God and with the people around you.</p>
-
-      <ul class="mt-8 space-y-6">
-        <li class="flex gap-4">
-          <span class="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg bg-accent text-on-accent">
-            {% include "includes/icon.html" with name="fire" class="h-5 w-5" %}
-          </span>
-          <div>
-            <h3 class="font-medium text-txt-primary">Faith goals and Bible streaks</h3>
-            <p class="mt-1 text-txt-secondary">Set goals, check in daily, and watch your Bible reading streak grow.</p>
+      {% if hero_images %}
+      <div
+        class="w-full max-w-md justify-self-center md:justify-self-end"
+        x-data="{
+          c: 0,
+          n: {{ hero_images|length }},
+          t: null,
+          reduce: window.matchMedia('(prefers-reduced-motion: reduce)').matches,
+          start() { if (this.reduce || this.n < 2) return; this.stop(); this.t = setInterval(() => this.next(), 4500); },
+          stop() { if (this.t) { clearInterval(this.t); this.t = null; } },
+          next() { this.c = (this.c + 1) % this.n; },
+          prev() { this.c = (this.c - 1 + this.n) % this.n; }
+        }"
+        x-init="start()"
+        @mouseenter="stop()"
+        @mouseleave="start()"
+        @focusin="stop()"
+        @focusout="start()"
+        role="region"
+        aria-roledescription="carousel"
+        aria-label="Church photos"
+      >
+        <div class="rounded-3xl rounded-br-lg border border-surface/20 bg-surface/10 p-3 shadow-2xl supports-[backdrop-filter]:backdrop-blur-sm">
+          <div class="relative aspect-[4/3] overflow-hidden rounded-2xl rounded-br-md border-4 border-surface/80 bg-txt-primary">
+            {% for img in hero_images %}
+            <figure class="absolute inset-0 m-0" x-show="c === {{ forloop.counter0 }}" {% if not forloop.first %}x-cloak{% endif %} x-transition.opacity.duration.600ms>
+              <img src="{{ img.url }}" alt="{{ img.caption|default:'Jesus Is Lord Church' }}" class="size-full object-cover" {% if not forloop.first %}loading="lazy"{% endif %}>
+            </figure>
+            {% endfor %}
+            {% if hero_images|length > 1 %}
+            <button type="button" class="absolute left-2 top-1/2 flex size-11 -translate-y-1/2 items-center justify-center rounded-full border border-surface/40 bg-txt-primary/80 text-2xl text-surface hover:bg-[var(--lp-gold)] hover:text-[color:var(--lp-on-gold)]" @click="prev()" aria-label="Previous photo"><span aria-hidden="true">‹</span></button>
+            <button type="button" class="absolute right-2 top-1/2 flex size-11 -translate-y-1/2 items-center justify-center rounded-full border border-surface/40 bg-txt-primary/80 text-2xl text-surface hover:bg-[var(--lp-gold)] hover:text-[color:var(--lp-on-gold)]" @click="next()" aria-label="Next photo"><span aria-hidden="true">›</span></button>
+            {% endif %}
           </div>
-        </li>
-        <li class="flex gap-4">
-          <span class="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg bg-accent text-on-accent">
-            {% include "includes/icon.html" with name="users" class="h-5 w-5" %}
-          </span>
-          <div>
-            <h3 class="font-medium text-txt-primary">Accountability buddy</h3>
-            <p class="mt-1 text-txt-secondary">Partner with someone, see each other's goals, and send encouragement.</p>
-          </div>
-        </li>
-        <li class="flex gap-4">
-          <span class="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg bg-accent text-on-accent">
-            {% include "includes/icon.html" with name="hand-raised" class="h-5 w-5" %}
-          </span>
-          <div>
-            <h3 class="font-medium text-txt-primary">Prayer requests</h3>
-            <p class="mt-1 text-txt-secondary">Send a request to your coordinator, privately or anonymously, and read their reply.</p>
-          </div>
-        </li>
-        <li class="flex gap-4">
-          <span class="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg bg-accent text-on-accent">
-            {% include "includes/icon.html" with name="calendar-days" class="h-5 w-5" %}
-          </span>
-          <div>
-            <h3 class="font-medium text-txt-primary">Events and reminders</h3>
-            <p class="mt-1 text-txt-secondary">Know what is coming up, and get notified when a date or plan changes.</p>
-          </div>
-        </li>
-        <li class="flex gap-4">
-          <span class="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg bg-accent text-on-accent">
-            {% include "includes/icon.html" with name="book-open" class="h-5 w-5" %}
-          </span>
-          <div>
-            <h3 class="font-medium text-txt-primary">Worship resources</h3>
-            <p class="mt-1 text-txt-secondary">Find the monthly theme, the weekly presentation, and shared resources.</p>
-          </div>
-        </li>
-      </ul>
-    </div>
-
-    <div>
-      <h2 class="text-2xl font-semibold text-txt-primary">For the people who serve</h2>
-      <p class="mt-2 text-txt-secondary">Coordinators and admins keep each extension running without the paperwork.</p>
-
-      <ul class="mt-8 space-y-6">
-        <li class="flex gap-4">
-          <span class="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg bg-accent text-on-accent">
-            {% include "includes/icon.html" with name="clipboard-document-check" class="h-5 w-5" %}
-          </span>
-          <div>
-            <h3 class="font-medium text-txt-primary">Attendance</h3>
-            <p class="mt-1 text-txt-secondary">Record who came, add first timers, and lock the sheet once it is uploaded.</p>
-          </div>
-        </li>
-        <li class="flex gap-4">
-          <span class="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg bg-accent text-on-accent">
-            {% include "includes/icon.html" with name="banknotes" class="h-5 w-5" %}
-          </span>
-          <div>
-            <h3 class="font-medium text-txt-primary">Tithes and offering</h3>
-            <p class="mt-1 text-txt-secondary">Count by denomination, see live totals, and finalize each record.</p>
-          </div>
-        </li>
-        <li class="flex gap-4">
-          <span class="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg bg-accent text-on-accent">
-            {% include "includes/icon.html" with name="building-office-2" class="h-5 w-5" %}
-          </span>
-          <div>
-            <h3 class="font-medium text-txt-primary">Extensions and members</h3>
-            <p class="mt-1 text-txt-secondary">Manage accounts and roles for your own extension, and nobody else's.</p>
-          </div>
-        </li>
-        <li class="flex gap-4">
-          <span class="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg bg-accent text-on-accent">
-            {% include "includes/icon.html" with name="bell" class="h-5 w-5" %}
-          </span>
-          <div>
-            <h3 class="font-medium text-txt-primary">Notifications</h3>
-            <p class="mt-1 text-txt-secondary">Get alerted when something needs your attention, then open the page to act on it.</p>
-          </div>
-        </li>
-      </ul>
+        </div>
+        {% if hero_images|length > 1 %}
+        <div class="mt-2 flex justify-center">
+          {% for img in hero_images %}
+          <button type="button" class="flex size-11 items-center justify-center" @click="c = {{ forloop.counter0 }}" aria-label="Show photo {{ forloop.counter }}" :aria-current="c === {{ forloop.counter0 }}">
+            <span class="h-2 rounded-full transition-all" :class="c === {{ forloop.counter0 }} ? 'w-6 bg-[var(--lp-gold)]' : 'w-2 bg-surface/40'"></span>
+          </button>
+          {% endfor %}
+        </div>
+        {% endif %}
+      </div>
+      {% else %}
+      {% comment %} Default panel until landing images are uploaded. {% endcomment %}
+      <div class="flex aspect-[4/3] w-full max-w-md items-center justify-center justify-self-center rounded-3xl rounded-br-lg border border-surface/20 bg-surface/10 md:justify-self-end" aria-hidden="true">
+        {% include "includes/logo.html" with variant="mark" size="size-28" decorative=True %}
+      </div>
+      {% endif %}
     </div>
   </section>
 
-  {% comment %} Closing call to action, repeated so it is reachable at the end of the page. {% endcomment %}
-  <section class="border-t border-border py-16 text-center">
-    <h2 class="text-2xl font-semibold text-txt-primary">Ready to get started?</h2>
-    <p class="mx-auto mt-2 max-w-xl text-txt-secondary">
-      Log in to see your goals, your extension's events, and everything shared with you.
-    </p>
-    <div class="mt-6">
-      <a href="/login/" class="btn btn-primary">Log in</a>
+  <div id="about">
+
+    {% comment %} JESUS IS LORD CHURCH: the title strip with two quick doors into the page. {% endcomment %}
+    <section class="border-t border-border bg-surface-alt py-14">
+      <div class="mx-auto grid w-full max-w-6xl gap-6 px-4 sm:px-6 md:grid-cols-[1fr_1.35fr_1fr]">
+        <a href="#whats-inside" class="block rounded-lg border border-border bg-surface p-6 transition-colors hover:border-[color:var(--lp-gold)]">
+          <h3 class="flex items-center gap-3 text-base font-bold uppercase tracking-wider text-txt-primary">
+            <span class="flex size-9 items-center justify-center rounded-full bg-[var(--lp-gold)] text-[color:var(--lp-on-gold)]">{% include "includes/icon.html" with name="fire" class="size-5" %}</span>Grow in faith
+          </h3>
+          <p class="mt-2 text-base text-txt-secondary">Set goals, check in daily, and keep your Bible reading streak going.</p>
+        </a>
+        <div class="flex flex-col justify-center p-2 text-center">
+          <h2 class="text-3xl font-extrabold tracking-tight text-txt-primary sm:text-4xl">Jesus Is Lord Church</h2>
+          <p class="mt-2 text-base font-semibold text-txt-secondary">Rooted in the Word. Growing in love. Serving our community.</p>
+        </div>
+        <a href="#whats-inside" class="block rounded-lg border border-border bg-surface p-6 transition-colors hover:border-[color:var(--lp-gold)]">
+          <h3 class="flex items-center gap-3 text-base font-bold uppercase tracking-wider text-txt-primary">
+            <span class="flex size-9 items-center justify-center rounded-full bg-[var(--lp-gold)] text-[color:var(--lp-on-gold)]">{% include "includes/icon.html" with name="users" class="size-5" %}</span>Serve together
+          </h3>
+          <p class="mt-2 text-base text-txt-secondary">Attendance, tithes and members for each extension, without the paperwork.</p>
+        </a>
+      </div>
+    </section>
+
+    {% comment %} MISSION / VISION / CORE VALUES: managed content, or the defaults. {% endcomment %}
+    <section class="border-t border-border bg-surface py-16" aria-label="Mission, vision and core values">
+      <div class="mx-auto grid w-full max-w-6xl gap-9 px-4 sm:px-6 md:grid-cols-3">
+        <article class="flex flex-col text-center">
+          <div class="order-first mb-5 flex h-44 items-center justify-center rounded-lg bg-txt-primary text-surface"><span class="flex size-20 items-center justify-center rounded-full bg-[var(--lp-gold)] text-[color:var(--lp-on-gold)]">{% include "includes/icon.html" with name="hand-raised" class="size-10" %}</span></div>
+          <h3 class="text-xl font-bold uppercase tracking-wide text-txt-primary">{{ about.mission.title }}</h3>
+          <span class="mx-auto my-3 block h-[3px] w-10 bg-[var(--lp-gold)]" aria-hidden="true"></span>
+          <p class="text-base leading-relaxed text-txt-secondary">{{ about.mission.body|linebreaksbr }}</p>
+        </article>
+        <article class="flex flex-col text-center">
+          <div class="order-first mb-5 flex h-44 items-center justify-center rounded-lg bg-txt-primary text-surface"><span class="flex size-20 items-center justify-center rounded-full bg-[var(--lp-gold)] text-[color:var(--lp-on-gold)]">{% include "includes/icon.html" with name="book-open" class="size-10" %}</span></div>
+          <h3 class="text-xl font-bold uppercase tracking-wide text-txt-primary">{{ about.vision.title }}</h3>
+          <span class="mx-auto my-3 block h-[3px] w-10 bg-[var(--lp-gold)]" aria-hidden="true"></span>
+          <p class="text-base leading-relaxed text-txt-secondary">{{ about.vision.body|linebreaksbr }}</p>
+        </article>
+        <article class="flex flex-col text-center">
+          <div class="order-first mb-5 flex h-44 items-center justify-center rounded-lg bg-txt-primary text-surface"><span class="flex size-20 items-center justify-center rounded-full bg-[var(--lp-gold)] text-[color:var(--lp-on-gold)]">{% include "includes/icon.html" with name="fire" class="size-10" %}</span></div>
+          <h3 class="text-xl font-bold uppercase tracking-wide text-txt-primary">{{ about.values.title }}</h3>
+          <span class="mx-auto my-3 block h-[3px] w-10 bg-[var(--lp-gold)]" aria-hidden="true"></span>
+          <p class="text-base leading-relaxed text-txt-secondary">{{ about.values.body|linebreaksbr }}</p>
+        </article>
+      </div>
+    </section>
+
+  </div>
+
+  {% comment %} COME AS YOU ARE: welcoming words about the church beside a photo gallery (the same photos as the hero). {% endcomment %}
+  <section id="church" class="border-t border-border bg-surface-alt py-16" aria-labelledby="church-heading">
+    <div class="mx-auto grid w-full max-w-6xl items-center gap-12 px-4 sm:px-6 md:grid-cols-2 md:gap-14">
+      <div>
+        <h2 id="church-heading" class="text-3xl font-extrabold leading-tight tracking-tight text-txt-primary sm:text-4xl">{{ church_intro.title }}</h2>
+        <span class="my-4 block h-[3px] w-10 bg-[var(--lp-gold)]" aria-hidden="true"></span>
+        <p class="max-w-xl text-lg leading-relaxed text-txt-secondary">{{ church_intro.body }}</p>
+        <ul class="mt-8 space-y-5">
+          {% for p in church_points %}
+          <li class="flex gap-4">
+            <span class="flex size-10 shrink-0 items-center justify-center rounded-full bg-[var(--lp-gold)] text-[color:var(--lp-on-gold)]">{% include "includes/icon.html" with name=p.icon class="size-5" %}</span>
+            <div>
+              <h3 class="font-bold text-txt-primary">{{ p.title }}</h3>
+              <p class="mt-1 text-base text-txt-secondary">{{ p.text }}</p>
+            </div>
+          </li>
+          {% endfor %}
+        </ul>
+      </div>
+
+      <div class="grid grid-cols-2 gap-3" role="list" aria-label="Photos from our church">
+        {% for img in hero_images|slice:":5" %}
+        <figure role="listitem" class="m-0 overflow-hidden rounded-xl border border-border bg-surface {% if forloop.first %}col-span-2 aspect-video{% else %}aspect-square{% endif %}">
+          <img src="{{ img.url }}" alt="{{ img.caption|default:'Jesus Is Lord Church' }}" class="size-full object-cover" loading="lazy">
+        </figure>
+        {% endfor %}
+      </div>
+    </div>
+  </section>
+
+  {% comment %} CURRENT MONTH THEME: this month's published theme, or the default. {% endcomment %}
+  <section id="theme" class="border-t border-border bg-surface-alt py-16" aria-labelledby="theme-heading">
+    <div class="mx-auto w-full max-w-6xl px-4 sm:px-6">
+      <h2 id="theme-heading" class="mb-8 text-center text-3xl font-bold text-txt-primary sm:text-4xl">Current month theme</h2>
+      <div class="grid overflow-hidden rounded-2xl border border-border bg-surface md:grid-cols-[.8fr_1.2fr]">
+        <div class="relative flex min-h-56 items-center justify-center overflow-hidden bg-txt-primary p-9 text-center text-surface">
+          <div class="pointer-events-none absolute size-72 rounded-full bg-accent/20 blur-3xl" aria-hidden="true"></div>
+          <div class="relative">
+            <p class="flex items-center justify-center gap-3 text-sm font-extrabold uppercase tracking-[.22em]"><span class="h-0.5 w-6 bg-[var(--lp-gold)]" aria-hidden="true"></span>{{ theme.month|date:"F Y" }}</p>
+            <p class="mt-3 break-words text-3xl font-black uppercase leading-tight sm:text-4xl">{{ theme.title }}</p>
+          </div>
+        </div>
+        <div class="flex flex-col justify-center p-8 sm:p-12">
+          <h3 class="text-2xl font-extrabold leading-tight text-txt-primary sm:text-3xl">{{ theme.title }}</h3>
+          {% if theme.description %}<p class="mt-3 max-w-xl text-base leading-relaxed text-txt-secondary">{{ theme.description|linebreaksbr }}</p>{% endif %}
+          <div class="mt-6">
+            {% if theme.url %}
+            <a href="{{ theme.url }}" target="_blank" rel="noopener" class="btn btn-secondary min-h-11 font-bold uppercase tracking-wider">Learn more</a>
+            {% else %}
+            <a href="{% url 'accounts:login' %}" class="btn btn-secondary min-h-11 font-bold uppercase tracking-wider">Log in for this month's resources</a>
+            {% endif %}
+          </div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  {% comment %} BUDDY BUDDY: the accountability buddy feature. {% endcomment %}
+  <section id="buddy" class="border-t border-border bg-surface py-16" aria-labelledby="buddy-heading">
+    <div class="mx-auto grid w-full max-w-6xl items-center gap-12 px-4 sm:px-6 md:grid-cols-[1.1fr_.9fr]">
+      <div>
+        <h2 id="buddy-heading" class="text-4xl font-extrabold leading-tight tracking-tight text-txt-primary sm:text-5xl">Buddy Buddy</h2>
+        <p class="mt-4 max-w-xl text-base leading-relaxed text-txt-secondary">Faith is easier to walk out when we do not walk alone. Buddy Buddy helps members stay connected, encourage one another, and grow together in faith.</p>
+        <ul class="mt-6 space-y-3">
+          {% for p in buddy_points %}
+          <li class="flex items-start gap-4 rounded-xl border border-border bg-surface p-4">
+            <span class="flex size-10 shrink-0 items-center justify-center rounded-full bg-[var(--lp-gold)] text-[color:var(--lp-on-gold)]">{% include "includes/icon.html" with name=p.icon class="size-5" %}</span>
+            <div>
+              <h3 class="font-bold text-txt-primary">{{ p.title }}</h3>
+              <p class="mt-1 text-base text-txt-secondary">{{ p.text }}</p>
+            </div>
+          </li>
+          {% endfor %}
+        </ul>
+      </div>
+
+      <div class="relative flex min-h-80 items-center justify-center overflow-hidden rounded-3xl rounded-br-lg bg-txt-primary p-6" aria-hidden="true">
+        <div class="absolute size-64 rounded-full border border-surface/15"></div>
+        <div class="absolute size-44 rounded-full border border-surface/15"></div>
+        <div class="relative w-[88%] rounded-2xl border border-surface/20 bg-surface/10 p-7 text-center text-surface supports-[backdrop-filter]:backdrop-blur-sm">
+          <p class="text-2xl font-extrabold">We grow better together</p>
+          <p class="mt-2 text-base text-surface/80">A simple way to build friendships, encouragement, prayer, and accountability within the church family.</p>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  {% comment %} WHAT'S INSIDE: what members and the people who serve can do in the app. {% endcomment %}
+  <section id="whats-inside" class="border-t border-border bg-surface-alt py-16" aria-label="What's inside">
+    <div class="mx-auto grid w-full max-w-6xl gap-12 px-4 sm:px-6 md:grid-cols-2 md:gap-16">
+      <div>
+        <h2 class="text-2xl font-bold text-txt-primary">For every member</h2>
+        <p class="mt-2 text-base text-txt-secondary">Tools for your own walk with God and with the people around you.</p>
+        <ul class="mt-8 space-y-6">
+          {% for f in member_features %}
+          <li class="flex gap-4">
+            <span class="flex size-10 shrink-0 items-center justify-center rounded-lg bg-[var(--lp-gold)] text-[color:var(--lp-on-gold)]">{% include "includes/icon.html" with name=f.icon class="size-5" %}</span>
+            <div>
+              <h3 class="font-medium text-txt-primary">{{ f.title }}</h3>
+              <p class="mt-1 text-base text-txt-secondary">{{ f.text }}</p>
+            </div>
+          </li>
+          {% endfor %}
+        </ul>
+      </div>
+      <div>
+        <h2 class="text-2xl font-bold text-txt-primary">For the people who serve</h2>
+        <p class="mt-2 text-base text-txt-secondary">Coordinators and admins keep each extension running without the paperwork.</p>
+        <ul class="mt-8 space-y-6">
+          {% for f in serving_features %}
+          <li class="flex gap-4">
+            <span class="flex size-10 shrink-0 items-center justify-center rounded-lg bg-txt-primary text-surface">{% include "includes/icon.html" with name=f.icon class="size-5" %}</span>
+            <div>
+              <h3 class="font-medium text-txt-primary">{{ f.title }}</h3>
+              <p class="mt-1 text-base text-txt-secondary">{{ f.text }}</p>
+            </div>
+          </li>
+          {% endfor %}
+        </ul>
+      </div>
+    </div>
+  </section>
+
+  {% comment %} WATCH: the latest JIL video, or the default video. The player loads only after the visitor clicks play. {% endcomment %}
+  <section id="watch" class="bg-txt-primary py-16 text-surface" aria-labelledby="watch-heading">
+    <div class="mx-auto w-full max-w-6xl px-4 sm:px-6">
+      <h2 id="watch-heading" class="mb-10 text-center text-3xl font-bold sm:text-4xl">Watch the latest message</h2>
+      <div class="mx-auto max-w-3xl overflow-hidden rounded-xl shadow-2xl" x-data="{ play: false }">
+        <button type="button" class="relative block aspect-video w-full bg-txt-primary" x-show="!play" @click="play = true" aria-label="Play: {{ video.title }}">
+          <img src="{{ video.thumbnail_url }}" alt="" class="absolute inset-0 size-full object-cover" loading="lazy">
+          <span class="absolute inset-0 bg-txt-primary/40" aria-hidden="true"></span>
+          <span class="absolute left-1/2 top-1/2 flex size-[4.5rem] -translate-x-1/2 -translate-y-1/2 items-center justify-center rounded-full bg-[var(--lp-gold)] text-2xl text-[color:var(--lp-on-gold)] shadow-xl" aria-hidden="true">▶</span>
+        </button>
+        <template x-if="play">
+          <iframe class="aspect-video w-full" src="https://www.youtube-nocookie.com/embed/{{ video.youtube_video_id }}?autoplay=1" title="{{ video.title }}" allow="autoplay; encrypted-media; picture-in-picture" allowfullscreen></iframe>
+        </template>
+      </div>
+      <div class="mt-7 flex justify-center">
+        <a href="https://www.youtube.com/watch?v={{ video.youtube_video_id }}" target="_blank" rel="noopener" class="btn min-h-11 border border-surface px-6 font-bold uppercase tracking-wider text-surface hover:bg-surface hover:text-txt-primary">Watch on YouTube</a>
+      </div>
+    </div>
+  </section>
+
+  {% comment %} PRAYER REQUEST: needs an account (the coordinator receives it), so it links to log in. {% endcomment %}
+  <section id="prayer" class="relative overflow-hidden border-t border-surface/10 bg-txt-primary py-20 text-surface" aria-labelledby="prayer-heading">
+    <div class="pointer-events-none absolute left-1/2 top-0 size-80 -translate-x-1/2 -translate-y-1/2 rounded-full bg-accent/20 blur-3xl" aria-hidden="true"></div>
+    <div class="relative mx-auto w-full max-w-2xl px-4 text-center sm:px-6">
+      <h2 id="prayer-heading" class="text-3xl font-bold sm:text-4xl">Prayer request</h2>
+      <p class="mt-4 text-base leading-relaxed text-surface/80">We are a church whose heartbeat is prayer. Log in to send a request to your coordinator. Keep it private or send it anonymously, and read their reply in the app.</p>
+      <div class="mt-8"><a href="{% url 'accounts:login' %}" class="btn min-h-12 bg-[var(--lp-gold)] px-8 font-extrabold uppercase tracking-wider text-[color:var(--lp-on-gold)] hover:bg-[var(--lp-gold-soft)]">Log in to send a request</a></div>
+    </div>
+  </section>
+
+  {% comment %} SUPPORT THE MINISTRY: QR codes on the left when there are any, account details on the right. {% endcomment %}
+  <section id="give" class="grid md:grid-cols-2" aria-labelledby="give-heading">
+    <div class="flex min-h-56 flex-wrap items-center justify-center gap-5 bg-[var(--lp-gold-soft)] p-8">
+      {% for acct in give_accounts %}{% if acct.qr_image %}
+      <figure class="m-0 text-center">
+        <img src="{{ acct.qr_image.url }}" alt="QR code for {{ acct.payment_app }}" class="size-36 rounded-lg border border-border bg-surface object-contain p-1" loading="lazy">
+        <figcaption class="mt-2 text-base font-medium text-[color:var(--lp-on-gold)]">{{ acct.payment_app }}</figcaption>
+      </figure>
+      {% endif %}{% endfor %}
+      {% if not give_accounts %}<span class="border border-[color:var(--lp-on-gold)] px-4 py-2 text-sm font-extrabold uppercase tracking-widest text-[color:var(--lp-on-gold)]">Support the ministry</span>{% endif %}
+    </div>
+
+    <div class="flex flex-col justify-center gap-4 bg-txt-primary px-6 py-14 text-surface sm:px-[9%]">
+      <h2 id="give-heading" class="text-3xl font-bold">Support the ministry</h2>
+      <p class="max-w-lg text-base text-surface/80">Support the work of the church through generosity, service, prayer, and faithful partnership. Together, we can help bring hope and God's love to more people.</p>
+      {% if give_accounts %}
+      <ul class="space-y-4">
+        {% for acct in give_accounts %}
+        <li>
+          <h3 class="font-bold">{{ acct.payment_app }}</h3>
+          {% if acct.account_name %}<p class="text-base text-surface/80">{{ acct.account_name }}</p>{% endif %}
+          {% if acct.account_number %}<p class="font-mono text-base">{{ acct.account_number }}</p>{% endif %}
+          {% if acct.swift_code %}<p class="text-base text-surface/80">SWIFT: <span class="font-mono">{{ acct.swift_code }}</span></p>{% endif %}
+          {% if acct.instructions %}<p class="text-base text-surface/80">{{ acct.instructions|linebreaksbr }}</p>{% endif %}
+        </li>
+        {% endfor %}
+      </ul>
+      {% else %}
+      <p class="max-w-lg text-base font-medium">Giving details have not been published yet. Ask your extension coordinator how to give.</p>
+      {% endif %}
+    </div>
+  </section>
+
+  {% comment %} CONNECT WITH US + LONG FOOTER. The copyright line comes from base_public.html's footer. {% endcomment %}
+  <section id="contact" class="bg-surface pt-16 text-center" aria-labelledby="contact-heading">
+    <div class="mx-auto w-full max-w-6xl px-4 sm:px-6">
+      <h2 id="contact-heading" class="text-3xl font-bold text-txt-primary sm:text-4xl">Connect with us</h2>
+      <p class="mx-auto mt-3 max-w-2xl text-base text-txt-secondary">Stay connected with your church family and discover ways to worship, serve, fellowship, and grow in faith.</p>
+      <div class="mb-12 mt-6 flex flex-wrap justify-center gap-3">
+        <a href="#about" class="btn btn-secondary min-h-11 font-bold uppercase tracking-wider">Our church</a>
+        <a href="#watch" class="btn btn-secondary min-h-11 font-bold uppercase tracking-wider">Watch</a>
+        <a href="#give" class="btn btn-secondary min-h-11 font-bold uppercase tracking-wider">Give</a>
+        <a href="{% url 'accounts:login' %}" class="btn btn-primary min-h-11 font-bold uppercase tracking-wider">Log in</a>
+      </div>
+
+      <div class="grid gap-8 border-t border-border py-10 text-left md:grid-cols-[1.4fr_.7fr_.7fr_2fr]">
+        <div>
+          <h3 class="text-xl font-bold text-txt-primary">{{ footer.brand }}</h3>
+          <p class="mt-2 text-base text-txt-secondary">{{ footer.blurb }}</p>
+          <ul class="mt-4 flex gap-2">
+            <li><a href="{{ footer.social.facebook }}" target="_blank" rel="noopener" aria-label="Facebook" class="flex size-11 items-center justify-center rounded-full bg-txt-primary text-surface transition-transform hover:-translate-y-0.5"><svg viewBox="0 0 24 24" class="size-5 fill-current" aria-hidden="true"><path d="M14 8h2.6V4.8H14c-2.3 0-3.7 1.6-3.7 3.9v2H7.8V14h2.5v6.2H14V14h2.5l.4-3.3H14V9c0-.6.3-1 .9-1H14z"/></svg></a></li>
+            <li><a href="{{ footer.social.x }}" target="_blank" rel="noopener" aria-label="X" class="flex size-11 items-center justify-center rounded-full bg-txt-primary text-surface transition-transform hover:-translate-y-0.5"><svg viewBox="0 0 24 24" class="size-5 fill-current" aria-hidden="true"><path d="M17.5 4h2.7l-5.9 6.7L21 20h-5.4l-4.2-5.5L6.5 20H3.8l6.3-7.2L3.5 4H9l3.8 5L17.5 4z"/></svg></a></li>
+            <li><a href="{{ footer.social.instagram }}" target="_blank" rel="noopener" aria-label="Instagram" class="flex size-11 items-center justify-center rounded-full bg-txt-primary text-surface transition-transform hover:-translate-y-0.5"><svg viewBox="0 0 24 24" class="size-5 fill-current" aria-hidden="true"><path d="M12 7.3a4.7 4.7 0 100 9.4 4.7 4.7 0 000-9.4zm0 7.7a3 3 0 110-6 3 3 0 010 6zM17.2 6a1.1 1.1 0 100 2.2 1.1 1.1 0 000-2.2zM8 3h8a5 5 0 015 5v8a5 5 0 01-5 5H8a5 5 0 01-5-5V8a5 5 0 015-5zm0 1.8A3.2 3.2 0 004.8 8v8A3.2 3.2 0 008 19.2h8a3.2 3.2 0 003.2-3.2V8A3.2 3.2 0 0016 4.8H8z"/></svg></a></li>
+            <li><a href="{{ footer.social.youtube }}" target="_blank" rel="noopener" aria-label="YouTube" class="flex size-11 items-center justify-center rounded-full bg-txt-primary text-surface transition-transform hover:-translate-y-0.5"><svg viewBox="0 0 24 24" class="size-5 fill-current" aria-hidden="true"><path fill-rule="evenodd" d="M10 9l5.2 3L10 15V9zM3 12c0-2.2.1-3.6.4-4.4.3-.8.9-1.4 1.7-1.6C6 5.7 12 5.7 12 5.7s6 0 6.9.3c.8.2 1.4.8 1.7 1.6.3.8.4 2.2.4 4.4s-.1 3.6-.4 4.4c-.3.8-.9 1.4-1.7 1.6-.9.3-6.9.3-6.9.3s-6 0-6.9-.3c-.8-.2-1.4-.8-1.7-1.6C3.1 15.6 3 14.2 3 12z"/></svg></a></li>
+          </ul>
+        </div>
+
+        <div>
+          <h3 class="font-bold text-txt-primary">More</h3>
+          <ul class="mt-2 space-y-1">
+            {% for l in footer.more %}<li><a href="{{ l.url }}" class="inline-block py-1 text-base text-txt-secondary hover:text-txt-primary hover:underline">{{ l.label }}</a></li>{% endfor %}
+          </ul>
+        </div>
+
+        <div>
+          <h3 class="font-bold text-txt-primary">Affiliates</h3>
+          <ul class="mt-2 space-y-1">
+            {% for l in footer.affiliates %}<li><a href="{{ l.url }}" target="_blank" rel="noopener" class="inline-block py-1 text-base text-txt-secondary hover:text-txt-primary hover:underline">{{ l.label }}</a></li>{% endfor %}
+          </ul>
+        </div>
+
+        <div>
+          <h3 class="font-bold text-txt-primary">Contact us</h3>
+          <div class="mt-2 grid gap-5 sm:grid-cols-2">
+            {% for o in footer.offices %}
+            <div class="space-y-1 text-base text-txt-secondary">
+              <p>{{ o.address }}</p>
+              <p>{{ o.phone }}</p>
+              {% if o.email %}<p><a href="mailto:{{ o.email }}" class="hover:text-txt-primary hover:underline">{{ o.email }}</a></p>{% endif %}
+            </div>
+            {% endfor %}
+          </div>
+        </div>
+      </div>
     </div>
   </section>
 
