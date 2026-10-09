@@ -213,6 +213,13 @@ class CoordinatorChoiceField(forms.ModelChoiceField):
         return f"{obj.full_name} ({obj.account_id})"
 
 
+class ExtensionChoiceField(forms.ModelChoiceField):
+    """Shows extension names in title case in the person form's dropdown."""
+
+    def label_from_instance(self, obj):
+        return title_case(obj.name)
+
+
 class AssignCoordinatorForm(forms.Form):
     """Pick the coordinator from the members of one extension."""
 
@@ -280,11 +287,10 @@ class UserForm(forms.Form):
         widget=forms.DateInput(attrs={"class": "input", "type": "date"}, format="%Y-%m-%d"),
     )
     role = forms.ChoiceField(widget=forms.Select(attrs={"class": "input", "x-model": "role"}))
-    # The page shows a text box with a datalist of extension names and puts the
-    # chosen extension's id in this hidden field (the server still checks the id).
-    extension = forms.ModelChoiceField(
-        queryset=Extension.objects.none(), required=False, empty_label=None,
-        widget=forms.HiddenInput(),
+    # The page renders a dropdown; the server still checks the selected extension.
+    extension = ExtensionChoiceField(
+        queryset=Extension.objects.none(), required=False, empty_label="Choose an extension",
+        widget=forms.Select(attrs={"class": "input", "x-model": "extId", "@change": "pick()"}),
     )
     # Set by the confirmation dialog when a coordinator may replace the current one.
     replace_coordinator = forms.BooleanField(required=False, widget=forms.HiddenInput())
