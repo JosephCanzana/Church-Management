@@ -68,16 +68,16 @@ NAV_ITEMS = [
     NavItem("Prayer", "prayer:list", "heart", roles=(COORDINATOR, MEMBER), bottom=True),
     NavItem("Goals", "faith:goals", "flag", roles=(COORDINATOR, MEMBER)),
     NavItem("Buddy", "buddy:home", "user-group", roles=(COORDINATOR, MEMBER)),
-    NavItem("Attendance", "attendance:list", "clipboard-document-check", roles=(ADMIN, COORDINATOR, MEMBER)),
-    NavItem("Tithes", "tithes:list", "banknotes", roles=(ADMIN, COORDINATOR, MEMBER)),
+    NavItem("Attendance", "attendance:list", "clipboard-document-check"),
+    NavItem("Tithes", "tithes:list", "banknotes"),
     NavItem("Resources", "resources:list", "folder-open"),
     NavItem("Settings", "theming:settings", "cog-6-tooth"),
     # Management section (sidebar heading "Manage")
-    NavItem("Extensions", "superadmin:extension_list", "building-office", roles=(SUPER_ADMIN,), group="Manage"),
-    NavItem("People", "superadmin:user_list", "users", roles=(SUPER_ADMIN,), group="Manage"),
+    NavItem("Extensions", "superadmin:extension_list", "building-office", roles=(SUPER_ADMIN, ADMIN), group="Manage"),
+    NavItem("People", "superadmin:user_list", "users", roles=(SUPER_ADMIN, ADMIN, COORDINATOR), group="Manage"),
     NavItem("Site settings", "core:site_settings", "adjustments-horizontal", roles=(SUPER_ADMIN, ADMIN), group="Manage"),
-    NavItem("Audit log", "audit:log", "shield-check", roles=(SUPER_ADMIN,), group="Manage"),
-    NavItem("Django admin", "admin:index", "wrench-screwdriver", roles=(SUPER_ADMIN,), group="Manage"),
+    NavItem("Audit log", "audit:log", "shield-check", roles=(SUPER_ADMIN, ADMIN), group="Manage"),
+    NavItem("Django admin", "admin:index", "wrench-screwdriver", roles=(SUPER_ADMIN, ADMIN), group="Manage"),
 ]
 
 
