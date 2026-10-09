@@ -58,7 +58,7 @@ submit_token (create only: one-time token so a double submit creates one person)
       {% for error in form.role.errors %}<p class="field-error">{{ error }}</p>{% endfor %}
     </div>
     <div x-show="role === 'coordinator' || role === 'member'" x-cloak>
-      <label for="extension-text" class="label">Extension</label>
+      <label for="{{ form.extension.id_for_label }}" class="label">Extension</label>
       {{ form.extension }}
       {% for error in form.extension.errors %}<p class="field-error">{{ error }}</p>{% endfor %}
       <p class="field-help" x-show="taken" x-cloak style="display:none">
@@ -102,7 +102,7 @@ submit_token (create only: one-time token so a double submit creates one person)
 {% block extra_js %}
 <script>
 document.addEventListener('alpine:init', () => {
-  // Extension datalist + "replace the coordinator?" confirmation for the person form.
+  // Coordinator replacement confirmation for the person form.
   Alpine.data('userForm', (cfg) => ({
     role: cfg.role, extId: cfg.extId, personId: cfg.personId,
     replace: false, confirmed: false,
