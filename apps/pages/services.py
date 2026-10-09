@@ -23,6 +23,8 @@ from datetime import date
 
 from django.utils import timezone
 from django.utils.translation import get_language
+from django.templatetags.static import static
+
 
 DEFAULT_HERO = {
     "title": "Jesus Is Lord Church",
@@ -56,6 +58,8 @@ DEFAULT_ABOUT = {
     },
 }
 
+
+
 # Shown when no published theme exists for the current month. It labels its own month,
 # so it never claims to be a month it is not.
 DEFAULT_THEME = {
@@ -66,21 +70,12 @@ DEFAULT_THEME = {
         "facing challenges. Let us continue to trust God, encourage one another, and "
         "move forward with faith."
     ),
-    "url": "https://jilworldwide.org/theme/breakthrough-joy-that-strengthens/",
+    "url": "#",
 }
 
-# Church photos shown (hero carousel and "Come as you are" gallery) until an admin uploads
-# landing images. These are the church's own images from the landing page draft.
-_IMG_BASE = "https://imagedelivery.net/HHwzmHgltKa2rO5RHhbhqQ"
 DEFAULT_IMAGES = [
-    {"url": f"{_IMG_BASE}/{image_id}/public", "caption": "Jesus Is Lord Church"}
-    for image_id in (
-        "5aa2eb7c-4113-4dc3-1b75-da495d75da00",
-        "c49d15ea-5a65-41b3-1df2-d1c3c61a6f00",
-        "bc4a6fd8-6ff6-42d9-0108-89537b9cb200",
-        "8b283359-be1a-40ee-2757-70de1d3fa000",
-        "8be2d580-6382-4d52-97af-91c8056c0e00",
-    )
+    {"path": f"pages/images/landing/church-{n}.jpg", "caption": "Jesus Is Lord Church"}
+    for n in range(1, 6)
 ]
 
 # Welcoming copy for the "Come as you are" section. It describes the spirit of the church
@@ -151,18 +146,18 @@ FOOTER = {
         {"label": "Privacy Policy", "url": "#"},  # placeholder until the page exists
     ],
     "affiliates": [
-        {"label": "Light TV", "url": "#"},
-        {"label": "JILCF", "url": "#"},
-        {"label": "iCare", "url": "#"},
+        {"label": "", "url": "#"},
+        {"label": "", "url": "#"},
+        {"label": "", "url": "#"},
     ],
     "offices": [
-        {"address": "101 MacArthur Highway, Bunlo, Bocaue, Bulacan 3018 Philippines",
-         "phone": "+63 (044) 931 3063", "email": ""},
+        {"address": "Santa Rosa - Tarlac Rd, Santa Rosa, Nueva Ecija",
+         "phone": "(044) 3113475", "email": "jesusislordchurchne@gmail.com"},
         {"address": "841 EDSA South Triangle, Quezon City, Metro Manila 1103 Philippines",
          "phone": "+63 2 8661 2858", "email": "info@jilworldwide.org"},
     ],
     "social": {
-        "facebook": "https://www.facebook.com/jesusislordchurch",
+        "facebook": "https://www.facebook.com/people/Jesus-Is-Lord-Church-Santa-Rosa-Nueva-Ecija/",
         "x": "#",
         "instagram": "#",
         "youtube": "https://www.youtube.com/user/JILWorldwide",
@@ -205,11 +200,17 @@ def _hero():
 
 def _hero_images():
     """Church photos as {url, caption} dicts: active landing images, else the default photos."""
-    from apps.pages.models import LandingImage
+    from apps.pages.models import LandingImage  # lazy, per your loader convention
 
-    rows = LandingImage.objects.filter(is_active=True).order_by("sort_order", "id")
+    rows = (
+        LandingImage.objects.filter(is_active=True)
+        .exclude(image="")
+        .order_by("sort_order", "id")
+    )
     images = [{"url": r.image.url, "caption": r.caption} for r in rows]
-    return images or [dict(i) for i in DEFAULT_IMAGES]
+    return images or [
+        {"url": static(i["path"]), "caption": i["caption"]} for i in DEFAULT_IMAGES
+    ]
 
 
 def _about_block(key, default_key):

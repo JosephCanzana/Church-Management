@@ -33,8 +33,8 @@
         <p class="flex items-center gap-3 text-sm font-bold uppercase tracking-[.25em]">
           <span class="h-0.5 w-7 bg-highlight" aria-hidden="true"></span>Welcome to
         </p>
-        <span class="mt-5 inline-flex size-20 items-center justify-center rounded-full border border-highlight bg-surface/10">
-          {% include "includes/logo.html" with variant="mark" size="size-10" decorative=True %}
+        <span class="mt-5 inline-flex">
+          {% include "includes/logo.html" with variant="mark" plate="surface" shape="circle" size="size-14" decorative=True %}
         </span>
         <h1 class="mt-5 text-4xl font-extrabold leading-[1.06] tracking-tight sm:text-5xl lg:text-6xl">{{ hero.title }}</h1>
         <p class="mt-5 text-lg leading-relaxed text-surface/80">{{ hero.intro }}</p>
@@ -43,10 +43,9 @@
           <a href="{% url 'accounts:login' %}" class="btn min-h-11 border border-surface px-6 font-bold uppercase tracking-wider text-surface hover:bg-surface hover:text-txt-primary">Log in</a>
         </div>
       </div>
-
       {% if hero_images %}
       <div
-        class="w-full max-w-md justify-self-center md:justify-self-end"
+        class="w-full max-w-2xl justify-self-center md:justify-self-end"
         x-data="{
           c: 0,
           n: {{ hero_images|length }},
@@ -66,7 +65,7 @@
         aria-roledescription="carousel"
         aria-label="Church photos"
       >
-        <div class="rounded-3xl rounded-br-lg border border-surface/20 bg-surface/10 p-3 shadow-2xl supports-[backdrop-filter]:backdrop-blur-sm">
+        <div class="rounded-3xl rounded-br-lg border border-surface/20 bg-surface/10 p-3 shadow-2xl supports-[backdrop-filter]:backdrop-blur-sm md:p-4">
           <div class="relative aspect-[4/3] overflow-hidden rounded-2xl rounded-br-md border-4 border-surface/80 bg-txt-primary">
             {% for img in hero_images %}
             <figure class="absolute inset-0 m-0" x-show="c === {{ forloop.counter0 }}" {% if not forloop.first %}x-cloak{% endif %} x-transition.opacity.duration.600ms>
@@ -91,8 +90,8 @@
       </div>
       {% else %}
       {% comment %} Default panel until landing images are uploaded. {% endcomment %}
-      <div class="flex aspect-[4/3] w-full max-w-md items-center justify-center justify-self-center rounded-3xl rounded-br-lg border border-surface/20 bg-surface/10 md:justify-self-end" aria-hidden="true">
-        {% include "includes/logo.html" with variant="mark" size="size-28" decorative=True %}
+      <div class="flex aspect-[4/3] w-full max-w-2xl items-center justify-center justify-self-center rounded-3xl rounded-br-lg border border-surface/20 bg-surface/10 md:justify-self-end" aria-hidden="true">
+        {% include "includes/logo.html" with variant="mark" plate="surface" shape="circle" size="size-28" decorative=True %}
       </div>
       {% endif %}
     </div>

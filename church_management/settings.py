@@ -215,3 +215,5 @@ LOGGING = {
 }
 
 DEFAULT_PASSWORD_KEY = config("DEFAULT_PASSWORD_KEY")
+
+SECURE_REFERRER_POLICY = "strict-origin-when-cross-origin"
