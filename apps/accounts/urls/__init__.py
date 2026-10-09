@@ -7,7 +7,7 @@ The `accounts` namespace lets templates use {% url 'accounts:login' %}.
 from django.urls import path
 
 from .. import views
-from ..views import profile
+from ..views import password_reset, profile
 
 app_name = "accounts"
 
@@ -26,4 +26,9 @@ urlpatterns = [
     path("profile/password/", profile.password_view, name="profile_password"),
     # The link in the verification email.
     path("verify-email/<str:token>/", profile.verify_email_view, name="verify_email"),
+    # Forgot / reset password (public pages).
+    path("forgot-password/", password_reset.forgot_password_view, name="forgot_password"),
+    path("forgot-password/sent/", password_reset.forgot_password_done_view, name="forgot_password_done"),
+    # The link in the reset email.
+    path("reset-password/<str:token>/", password_reset.reset_password_view, name="reset_password"),
 ]

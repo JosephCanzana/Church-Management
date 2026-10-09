@@ -184,6 +184,11 @@ VERIFY_LINK_MINUTES = 60
 VERIFY_RESEND_SECONDS = 60
 VERIFY_MAX_PER_HOUR = 10
 
+RESET_LINK_MINUTES = config("RESET_LINK_MINUTES", default=30, cast=int)
+RESET_RESEND_SECONDS = config("RESET_RESEND_SECONDS", default=60, cast=int)
+RESET_MAX_PER_HOUR = config("RESET_MAX_PER_HOUR", default=5, cast=int)
+
+
 # Use our backend so people can log in with an account id OR a verified email.
 # It also keeps /django-admin/ login working (it accepts Django's "username" argument).
 AUTHENTICATION_BACKENDS = ["apps.accounts.backends.AccountIdOrEmailBackend"]
