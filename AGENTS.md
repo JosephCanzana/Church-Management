@@ -530,3 +530,30 @@ still in use), `archive_inactive_users`, `auto_transfer_extension`,
 - **Pages that can show a password** (`user_create`, `user_reset_password`, `user_bulk`) are `never_cache` and render the
   dialog in the POST response (`json_script:"secrets-data"`), not a redirect.
 - Names are stored lowercase (core.text.clean_text), shown with name_case/person_name, and checked for duplicates (same first, middle and last name, unless both have different birth dates). The super-admin role cannot be handed out from a screen.
+
+| `bible` | `bible_verse`, `daily_verse`, `bible_chapter_read` | Local reader (KJV, Ang Dating Biblia), ESV client (api.esv.org), version lock status, super-admin API switches, daily verse, `record_chapter_read()` |
+
+## Bible text
+- **Versions:** KJV and Ang Dating Biblia (public domain) are stored in `bible_verse` and loaded with
+  `manage.py import_bible KJV|ADB (--file PATH | --url URL)` from seven1m/open-bibles OSIS files
+  (`eng-kjv.osis.xml`, `tgl-tagalog.osis.xml`). ESV is licensed: fetched from api.esv.org, never stored
+  (`bible_verse_local_only` constraint). MBBTAG is not offered yet (needs Philippine Bible Society permission).
+- **Book key:** OSIS id (`Gen`, `1John`), table in `bible/books.py`. Chapter reads are unique per person, book,
+  chapter and Manila day, not per translation.
+- **Import is all-or-nothing:** `bible/osis.py` refuses ranges, empty verses and incomplete books
+  (`check_canon`); the command replaces one translation in a single transaction.
+- ESV limits: 5,000 queries/day, 1,000/hour, 60/minute; the copyright notice and a link to esv.org must show on
+  every page that displays ESV text.
+
+## Bible reader
+- **Where:** `bible/views.py` (thin), `bible/services.py` (`get_chapter`, `record_chapter_read`, version status),
+  `bible/versions.py` (the version catalog), `bible/urls.py` (namespace `bible`, mounted at `/bible/`),
+  templates in `apps/bible/templates/bible/`. Routes: `/bible/` (books), `/bible/<book>/` (chapters),
+  `/bible/<book>/<chapter>/` (text), POST `/bible/version/` and POST `/bible/<book>/<chapter>/read/`.
+- **Chosen version** is kept in the `bible_version` cookie (per device, HttpOnly, 1 year, not the account) and is
+  checked against the catalog on every request; an unknown value falls back to KJV.
+- **Locked versions** are shown in the picker, disabled, with the reason as text. A locked version is also refused on
+  the server (`VersionLocked`). ESV is locked ("not set up yet") until its client is built.
+- **Chapter reads:** `record_chapter_read()` is idempotent (one row per person, book, chapter and Manila day, any
+  version) and sends `bible.signals.chapter_read` only for a new row; the `faith` app listens to it for the streak.
+  Reads are not written to `audit_log` (high volume, not an administrative action).

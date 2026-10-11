@@ -1,3 +1,145 @@
-from django.shortcuts import render
+"""bible.views: book list, chapter list, chapter reader, version picker, "mark as read".
 
-# Create your views here.
+Every view is open to all four roles (a person reads their own Bible), but each
+still carries role_required, as the project rules ask. The chosen version lives
+in a cookie on that device; it is checked against the catalog on every request,
+so a tampered value just falls back to the default version.
+"""
+from django.contrib import messages
+from django.http import Http404
+from django.shortcuts import redirect, render
+from django.urls import reverse
+from django.utils.http import url_has_allowed_host_and_scheme
+from django.views.decorators.http import require_POST
+
+from apps.accounts.decorators import role_required
+from apps.accounts.models import Role
+
+from . import services
+from .books import BOOKS, NEW, OLD, get_book, neighbor_chapters
+from .services import BibleError, TextNotImported, VersionLocked
+from .versions import SOURCE_LOCAL, VERSIONS_BY_CODE
+
+ALL_ROLES = (Role.SUPER_ADMIN, Role.ADMIN, Role.COORDINATOR, Role.MEMBER)
+VERSION_COOKIE = "bible_version"
+VERSION_COOKIE_MAX_AGE = 60 * 60 * 24 * 365  # one year
+
+
+def _current_version(request):
+    """The version saved in this device's cookie (default when missing or invalid)."""
+    return services.resolve_version(request.COOKIES.get(VERSION_COOKIE))
+
+
+def _book_or_404(osis_id):
+    """Return the Book for the url, or raise a 404."""
+    book = get_book(osis_id)
+    if book is None:
+        raise Http404("Unknown book")
+    return book
+
+
+@role_required(*ALL_ROLES)
+def reader_view(request):
+    """List every book (the page the Bible nav link opens)."""
+    return render(request, "bible/reader.html", {
+        "version": _current_version(request),
+        "statuses": services.version_statuses(),
+        "old_books": [b for b in BOOKS if b.testament == OLD],
+        "new_books": [b for b in BOOKS if b.testament == NEW],
+    })
+
+
+@role_required(*ALL_ROLES)
+def book_view(request, book):
+    """List the chapters of one book."""
+    book = _book_or_404(book)
+    return render(request, "bible/book.html", {
+        "version": _current_version(request),
+        "statuses": services.version_statuses(),
+        "book": book,
+        "chapters": range(1, book.chapters + 1),
+    })
+
+
+@role_required(*ALL_ROLES)
+def chapter_view(request, book, chapter):
+    """Show one chapter in the person's chosen version."""
+    book = _book_or_404(book)
+    if not 1 <= chapter <= book.chapters:
+        raise Http404("Unknown chapter")
+    version = _current_version(request)
+    context = {
+        "version": version,
+        "statuses": services.version_statuses(),
+        "book": book,
+        "chapter": chapter,
+        "text": None,
+        "locked_reason": "",
+        "missing": False,
+        "already_read": services.chapter_read_today(request.user, book.osis_id, chapter),
+    }
+    previous, following = neighbor_chapters(book.osis_id, chapter)
+    context["previous"] = _chapter_link(previous)
+    context["following"] = _chapter_link(following)
+    try:
+        context["text"] = services.get_chapter(version.code, book.osis_id, chapter)
+    except VersionLocked as locked:
+        context["locked_reason"] = locked.reason
+    except TextNotImported:
+        context["missing"] = True
+    return render(request, "bible/chapter.html", context)
+
+
+def _chapter_link(target):
+    """Turn (osis_id, chapter) from neighbor_chapters into a dict for the template."""
+    if target is None:
+        return None
+    osis_id, number = target
+    return {
+        "book": get_book(osis_id),
+        "chapter": number,
+        "url": reverse("bible:chapter", args=[osis_id, number]),
+    }
+
+
+@role_required(*ALL_ROLES)
+@require_POST
+def set_version_view(request):
+    """Save the chosen version in a cookie, then go back to where the person was."""
+    code = request.POST.get("version", "")
+    target = request.POST.get("next", "")
+    if not url_has_allowed_host_and_scheme(target, allowed_hosts={request.get_host()}):
+        target = reverse("bible:reader")
+    version = VERSIONS_BY_CODE.get(code)
+    if version is None:
+        messages.error(request, "That version does not exist.")
+        return redirect(target)
+    status = services.get_status(code)
+    if not status.available:
+        messages.error(request, f"{version.label} is locked. {status.reason}")
+        return redirect(target)
+    response = redirect(target)
+    response.set_cookie(
+        VERSION_COOKIE, version.code, max_age=VERSION_COOKIE_MAX_AGE, samesite="Lax", httponly=True,
+    )
+    return response
+
+
+@role_required(*ALL_ROLES)
+@require_POST
+def mark_read_view(request, book, chapter):
+    """Record that this person read the chapter today."""
+    book = _book_or_404(book)
+    if not 1 <= chapter <= book.chapters:
+        raise Http404("Unknown chapter")
+    version = _current_version(request)
+    try:
+        _, created = services.record_chapter_read(request.user, version.code, book.osis_id, chapter)
+    except BibleError as error:
+        messages.error(request, str(error))
+    else:
+        if created:
+            messages.success(request, f"{book.name} {chapter} marked as read.")
+        else:
+            messages.info(request, f"{book.name} {chapter} is already marked as read today.")
+    return redirect("bible:chapter", book=book.osis_id, chapter=chapter)

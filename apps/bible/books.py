@@ -66,3 +66,27 @@ TOTAL_CHAPTERS = sum(book.chapters for book in BOOKS)  # 1,189
 def get_book(osis_id):
     """Return the Book for an OSIS id, or None when it is not in the canon."""
     return BOOKS_BY_ID.get(osis_id)
+
+
+def neighbor_chapters(osis_id, chapter):
+    """Return ((book, chapter) before, (book, chapter) after) for a chapter.
+
+    Crosses book boundaries (Genesis 50 -> Exodus 1). Either side is None at
+    the very start (Genesis 1) or end (Revelation 22) of the Bible.
+    """
+    book = BOOKS_BY_ID[osis_id]
+    index = BOOK_ORDER[osis_id]
+    if chapter > 1:
+        previous = (osis_id, chapter - 1)
+    elif index > 0:
+        before = BOOKS[index - 1]
+        previous = (before.osis_id, before.chapters)
+    else:
+        previous = None
+    if chapter < book.chapters:
+        following = (osis_id, chapter + 1)
+    elif index < len(BOOKS) - 1:
+        following = (BOOKS[index + 1].osis_id, 1)
+    else:
+        following = None
+    return previous, following

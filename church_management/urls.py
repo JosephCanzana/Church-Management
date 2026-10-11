@@ -25,6 +25,8 @@ urlpatterns = [
     path("accounts/", include("apps.accounts.urls")),
     path("superadmin/", include("apps.accounts.urls.superadmin")),
     path("", include("apps.dashboards.urls")),
+    path("bible/", include("apps.bible.urls")),
+    
 ]
 
 # Dev only: Django serves uploaded photos. In production Caddy serves /media/.

@@ -1,0 +1,29 @@
+<!-- bible/reader.html: every book of the Bible.
+Extends base_app.html and fills: page_title, content.
+Context: version, statuses, old_books, new_books (Book objects). -->
+{% extends "base_app.html" %}
+{% block title %}Bible{% endblock %}
+{% block page_title %}Bible{% endblock %}
+{% block content %}
+<div class="mx-auto w-full max-w-4xl space-y-6">
+  {% include "bible/_version_picker.html" %}
+
+  <section aria-labelledby="old-testament">
+    <h2 id="old-testament" class="mb-3 text-lg font-semibold text-txt-primary">Old Testament</h2>
+    <ul class="grid grid-cols-2 gap-2 sm:grid-cols-3 lg:grid-cols-4">
+      {% for book in old_books %}
+        <li><a href="{% url 'bible:book' book.osis_id %}" class="card flex min-h-11 items-center px-3 py-2 text-txt-primary hover:border-accent">{{ book.name }}</a></li>
+      {% endfor %}
+    </ul>
+  </section>
+
+  <section aria-labelledby="new-testament">
+    <h2 id="new-testament" class="mb-3 text-lg font-semibold text-txt-primary">New Testament</h2>
+    <ul class="grid grid-cols-2 gap-2 sm:grid-cols-3 lg:grid-cols-4">
+      {% for book in new_books %}
+        <li><a href="{% url 'bible:book' book.osis_id %}" class="card flex min-h-11 items-center px-3 py-2 text-txt-primary hover:border-accent">{{ book.name }}</a></li>
+      {% endfor %}
+    </ul>
+  </section>
+</div>
+{% endblock %}

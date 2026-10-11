@@ -1,0 +1,22 @@
+<!-- bible/book.html: the chapters of one book.
+Extends base_app.html and fills: page_title, content.
+Context: version, statuses, book (Book), chapters (range of chapter numbers). -->
+{% extends "base_app.html" %}
+{% block title %}{{ book.name }}{% endblock %}
+{% block page_title %}{{ book.name }}{% endblock %}
+{% block content %}
+<div class="mx-auto w-full max-w-4xl space-y-6">
+  {% url 'bible:reader' as reader_url %}
+  {% include "includes/breadcrumb.html" with parent_label="Bible" parent_url=reader_url current=book.name %}
+  {% include "bible/_version_picker.html" %}
+
+  <section aria-labelledby="chapters-heading">
+    <h2 id="chapters-heading" class="mb-3 text-lg font-semibold text-txt-primary">Chapters</h2>
+    <ul class="grid grid-cols-5 gap-2 sm:grid-cols-8 md:grid-cols-10">
+      {% for number in chapters %}
+        <li><a href="{% url 'bible:chapter' book.osis_id number %}" class="card flex h-11 items-center justify-center font-mono text-txt-primary hover:border-accent" aria-label="{{ book.name }} chapter {{ number }}">{{ number }}</a></li>
+      {% endfor %}
+    </ul>
+  </section>
+</div>
+{% endblock %}
