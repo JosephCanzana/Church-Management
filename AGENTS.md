@@ -17,12 +17,12 @@ buddies, prayer requests, events, resources, notifications and audit logging.
   - Super-admin extension management (`/superadmin/extensions/`) and user management (`/superadmin/users/`).
   - A global toast and confirm dialog (`static/js/ui.js`, rendered by `includes/messages.html`).
   - Bible: reader with three versions (KJV and Ang Dating Biblia from the database, ESV from api.esv.org), version
-    picker with locking, chapter reads, ESV call limits, locks and a size-capped cache (see Bible).
+    picker with locking, chapter reads, ESV call limits, locks and a size-capped cache, and the super-admin
+    switches for every version (`/superadmin/site-settings/`, see Bible).
 - **Not built yet:**
   - Forgot/reset password (the "Forgot password?" link on the login page is a placeholder, `href="#"`) and
     brute-force login throttling.
-  - Super-admin screen for the Bible API switches (for now they are changed in the Django shell), the daily verse
-    and the `faith` listener that turns a chapter read into a streak, MBBTAG.
+  - The daily verse and the `faith` listener that turns a chapter read into a streak, MBBTAG.
   - Beyond the list above, services, views and forms are mostly not built yet: features are being added on top of
     the models, one app at a time.
 
@@ -329,9 +329,9 @@ with. Only create a new app if the answer is "none".
 
   | Code | Version | Source | Can lock? |
   |---|---|---|---|
-  | `ESV` | English Standard Version | api.esv.org (licensed) | yes |
-  | `KJV` | King James Version | `bible_verse` (public domain) | no |
-  | `ADB` | Ang Dating Biblia (1905, Tagalog) | `bible_verse` (public domain) | no |
+  | `ESV` | English Standard Version | api.esv.org (licensed) | yes (switch and automatic locks) |
+  | `KJV` | King James Version | `bible_verse` (public domain) | yes (switch only) |
+  | `ADB` | Ang Dating Biblia (1905, Tagalog) | `bible_verse` (public domain) | yes (switch only) |
 
   `MBBTAG` stays in `Translation` so older rows remain valid, but it is not offered: it needs permission from the
   Philippine Bible Society and is not on API.bible. Adding a version means one entry in `versions.py` plus its source.
@@ -370,16 +370,28 @@ with. Only create a new app if the answer is "none".
     loading while ESV is locked or switched off.
   - **Displaying ESV:** the Crossway copyright notice, "(ESV)" in the heading and a link to https://www.esv.org/ on
     every page that shows ESV text (all in `versions.py` and `chapter.html`). Do not change the words.
-- **Turning ESV on and off (until the super-admin screen exists):** in `manage.py shell`
-  ```python
-  from apps.core.models import SiteSetting
-  SiteSetting.objects.update_or_create(key="bible_esv_enabled", defaults={"value": False})  # ESV only
-  SiteSetting.objects.update_or_create(key="bible_api_enabled", defaults={"value": False})  # all online Bible services
-  # set the value back to True to turn them on; check the state with:
-  from apps.bible import esv; print(esv.lock_reason() or "ESV is available")
-  ```
-  To clear an automatic lock early: `SiteSetting.objects.filter(key="bible_esv_state").delete()` (this also resets the
-  call counters).
+- **Version switches (super-admin screen):** `/superadmin/site-settings/` (namespace `bible_superadmin`, nav entry
+  "Site settings", super-admin only). One master switch for every online service plus one button per version.
+  - **Where:** `switches.py` (reads the switches and says why a version is blocked), `site_settings.py` (the only code
+    that changes them), `views_superadmin.py`, `urls_superadmin.py`, templates in `bible/superadmin/`
+    (`site_settings.html`, `_switch_button.html`), tests in `tests/test_site_settings.py`. The screen lives in `bible`
+    because `core` cannot import `accounts` (`role_required`, permissions).
+  - **Keys** (rows in `site_setting`, on when missing): `bible_esv_enabled`, `bible_kjv_enabled`, `bible_adb_enabled`,
+    and the master `bible_api_enabled` (ESV today). A new version gets `bible_<code lower>_enabled` from
+    `switches.switch_key()`; nothing else to add.
+  - **Blocked completely:** a switched-off version is refused by `services.get_chapter()` before anything else, so
+    even an ESV chapter in `bible_esv_cache` is not shown. The picker shows it locked with the reason as text.
+    `services.resolve_version()` skips a switched-off default (KJV) when there is no cookie.
+  - **Rules:** at least one version must stay readable (a switch cannot be turned off if it would leave none; the
+    master counts as off for ESV). Both guards apply: `role_required(Role.SUPER_ADMIN)` on the views and
+    `require_site_settings_manager` (`accounts/permissions.py`) at the top of each function. Forms post the state they
+    want (`enabled=1|0`), never "flip", and the service is idempotent: no change means no audit row. Turning off asks
+    first (`data-confirm`).
+  - **Audit:** `site_setting.bible_version_toggled` and `site_setting.bible_online_toggled`, with the switch key as the
+    label and `{"enabled": ...}` before and after. Nothing else is logged.
+  - **Automatic ESV locks are separate** and still clear by themselves. To clear one early (shell):
+    `SiteSetting.objects.filter(key="bible_esv_state").delete()` (this also resets the call counters). Check the
+    state with `from apps.bible import esv; print(esv.lock_reason() or "ESV is available")`.
 
 ## Landing page
 - **Where:** `apps/pages/views.py` (`landing_view`, thin; the root URL must import that exact name),

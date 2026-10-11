@@ -9,7 +9,7 @@ from dataclasses import dataclass
 from django.db import transaction
 from django.utils import timezone
 
-from . import esv
+from . import esv, switches
 from .books import BOOKS_BY_ID
 from .errors import BibleError, TextNotImported, VersionLocked  # noqa: F401 (re-exported for callers)
 from .models import BibleChapterRead, BibleVerse
@@ -36,13 +36,17 @@ class ChapterText:
     verses: list
 
 
-def lock_reason(version):
+def lock_reason(version, switch_state=None):
     """Return why a version is locked, or "" when it can be read.
 
-    Local versions are never locked. ESV is locked when it has no key, an
-    administrator switched it off, a limit was reached or it had a problem
-    (see apps/bible/esv.py).
+    Every version can be switched off by the super-admin (apps/bible/switches.py).
+    ESV can also lock by itself: no key, a limit was reached or it had a problem
+    (see apps/bible/esv.py). Pass ``switch_state`` (``switches.read_switches()``)
+    to check several versions with one query.
     """
+    reason = switches.switch_reason(version, switch_state)
+    if reason:
+        return reason
     if version.source == SOURCE_ESV:
         return esv.lock_reason()
     return ""
@@ -51,8 +55,9 @@ def lock_reason(version):
 def version_statuses():
     """Status of every version, in picker order."""
     statuses = []
+    switch_state = switches.read_switches()
     for version in VERSIONS:
-        reason = lock_reason(version)
+        reason = lock_reason(version, switch_state)
         statuses.append(VersionStatus(version, available=not reason, reason=reason))
     return statuses
 
@@ -65,8 +70,20 @@ def get_status(code):
 
 
 def resolve_version(code):
-    """Return the BibleVersion for a code; an unknown or empty code gives the default."""
-    return VERSIONS_BY_CODE.get(code) or VERSIONS_BY_CODE[DEFAULT_VERSION]
+    """Return the BibleVersion for a code; an unknown or empty code gives the default.
+
+    When the default is switched off, the first version that can be read is used
+    instead, so a new visitor does not land on a locked version.
+    """
+    version = VERSIONS_BY_CODE.get(code)
+    if version:
+        return version
+    fallback = VERSIONS_BY_CODE[DEFAULT_VERSION]
+    if switches.switch_reason(fallback):
+        for status in version_statuses():
+            if status.available:
+                return status.version
+    return fallback
 
 
 def validate_reference(osis_id, chapter):
@@ -85,8 +102,13 @@ def get_chapter(version_code, osis_id, chapter):
     if version is None:
         raise BibleError("That version does not exist.")
     book = validate_reference(osis_id, chapter)
+    # A version the super-admin switched off is blocked completely: no text,
+    # not even an ESV chapter that is still in the cache.
+    switched_off = switches.switch_reason(version)
+    if switched_off:
+        raise VersionLocked(switched_off)
     if version.source == SOURCE_ESV:
-        # May still serve a cached chapter while ESV is locked; raises VersionLocked otherwise.
+        # May still serve a cached chapter while ESV is locked by itself; raises VersionLocked otherwise.
         return ChapterText(version=version, book=book, chapter=chapter, verses=esv.get_verses(osis_id, chapter))
     rows = BibleVerse.objects.filter(
         translation=version.code, book=osis_id, chapter=chapter

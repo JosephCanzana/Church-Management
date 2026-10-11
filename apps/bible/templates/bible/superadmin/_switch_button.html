@@ -1,0 +1,28 @@
+<!--
+bible/superadmin/_switch_button.html
+Include, not a page: no blocks. One POST form with a single button that turns a switch on or off.
+Context: action (URL to POST to), on (true when the switch is on now), label (what it switches, for
+the button's accessible name), off_message (the sentence the confirm dialog shows before turning off).
+Usage: include "bible/superadmin/_switch_button.html" with action=url on=card.on label="KJV" off_message="..."
+The form posts the state it wants (enabled=0 or 1), so a double click cannot flip it back.
+Turning something OFF asks first (data-confirm); turning it ON does not.
+-->
+<form method="post" action="{{ action }}">
+  {% csrf_token %}
+  {% if on %}
+  <input type="hidden" name="enabled" value="0">
+  <button type="submit" class="btn btn-secondary min-h-11"
+          data-confirm="{{ off_message }}" data-confirm-title="Turn off {{ label }}?"
+          data-confirm-text="Turn off" data-confirm-danger
+          aria-label="Turn off {{ label }}">
+    {% include 'includes/icon.html' with name='lock-closed' class='size-4' %}
+    Turn off
+  </button>
+  {% else %}
+  <input type="hidden" name="enabled" value="1">
+  <button type="submit" class="btn btn-primary min-h-11" aria-label="Turn on {{ label }}">
+    {% include 'includes/icon.html' with name='lock-open' class='size-4' %}
+    Turn on
+  </button>
+  {% endif %}
+</form>

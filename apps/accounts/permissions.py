@@ -32,6 +32,18 @@ def require_extension_manager(actor):
         raise PermissionDenied("Only the super-admin can manage extensions.")
 
 
+# ------------------------------------------------------------- site settings
+def can_manage_site_settings(actor):
+    """Change site-wide settings, such as which Bible versions are switched on."""
+    return is_super_admin(actor)
+
+
+def require_site_settings_manager(actor):
+    """Raise PermissionDenied (HTTP 403) unless `actor` may change site settings."""
+    if not can_manage_site_settings(actor):
+        raise PermissionDenied("Only the super-admin can change site settings.")
+
+
 # --------------------------------------------------------------------- users
 def assignable_roles(actor):
     """Role values `actor` may give to someone (when creating or editing a person).

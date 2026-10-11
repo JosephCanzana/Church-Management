@@ -1,0 +1,72 @@
+<!--
+bible/superadmin/site_settings.html
+Super-admin only. Turn the Bible on and off: one master switch for the online services and one switch
+for each Bible version. A switched-off version is blocked for everyone: it shows as locked in the
+version picker and its text is not shown (not even ESV text from the cache).
+Extends base_app.html. Blocks filled: title, page_title, content.
+Context: cards (list of dicts: version, on, locked_reason), online_on (master switch, true or false).
+Each switch has its own POST button (bible/superadmin/_switch_button.html). Status is always written
+as text ("On" / "Off"), never color alone. Needs the confirm dialog from static/js/ui.js.
+-->
+{% extends "base_app.html" %}
+
+{% block title %}Site settings{% endblock %}
+{% block page_title %}Site settings{% endblock %}
+
+{% block content %}
+<div class="grid gap-8">
+
+  <section aria-labelledby="online-heading">
+    <h2 id="online-heading" class="text-base font-semibold text-txt-primary">Online Bible services</h2>
+    <p class="mt-1 max-w-prose text-sm text-txt-secondary">
+      One switch for every version that is fetched from the internet. Today that is ESV.
+      Turning it off blocks ESV even if the ESV switch below is on.
+    </p>
+    <div class="card mt-3 flex flex-wrap items-center justify-between gap-4">
+      <div class="min-w-0 flex-1 basis-56">
+        <p class="font-medium text-txt-primary">
+          All online Bible services
+          <span class="ml-2 rounded-full border border-border bg-surface-alt px-2 py-0.5 text-xs font-medium text-txt-primary">
+            {% if online_on %}On{% else %}Off{% endif %}
+          </span>
+        </p>
+      </div>
+      {% url 'bible_superadmin:online_toggle' as online_url %}
+      {% include "bible/superadmin/_switch_button.html" with action=online_url on=online_on label="all online Bible services" off_message="ESV will be blocked for everyone until you turn this back on." %}
+    </div>
+  </section>
+
+  <section aria-labelledby="versions-heading">
+    <h2 id="versions-heading" class="text-base font-semibold text-txt-primary">Bible versions</h2>
+    <p class="mt-1 max-w-prose text-sm text-txt-secondary">
+      A version that is off appears locked in the version picker and its text is not shown to anyone.
+      At least one version has to stay on.
+    </p>
+    <ul class="card mt-3 divide-y divide-border overflow-hidden p-0">
+      {% for card in cards %}
+      <li class="flex flex-wrap items-center justify-between gap-4 px-5 py-4">
+        <div class="min-w-0 flex-1 basis-56">
+          <p class="font-medium text-txt-primary">
+            {{ card.version.label }}
+            <span class="ml-2 rounded-full border border-border bg-surface-alt px-2 py-0.5 text-xs font-medium text-txt-primary">
+              {% if card.on %}On{% else %}Off{% endif %}
+            </span>
+          </p>
+          <p class="mt-0.5 text-sm text-txt-secondary">
+            {% if card.version.source == "esv" %}Fetched from api.esv.org{% else %}Public domain, stored on this site{% endif %}
+          </p>
+          {% if not card.on %}
+          <p class="field-help mt-1">Turned off. Readers see this version as locked.</p>
+          {% elif card.locked_reason %}
+          <p class="field-help mt-1">Turned on, but not readable right now: {{ card.locked_reason }}</p>
+          {% endif %}
+        </div>
+        {% url 'bible_superadmin:version_toggle' card.version.code as toggle_url %}
+        {% include "bible/superadmin/_switch_button.html" with action=toggle_url on=card.on label=card.version.label off_message="Nobody will be able to read this version until you turn it back on." %}
+      </li>
+      {% endfor %}
+    </ul>
+  </section>
+
+</div>
+{% endblock %}

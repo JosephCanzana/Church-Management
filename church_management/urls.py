@@ -24,6 +24,7 @@ urlpatterns = [
     path("django-admin/", admin.site.urls),
     path("accounts/", include("apps.accounts.urls")),
     path("superadmin/", include("apps.accounts.urls.superadmin")),
+    path("superadmin/site-settings/", include("apps.bible.urls_superadmin")),
     path("", include("apps.dashboards.urls")),
     path("bible/", include("apps.bible.urls")),
     
