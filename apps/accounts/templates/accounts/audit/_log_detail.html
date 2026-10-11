@@ -1,0 +1,79 @@
+{% comment %}
+_log_detail.html: the body of the audit detail panel, returned as an HTML fragment by audit:detail.
+Variables: row (with action_group, action_label), changes (list of field/before/after), source_label, actor_role_label.
+Values are autoescaped; log_action() already removed password, token and secret keys.
+{% endcomment %}
+{% load ui_tags %}
+<dl class="space-y-4 text-base">
+  <div>
+    <dt class="text-sm text-txt-secondary">What happened</dt>
+    <dd class="font-medium text-txt-primary">{{ row.action_label }}{% if row.action_group %} <span class="font-normal text-txt-secondary">in {{ row.action_group|lower }}</span>{% endif %}</dd>
+    <dd class="font-mono text-sm text-txt-secondary">{{ row.action }}</dd>
+  </div>
+  <div>
+    <dt class="text-sm text-txt-secondary">When</dt>
+    <dd class="text-txt-primary">{{ row.created_at|date:"l, F j, Y" }} at {{ row.created_at|date:"g:i:s A" }}</dd>
+  </div>
+  <div>
+    <dt class="text-sm text-txt-secondary">Who</dt>
+    <dd class="text-txt-primary">{% if row.source == 'system_job' %}System job{% elif row.actor_label %}{{ row.actor_label|title_case }}{% else %}Unknown person{% endif %}</dd>
+    {% if actor_role_label %}<dd class="text-sm text-txt-secondary">{{ actor_role_label }}</dd>{% endif %}
+    <dd class="text-sm text-txt-secondary">Source: {{ source_label }}</dd>
+  </div>
+  <div>
+    <dt class="text-sm text-txt-secondary">Result</dt>
+    <dd>
+      {% if row.status == 'failed' %}
+      <span class="inline-flex items-center gap-1.5 font-medium text-error">{% include 'includes/icon.html' with name='x-circle' class='size-5' %}Failed</span>
+      {% else %}
+      <span class="inline-flex items-center gap-1.5 text-txt-primary">{% include 'includes/icon.html' with name='check-circle' class='size-5' %}Success</span>
+      {% endif %}
+    </dd>
+  </div>
+  {% if row.entity_type %}
+  <div>
+    <dt class="text-sm text-txt-secondary">Record</dt>
+    <dd class="text-txt-primary">{{ row.entity_label|default:row.entity_type }}</dd>
+    <dd class="font-mono text-sm text-txt-secondary">{{ row.entity_type }}{% if row.entity_id %} #{{ row.entity_id }}{% endif %}</dd>
+  </div>
+  {% endif %}
+  {% if row.extension_id %}
+  <div>
+    <dt class="text-sm text-txt-secondary">Extension</dt>
+    <dd class="font-mono text-sm text-txt-primary">#{{ row.extension_id }}</dd>
+  </div>
+  {% endif %}
+  {% if row.ip_address or row.user_agent %}
+  <div>
+    <dt class="text-sm text-txt-secondary">Device</dt>
+    {% if row.ip_address %}<dd class="font-mono text-sm text-txt-primary">{{ row.ip_address }}</dd>{% endif %}
+    {% if row.user_agent %}<dd class="break-words text-sm text-txt-secondary">{{ row.user_agent }}</dd>{% endif %}
+  </div>
+  {% endif %}
+</dl>
+
+<h3 class="mt-7 text-base font-semibold text-txt-primary">What changed</h3>
+{% if changes %}
+<div class="mt-2 overflow-x-auto rounded-lg border border-border bg-surface">
+  <table class="w-full text-left text-sm">
+    <thead class="border-b border-border text-txt-secondary">
+      <tr>
+        <th scope="col" class="px-3 py-2 font-medium">Field</th>
+        <th scope="col" class="px-3 py-2 font-medium">Before</th>
+        <th scope="col" class="px-3 py-2 font-medium">After</th>
+      </tr>
+    </thead>
+    <tbody>
+      {% for change in changes %}
+      <tr class="border-b border-border align-top last:border-0">
+        <th scope="row" class="px-3 py-2 font-medium text-txt-primary">{{ change.field }}</th>
+        <td class="break-words px-3 py-2 font-mono text-txt-secondary">{{ change.before }}</td>
+        <td class="break-words px-3 py-2 font-mono text-txt-primary">{{ change.after }}</td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+</div>
+{% else %}
+<p class="mt-2 text-base text-txt-secondary">No field details were recorded for this action.</p>
+{% endif %}

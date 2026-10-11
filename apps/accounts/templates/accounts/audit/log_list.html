@@ -1,0 +1,216 @@
+<!--
+  log_list.html: the audit log (read-only). Fills the blocks title, page_title and content.
+  Context: rows (each with action_group, action_label and actor_role_label), page, querystring, chips, filters,
+  has_filters, hidden_filters, action_choices, source_choices, status_choices, limited.
+  The detail panel loads accounts/audit/_log_detail.html from the detail route with fetch.
+-->
+{% extends "base_app.html" %}
+{% load ui_tags %}
+
+{% block title %}Audit log{% endblock %}
+{% block page_title %}Audit log{% endblock %}
+
+{% block content %}
+<div x-data="auditPanel()" @keydown.escape.window="close()" class="mx-auto w-full max-w-6xl space-y-5">
+
+  <p class="max-w-prose text-base text-txt-secondary">
+    A read-only record of who did what, and when.
+    {% if limited %}You can see church activity. System and theme changes are visible to the super-admin only.{% endif %}
+  </p>
+
+  <form method="get" role="search" class="flex flex-wrap items-center gap-3">
+    <label for="audit-q" class="sr-only">Search the audit log</label>
+    <input id="audit-q" type="search" name="q" value="{{ filters.q }}"
+           placeholder="Search by person, record or action" class="input min-w-0 flex-1 basis-64">
+    {% for key, value in hidden_filters %}<input type="hidden" name="{{ key }}" value="{{ value }}">{% endfor %}
+    <button type="submit" class="btn btn-secondary">Search</button>
+    <button type="button" class="btn btn-secondary gap-2" @click="$store.ui.openModal('filters')">
+      {% include 'includes/icon.html' with name='funnel' class='size-5' %}
+      Filters{% if chips %} ({{ chips|length }}){% endif %}
+    </button>
+  </form>
+
+  {% if has_filters %}
+  <ul class="flex flex-wrap items-center gap-2" aria-label="Active filters">
+    {% for chip in chips %}
+    <li>
+      <a href="?{{ chip.remove }}"
+         class="inline-flex min-h-11 items-center gap-1.5 rounded-full border border-border bg-surface px-4 text-sm text-txt-primary transition-colors hover:bg-txt-primary/5 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-accent"
+         aria-label="Remove filter {{ chip.label }}">
+        {{ chip.label }}
+        {% include 'includes/icon.html' with name='x-mark' class='size-4' %}
+      </a>
+    </li>
+    {% endfor %}
+    <li>
+      <a href="{% url 'audit:log' %}"
+         class="inline-flex min-h-11 items-center px-3 text-sm font-medium text-txt-primary underline underline-offset-2 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-accent">Clear all</a>
+    </li>
+  </ul>
+  {% endif %}
+
+  <p class="text-sm text-txt-secondary" aria-live="polite">{{ page.paginator.count }} record{{ page.paginator.count|pluralize }}</p>
+
+  <div class="overflow-hidden rounded-xl border border-border bg-surface">
+    {% if rows %}
+    <div class="overflow-x-auto">
+      <table class="w-full min-w-[36rem] text-left text-base">
+        <caption class="sr-only">Audit log entries, newest first</caption>
+        <thead class="border-b border-border text-sm text-txt-secondary">
+          <tr>
+            <th scope="col" class="px-4 py-3 font-medium">When</th>
+            <th scope="col" class="px-4 py-3 font-medium">Who</th>
+            <th scope="col" class="px-4 py-3 font-medium">Action</th>
+            <th scope="col" class="hidden px-4 py-3 font-medium md:table-cell">Record</th>
+            <th scope="col" class="px-4 py-3 font-medium">Result</th>
+            <th scope="col" class="px-2 py-3"><span class="sr-only">Details</span></th>
+          </tr>
+        </thead>
+        <tbody>
+          {% for row in rows %}
+          <tr class="border-b border-border align-top last:border-0 hover:bg-txt-primary/5">
+            <td class="whitespace-nowrap px-4 py-3 text-txt-secondary">
+              <time datetime="{{ row.created_at|date:'c' }}">
+                {{ row.created_at|date:"M j, Y" }}
+                <span class="block text-sm">{{ row.created_at|date:"g:i A" }}</span>
+              </time>
+            </td>
+            <td class="px-4 py-3 text-txt-primary">
+              {% if row.source == 'system_job' %}System job{% elif row.actor_label %}{{ row.actor_label|title_case }}{% if row.actor_role_label %}<span class="block text-sm text-txt-secondary">{{ row.actor_role_label }}</span>{% endif %}{% else %}Unknown person{% endif %}
+            </td>
+            <td class="px-4 py-3">
+              <p class="font-medium text-txt-primary">{{ row.action_label }}</p>
+              {% if row.action_group %}<p class="text-sm text-txt-secondary">{{ row.action_group }}</p>{% endif %}
+            </td>
+            <td class="hidden px-4 py-3 md:table-cell">
+              {% if row.entity_type %}
+                <p class="text-txt-primary">{{ row.entity_label|default:row.entity_type }}</p>
+                <p class="font-mono text-sm text-txt-secondary">{{ row.entity_type }}{% if row.entity_id %} #{{ row.entity_id }}{% endif %}</p>
+              {% else %}<span class="text-txt-secondary">—</span>{% endif %}
+            </td>
+            <td class="whitespace-nowrap px-4 py-3">
+              {% if row.status == 'failed' %}
+              <span class="inline-flex items-center gap-1.5 font-medium text-error">{% include 'includes/icon.html' with name='x-circle' class='size-5' %}Failed</span>
+              {% else %}
+              <span class="inline-flex items-center gap-1.5 text-txt-secondary">{% include 'includes/icon.html' with name='check-circle' class='size-5' %}Success</span>
+              {% endif %}
+            </td>
+            <td class="px-2 py-1 text-right">
+              <button type="button"
+                      class="inline-flex size-11 items-center justify-center rounded-full text-txt-secondary transition-colors hover:bg-txt-primary/5 hover:text-txt-primary focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-accent"
+                      aria-label="View details: {{ row.action_label }}, {{ row.created_at|date:'M j, g:i A' }}"
+                      @click="show('{% url 'audit:detail' row.pk %}', $el)">
+                {% include 'includes/icon.html' with name='chevron-right' class='size-5' %}
+              </button>
+            </td>
+          </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+    {% else %}
+    <div class="px-6 py-14 text-center">
+      <p class="text-base font-medium text-txt-primary">{% if has_filters %}No records match these filters.{% else %}Nothing has been logged yet.{% endif %}</p>
+      <p class="mx-auto mt-1 max-w-md text-base text-txt-secondary">
+        {% if has_filters %}Try a wider date range or remove a filter.{% else %}Sign-ins, role changes, uploads and other actions appear here as they happen.{% endif %}
+      </p>
+      {% if has_filters %}<a href="{% url 'audit:log' %}" class="btn btn-secondary mt-5">Clear filters</a>{% endif %}
+    </div>
+    {% endif %}
+  </div>
+
+  {% if page.has_other_pages %}{% include 'includes/pagination.html' with page=page querystring=querystring %}{% endif %}
+
+  {# Right-hand detail panel: opened by the row buttons, filled by fetch. #}
+  <div x-show="open" x-cloak x-transition.opacity.duration.150ms class="fixed inset-0 z-50">
+    <div class="absolute inset-0 bg-txt-primary/40" @click="close()" aria-hidden="true"></div>
+    <aside role="dialog" aria-modal="true" aria-labelledby="audit-panel-title"
+           class="absolute inset-y-0 right-0 flex w-full max-w-md flex-col border-l border-shell-border bg-shell shadow-[0_0_40px_-8px_rgba(0,0,0,0.35)]">
+      <div class="flex items-center justify-between gap-3 border-b border-shell-border px-5 py-3">
+        <h2 id="audit-panel-title" class="text-lg font-semibold text-txt-primary">Audit entry</h2>
+        <button type="button" x-ref="close" @click="close()" aria-label="Close details"
+                class="inline-flex size-11 items-center justify-center rounded-full text-txt-secondary hover:bg-txt-primary/5 hover:text-txt-primary focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-accent">
+          {% include 'includes/icon.html' with name='x-mark' class='size-6' %}
+        </button>
+      </div>
+      <div class="flex-1 overflow-y-auto px-5 py-5" aria-live="polite">
+        <p x-show="loading" class="text-base text-txt-secondary">Loading details…</p>
+        <p x-show="failed" x-cloak class="text-base text-error">These details did not load. Close the panel and try again.</p>
+        <div x-html="html"></div>
+      </div>
+    </aside>
+  </div>
+
+  {% modal "filters" title="Filter audit log" %}
+  <form method="get" class="space-y-4">
+    {% if filters.q %}<input type="hidden" name="q" value="{{ filters.q }}">{% endif %}
+    <div>
+      <label for="f-action" class="label">Action</label>
+      <select id="f-action" name="action" class="input">
+        <option value="">All actions</option>
+        {% for value, label in action_choices %}<option value="{{ value }}" {% if value == filters.action %}selected{% endif %}>{{ label }}</option>{% endfor %}
+      </select>
+    </div>
+    <div class="grid gap-4 sm:grid-cols-2">
+      <div>
+        <label for="f-status" class="label">Result</label>
+        <select id="f-status" name="status" class="input">
+          <option value="">Any result</option>
+          {% for value, label in status_choices %}<option value="{{ value }}" {% if value == filters.status %}selected{% endif %}>{{ label }}</option>{% endfor %}
+        </select>
+      </div>
+      <div>
+        <label for="f-source" class="label">Source</label>
+        <select id="f-source" name="source" class="input">
+          <option value="">Any source</option>
+          {% for value, label in source_choices %}<option value="{{ value }}" {% if value == filters.source %}selected{% endif %}>{{ label }}</option>{% endfor %}
+        </select>
+      </div>
+    </div>
+    <div class="grid gap-4 sm:grid-cols-2">
+      <div>
+        <label for="f-from" class="label">From</label>
+        <input id="f-from" type="date" name="date_from" value="{{ filters.date_from }}" class="input">
+      </div>
+      <div>
+        <label for="f-to" class="label">Until</label>
+        <input id="f-to" type="date" name="date_to" value="{{ filters.date_to }}" class="input">
+      </div>
+    </div>
+    <div class="flex flex-wrap justify-end gap-3 pt-2">
+      <a href="{% url 'audit:log' %}" class="btn btn-ghost">Reset</a>
+      <button type="submit" class="btn btn-primary">Apply filters</button>
+    </div>
+  </form>
+  {% endmodal %}
+</div>
+
+<script>
+  /* Alpine component for the detail panel: fetches the partial for one row and shows it. */
+  document.addEventListener('alpine:init', () => {
+    Alpine.data('auditPanel', () => ({
+      open: false, loading: false, failed: false, html: '', opener: null, seq: 0,
+      async show(url, opener) {
+        const mine = ++this.seq;
+        this.opener = opener; this.open = true; this.loading = true; this.failed = false; this.html = '';
+        this.$nextTick(() => this.$refs.close.focus());
+        try {
+          const res = await fetch(url, { headers: { 'X-Requested-With': 'fetch' }, credentials: 'same-origin' });
+          if (!res.ok) throw new Error('status ' + res.status);
+          const text = await res.text();
+          if (mine === this.seq) this.html = text;
+        } catch (e) {
+          if (mine === this.seq) this.failed = true;
+        } finally {
+          if (mine === this.seq) this.loading = false;
+        }
+      },
+      close() {
+        if (!this.open) return;
+        this.open = false;
+        this.$nextTick(() => { if (this.opener) this.opener.focus(); });
+      },
+    }));
+  });
+</script>
+{% endblock %}

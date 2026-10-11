@@ -1,20 +1,52 @@
 {% comment %}
-topbar.html: right-hand side of the app header, on the frame color. A notification bell (placeholder link for now),
-then the signed-in user as a link to their profile: the profile photo (or a solid initials badge when there is none),
-plus name and role from sm up.
-The bell shows a dot when a context variable unread_count is above zero; nothing provides it yet, so no dot appears.
+topbar.html: right-hand side of the app header, on the frame color. A notification bell that opens a dropdown
+with the latest five notifications (a "View all" link goes to the full page), then the signed-in user as a link to
+their profile: the profile photo (or a solid initials badge when there is none), plus name and role from sm up.
+The bell shows a dot when unread_count is above zero. Below sm the dropdown is fixed under the header and spans the
+screen so it never runs off the edge; from sm up it hangs under the bell.
 The header, the menu button and the page title live in base_app.html, because a block inside an included file never overrides anything.
 The light/dark toggle and log out are in sidebar_utilities.html.
-Variables: user (from the auth context processor), unread_count (optional, from the notifications app later).
+Variables: user (from the auth context processor), unread_count and recent_notifications (from
+notifications.context_processors.bell).
 Usage: {% include 'includes/topbar.html' %}
 {% endcomment %}
 <div class="flex min-w-0 shrink-0 items-center gap-2 sm:gap-3">
-  <a href="#"
-     class="relative inline-flex size-11 shrink-0 items-center justify-center rounded-full text-txt-secondary transition-colors hover:bg-txt-primary/5 hover:text-txt-primary focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-accent"
-     aria-label="Notifications">
-    {% include 'includes/icon.html' with name='bell' class='size-6' %}
-    {% if unread_count %}<span class="absolute right-2.5 top-2.5 size-2.5 rounded-full bg-error ring-2 ring-shell"></span>{% endif %}
-  </a>
+  <div class="relative" x-data="{ open: false }" @keydown.escape.window="open = false" @click.outside="open = false">
+    <button type="button"
+            class="relative inline-flex size-11 shrink-0 items-center justify-center rounded-full text-txt-secondary transition-colors hover:bg-txt-primary/5 hover:text-txt-primary focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-accent"
+            aria-label="Notifications{% if unread_count %}, {{ unread_count }} unread{% endif %}"
+            aria-haspopup="true" aria-controls="notification-menu" :aria-expanded="open"
+            @click="open = !open">
+      {% include 'includes/icon.html' with name='bell' class='size-6' %}
+      {% if unread_count %}<span class="absolute right-2.5 top-2.5 size-2.5 rounded-full bg-error ring-2 ring-shell"></span>{% endif %}
+    </button>
+
+    <div id="notification-menu" x-show="open" x-cloak x-transition.opacity.duration.100ms
+         class="fixed inset-x-3 top-[4.5rem] z-40 overflow-hidden rounded-2xl border border-shell-border bg-shell shadow-[0_16px_40px_-12px_rgba(0,0,0,0.3)] sm:absolute sm:inset-x-auto sm:right-0 sm:top-full sm:mt-2 sm:w-96">
+      <div class="flex items-center justify-between gap-3 border-b border-shell-border px-4 py-2">
+        <p class="text-base font-semibold text-txt-primary">Notifications</p>
+        {% if unread_count %}
+        <form method="post" action="{% url 'notifications:read_all' %}">
+          {% csrf_token %}
+          <input type="hidden" name="next" value="{{ request.get_full_path }}">
+          <button type="submit" class="inline-flex min-h-11 items-center rounded-full px-3 text-sm font-medium text-txt-primary underline underline-offset-2 hover:bg-txt-primary/5 focus-visible:outline focus-visible:outline-2 focus-visible:outline-accent">Mark all as read</button>
+        </form>
+        {% endif %}
+      </div>
+
+      {% if recent_notifications %}
+      <ul class="max-h-[min(24rem,60dvh)] divide-y divide-shell-border overflow-y-auto">
+        {% for n in recent_notifications %}{% include 'notifications/_item.html' with item=n compact=True %}{% endfor %}
+      </ul>
+      {% else %}
+      <p class="px-4 py-8 text-center text-base text-txt-secondary">You're all caught up.</p>
+      {% endif %}
+
+      <a href="{% url 'notifications:list' %}"
+         class="flex min-h-12 items-center justify-center border-t border-shell-border px-4 text-base font-medium text-txt-primary transition-colors hover:bg-txt-primary/5 focus-visible:outline focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-accent">View all notifications</a>
+    </div>
+  </div>
+
   <a href="{% url 'accounts:profile' %}"
      class="flex min-w-0 items-center gap-3 rounded-full py-1 pl-1 pr-1 transition-colors hover:bg-txt-primary/5 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-accent sm:pr-4"
      aria-label="Your profile">

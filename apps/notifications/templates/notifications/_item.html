@@ -1,0 +1,23 @@
+{% comment %}
+_item.html: one notification as a row. The whole row is a POST button, so opening it marks it read
+and then goes to the linked page (the server does the permission check there).
+Variables: item (a Notification with .icon and .text from notifications/display.py), compact (optional, clamps the text).
+Usage: {% include 'notifications/_item.html' with item=n compact=True %}
+Unread is shown by a dot, a bolder message and hidden text, never by color alone.
+{% endcomment %}
+<li>
+  <form method="post" action="{% url 'notifications:open' item.pk %}">
+    {% csrf_token %}
+    <button type="submit"
+            class="flex min-h-14 w-full items-start gap-3 px-4 py-3 text-left transition-colors hover:bg-txt-primary/5 focus-visible:outline focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-accent">
+      <span class="mt-0.5 flex size-9 shrink-0 items-center justify-center rounded-full {% if item.read_at %}bg-txt-primary/5 text-txt-secondary{% else %}bg-primary text-on-primary{% endif %}">
+        {% include 'includes/icon.html' with name=item.icon class='size-5' %}
+      </span>
+      <span class="min-w-0 flex-1">
+        <span class="block text-base {% if compact %}line-clamp-2{% endif %} {% if item.read_at %}text-txt-secondary{% else %}font-semibold text-txt-primary{% endif %}">{{ item.text }}</span>
+        <span class="mt-0.5 block text-sm text-txt-secondary">{% if item.importance == 'important' %}<span class="font-medium text-txt-primary">Important</span> · {% endif %}{{ item.created_at|timesince }} ago{% if not item.read_at %}<span class="sr-only">, unread</span>{% endif %}</span>
+      </span>
+      {% if not item.read_at %}<span class="mt-2.5 size-2.5 shrink-0 rounded-full bg-accent" aria-hidden="true"></span>{% endif %}
+    </button>
+  </form>
+</li>

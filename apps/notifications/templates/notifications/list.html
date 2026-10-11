@@ -1,0 +1,52 @@
+<!--
+  list.html: the full notifications page. Fills the blocks title, page_title and content.
+  Context: items (each with an icon), page, unread_only, querystring. unread_count comes from
+  the notifications context processor.
+-->
+{% extends "base_app.html" %}
+
+{% block title %}Notifications{% endblock %}
+{% block page_title %}Notifications{% endblock %}
+
+{% block content %}
+<div class="mx-auto w-full max-w-3xl space-y-5">
+
+  <div class="flex flex-wrap items-center justify-between gap-3">
+    <nav aria-label="Filter notifications" class="flex gap-1 rounded-full border border-border bg-surface p-1">
+      <a href="{% url 'notifications:list' %}"
+         class="inline-flex min-h-10 items-center rounded-full px-4 text-base transition-colors focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-accent {% if not unread_only %}bg-primary font-medium text-on-primary{% else %}text-txt-secondary hover:text-txt-primary{% endif %}"
+         {% if not unread_only %}aria-current="page"{% endif %}>All</a>
+      <a href="{% url 'notifications:list' %}?filter=unread"
+         class="inline-flex min-h-10 items-center gap-2 rounded-full px-4 text-base transition-colors focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-accent {% if unread_only %}bg-primary font-medium text-on-primary{% else %}text-txt-secondary hover:text-txt-primary{% endif %}"
+         {% if unread_only %}aria-current="page"{% endif %}>Unread{% if unread_count %} ({{ unread_count }}){% endif %}</a>
+    </nav>
+
+    {% if unread_count %}
+    <form method="post" action="{% url 'notifications:read_all' %}">
+      {% csrf_token %}
+      <input type="hidden" name="next" value="{{ request.get_full_path }}">
+      <button type="submit" class="btn btn-secondary">Mark all as read</button>
+    </form>
+    {% endif %}
+  </div>
+
+  {% if items %}
+  <ul class="divide-y divide-border overflow-hidden rounded-xl border border-border bg-surface">
+    {% for n in items %}{% include 'notifications/_item.html' with item=n %}{% endfor %}
+  </ul>
+  {% else %}
+  <div class="rounded-xl border border-border bg-surface px-6 py-14 text-center">
+    {% if unread_only %}
+    <p class="text-base font-medium text-txt-primary">You're all caught up.</p>
+    <p class="mt-1 text-base text-txt-secondary">Nothing new needs your attention.</p>
+    <a href="{% url 'notifications:list' %}" class="btn btn-secondary mt-5">Show all notifications</a>
+    {% else %}
+    <p class="text-base font-medium text-txt-primary">No notifications yet.</p>
+    <p class="mx-auto mt-1 max-w-md text-base text-txt-secondary">Event reminders, prayer requests and other updates will show up here.</p>
+    {% endif %}
+  </div>
+  {% endif %}
+
+  {% if page.has_other_pages %}{% include 'includes/pagination.html' with page=page querystring=querystring %}{% endif %}
+</div>
+{% endblock %}
