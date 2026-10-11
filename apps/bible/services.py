@@ -9,29 +9,12 @@ from dataclasses import dataclass
 from django.db import transaction
 from django.utils import timezone
 
+from . import esv
 from .books import BOOKS_BY_ID
+from .errors import BibleError, TextNotImported, VersionLocked  # noqa: F401 (re-exported for callers)
 from .models import BibleChapterRead, BibleVerse
 from .signals import chapter_read
 from .versions import DEFAULT_VERSION, SOURCE_ESV, VERSIONS, VERSIONS_BY_CODE
-
-# Placeholder lock reason until the ESV client exists (see build step 4).
-ESV_NOT_READY = "ESV is not set up yet."
-
-
-class BibleError(Exception):
-    """A problem a person can understand (bad reference, text not loaded...)."""
-
-
-class VersionLocked(BibleError):
-    """The version cannot be read right now; ``reason`` explains why."""
-
-    def __init__(self, reason):
-        super().__init__(reason)
-        self.reason = reason
-
-
-class TextNotImported(BibleError):
-    """A local version has no text yet (run ``manage.py import_bible``)."""
 
 
 @dataclass(frozen=True)
@@ -56,11 +39,12 @@ class ChapterText:
 def lock_reason(version):
     """Return why a version is locked, or "" when it can be read.
 
-    Local versions are never locked. ESV is always locked for now; the
-    status layer (build step 3) and the ESV client (step 4) replace this.
+    Local versions are never locked. ESV is locked when it has no key, an
+    administrator switched it off, a limit was reached or it had a problem
+    (see apps/bible/esv.py).
     """
     if version.source == SOURCE_ESV:
-        return ESV_NOT_READY
+        return esv.lock_reason()
     return ""
 
 
@@ -101,9 +85,9 @@ def get_chapter(version_code, osis_id, chapter):
     if version is None:
         raise BibleError("That version does not exist.")
     book = validate_reference(osis_id, chapter)
-    reason = lock_reason(version)
-    if reason:
-        raise VersionLocked(reason)
+    if version.source == SOURCE_ESV:
+        # May still serve a cached chapter while ESV is locked; raises VersionLocked otherwise.
+        return ChapterText(version=version, book=book, chapter=chapter, verses=esv.get_verses(osis_id, chapter))
     rows = BibleVerse.objects.filter(
         translation=version.code, book=osis_id, chapter=chapter
     ).order_by("verse").values_list("verse", "text")
@@ -124,16 +108,15 @@ def record_chapter_read(user, version_code, osis_id, chapter):
     """Record that ``user`` read a chapter today; return (entry, created).
 
     One row per person, book, chapter and Manila day, whatever the version, so
-    pressing the button twice (or reading it in two versions) counts once.
+    pressing the button twice (or reading it in two versions) counts once. A
+    locked version is not refused here: the page only offers the button after
+    showing the text, which can come from the cache while the version is locked.
     The ``chapter_read`` signal is sent only when a new row is created.
     """
     version = VERSIONS_BY_CODE.get(version_code)
     if version is None:
         raise BibleError("That version does not exist.")
     validate_reference(osis_id, chapter)
-    reason = lock_reason(version)
-    if reason:
-        raise VersionLocked(reason)
     with transaction.atomic():
         entry, created = BibleChapterRead.objects.get_or_create(
             user=user, book=osis_id, chapter=chapter, read_date=timezone.localdate(),

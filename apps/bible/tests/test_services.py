@@ -2,7 +2,7 @@
 from datetime import date
 from unittest import mock
 
-from django.test import SimpleTestCase, TestCase
+from django.test import SimpleTestCase, TestCase, override_settings
 
 from apps.bible.books import neighbor_chapters
 from apps.bible.models import BibleChapterRead
@@ -30,8 +30,9 @@ class NeighborChapterTests(SimpleTestCase):
         self.assertEqual(neighbor_chapters("Mal", 4)[1], ("Matt", 1))
 
 
+@override_settings(ESV_API_KEY="")
 class VersionStatusTests(SimpleTestCase):
-    """Local versions are open; ESV is locked until its client exists."""
+    """Local versions are open; ESV is locked while it has no key."""
 
     def test_statuses(self):
         by_code = {s.version.code: s for s in version_statuses()}
@@ -41,6 +42,7 @@ class VersionStatusTests(SimpleTestCase):
         self.assertTrue(by_code["ESV"].reason)
 
 
+@override_settings(ESV_API_KEY="")
 class GetChapterTests(TestCase):
     """Reading a chapter from the local text."""
 
@@ -105,12 +107,19 @@ class RecordChapterReadTests(TestCase):
         self.assertTrue(created)
         self.assertEqual(BibleChapterRead.objects.count(), 2)
 
-    def test_refuses_locked_version_and_bad_reference(self):
-        with self.assertRaises(VersionLocked):
-            record_chapter_read(self.user, "ESV", "Gen", 1)
+    def test_refuses_bad_reference_and_unknown_version(self):
         with self.assertRaises(BibleError):
             record_chapter_read(self.user, "KJV", "Gen", 99)
         with self.assertRaises(BibleError):
             record_chapter_read(self.user, "KJV", "Nope", 1)
+        with self.assertRaises(BibleError):
+            record_chapter_read(self.user, "XYZ", "Gen", 1)
         self.assertEqual(BibleChapterRead.objects.count(), 0)
         self.assertEqual(self.received, [])
+
+    @override_settings(ESV_API_KEY="")
+    def test_a_locked_version_does_not_block_recording(self):
+        # The page only offers the button after showing text, which can come from the
+        # ESV cache while ESV is locked.
+        _, created = record_chapter_read(self.user, "ESV", "Gen", 1)
+        self.assertTrue(created)

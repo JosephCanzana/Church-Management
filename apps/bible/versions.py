@@ -20,12 +20,22 @@ class BibleVersion:
     language: str  # HTML lang attribute of the text
     source: str    # SOURCE_LOCAL or SOURCE_ESV
     notice: str    # copyright line shown under the text
+    notice_url: str = ""  # link shown next to the notice (ESV requires esv.org)
 
 
 VERSIONS = (
-    # The ESV copyright notice must be added (and checked against api.esv.org)
-    # when the ESV client is built; ESV text is never shown before that.
-    BibleVersion("ESV", "ESV", "en", SOURCE_ESV, ""),
+    # Notice wording is one of the three Crossway lists on https://api.esv.org/
+    # (the "copyright page" notice). Pages that show ESV text must also link to esv.org.
+    BibleVersion(
+        "ESV", "ESV", "en", SOURCE_ESV,
+        "Scripture quotations are from the ESV\u00ae Bible (The Holy Bible, English Standard Version\u00ae), "
+        "\u00a9 2001 by Crossway, a publishing ministry of Good News Publishers. Used by permission. "
+        "All rights reserved. The ESV text may not be quoted in any publication made available to the "
+        "public by a Creative Commons license. The ESV may not be translated into any other language. "
+        "Users may not copy or download more than 500 verses of the ESV Bible or more than one half of "
+        "any book of the ESV Bible.",
+        "https://www.esv.org/",
+    ),
     BibleVersion("KJV", "KJV", "en", SOURCE_LOCAL, "King James Version (KJV). Public domain."),
     BibleVersion("ADB", "Ang Dating Biblia", "tl", SOURCE_LOCAL, "Ang Dating Biblia (1905). Public domain."),
 )

@@ -29,7 +29,7 @@ already_read (bool), previous / following (dict with book, chapter, url, or None
       <p class="text-lg leading-8 text-txt-primary">
         {% for number, verse_text in text.verses %}<span><sup class="mr-1 font-mono text-xs text-txt-secondary">{{ number }}</sup>{{ verse_text }}</span> {% endfor %}
       </p>
-      {% if version.notice %}<p class="field-help mt-4 border-t border-border pt-3">{{ version.notice }}</p>{% endif %}
+      {% if version.notice %}<p class="field-help mt-4 border-t border-border pt-3">{{ version.notice }}{% if version.notice_url %} <a href="{{ version.notice_url }}" target="_blank" rel="noopener noreferrer" class="underline">www.esv.org</a>{% endif %}</p>{% endif %}
     </article>
 
     <div class="flex items-center justify-between gap-3">

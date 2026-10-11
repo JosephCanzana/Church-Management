@@ -4,8 +4,9 @@ Two kinds of translation exist (see ``apps/bible/versions.py``):
 
 * local ones (KJV, Ang Dating Biblia) are public domain, so their text is stored
   in ``bible_verse`` and loaded with ``manage.py import_bible``;
-* ESV is licensed, so it is fetched from api.esv.org and its text is NEVER
-  stored here (a database constraint enforces that).
+* ESV is licensed, so it is fetched from api.esv.org. It is never stored in
+  ``bible_verse`` (a database constraint enforces that); only a small, size-capped
+  cache lives in ``bible_esv_cache``.
 
 ``book`` is always an OSIS id (``Gen``, ``1John``; see ``apps/bible/books.py``).
 """
@@ -57,6 +58,36 @@ class BibleVerse(models.Model):
 
     def __str__(self):
         return f"{self.translation} {self.book} {self.chapter}:{self.verse}"
+
+
+class EsvChapterCache(models.Model):
+    """A few recently read ESV chapters, kept to save API calls.
+
+    Crossway's terms allow caching at most 500 verses in total and ask for the
+    cache to be cleared now and then, so apps/bible/esv.py keeps the total under
+    ESV_CACHE_MAX_VERSES (least recently used chapters go first) and ignores rows
+    older than ESV_CACHE_MAX_AGE. Never store ESV text anywhere else.
+    """
+
+    book = models.CharField(max_length=10)  # OSIS id
+    chapter = models.PositiveSmallIntegerField()
+    verses = models.JSONField()             # [[number, text], ...]
+    verse_count = models.PositiveSmallIntegerField()
+    fetched_at = models.DateTimeField()
+    last_used_at = models.DateTimeField()
+
+    class Meta:
+        db_table = "bible_esv_cache"
+        constraints = [
+            models.UniqueConstraint(fields=["book", "chapter"], name="uq_bible_esv_cache"),
+            models.CheckConstraint(
+                condition=Q(verse_count__gte=1) & Q(verse_count__lte=500),
+                name="bible_esv_cache_verse_count",
+            ),
+        ]
+
+    def __str__(self):
+        return f"ESV {self.book} {self.chapter}"
 
 
 class DailyVerse(models.Model):

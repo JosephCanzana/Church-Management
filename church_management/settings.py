@@ -12,6 +12,7 @@ https://docs.djangoproject.com/en/6.1/ref/settings/
 
 from pathlib import Path
 from decouple import config, Csv
+import os
 
 # Build paths inside the project like this: BASE_DIR / 'subdir'.
 BASE_DIR = Path(__file__).resolve().parent.parent
@@ -217,3 +218,5 @@ LOGGING = {
 DEFAULT_PASSWORD_KEY = config("DEFAULT_PASSWORD_KEY")
 
 SECURE_REFERRER_POLICY = "strict-origin-when-cross-origin"
+
+ESV_API_KEY = os.environ.get("ESV_API_KEY", "")

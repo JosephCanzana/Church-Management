@@ -1,5 +1,7 @@
 """Tests for the reader views: access, version cookie, locked ESV, mark as read."""
-from django.test import TestCase
+from unittest import mock
+
+from django.test import TestCase, override_settings
 from django.urls import reverse
 
 from apps.bible.models import BibleChapterRead
@@ -29,6 +31,7 @@ class ReaderAccessTests(TestCase):
         self.assertEqual(len(response.context["chapters"]), 50)
 
 
+@override_settings(ESV_API_KEY="")
 class ChapterViewTests(TestCase):
     """Showing a chapter in the version from the cookie."""
 
@@ -76,6 +79,7 @@ class ChapterViewTests(TestCase):
         self.assertEqual(response.context["following"]["chapter"], 2)
 
 
+@override_settings(ESV_API_KEY="")
 class SetVersionTests(TestCase):
     """The picker saves the choice in a cookie, refuses locked or unknown versions."""
 
@@ -136,3 +140,38 @@ class MarkReadTests(TestCase):
         self.client.post(self.url)
         self.client.force_login(make_user())
         self.assertContains(self.client.get(reverse("bible:chapter", args=["Gen", 1])), "Mark as read")
+
+
+@override_settings(ESV_API_KEY="test-key")
+class EsvViewTests(TestCase):
+    """With a key configured ESV can be chosen and read (the API call is mocked)."""
+
+    def setUp(self):
+        self.client.force_login(make_user())
+        patcher = mock.patch(
+            "apps.bible.esv.esv_client.fetch_chapter",
+            return_value=[(1, "In the beginning, God created the heavens and the earth."), (2, "The earth was without form.")],
+        )
+        self.fetch = patcher.start()
+        self.addCleanup(patcher.stop)
+
+    def test_esv_can_be_chosen(self):
+        response = self.client.post(reverse("bible:set_version"), {"version": "ESV"})
+        self.assertEqual(response.cookies[VERSION_COOKIE].value, "ESV")
+
+    def test_chapter_shows_text_notice_and_esv_link(self):
+        self.client.cookies[VERSION_COOKIE] = "ESV"
+        response = self.client.get(reverse("bible:chapter", args=["Gen", 1]))
+        self.assertContains(response, "In the beginning, God created")
+        self.assertContains(response, "(ESV)")
+        self.assertContains(response, "Crossway")
+        self.assertContains(response, 'href="https://www.esv.org/"')
+
+    def test_locked_by_the_master_switch_shows_notice(self):
+        from apps.core.models import SiteSetting
+        SiteSetting.objects.create(key="bible_api_enabled", value=False)
+        self.client.cookies[VERSION_COOKIE] = "ESV"
+        response = self.client.get(reverse("bible:chapter", args=["Gen", 1]))
+        self.assertContains(response, "is locked right now")
+        self.assertContains(response, "turned off by an administrator")
+        self.fetch.assert_not_called()
