@@ -11,10 +11,17 @@ Context: version, statuses, book (Book), chapters (range of chapter numbers). --
   {% include "bible/_version_picker.html" %}
 
   <section aria-labelledby="chapters-heading">
-    <h2 id="chapters-heading" class="mb-3 text-lg font-semibold text-txt-primary">Chapters</h2>
+    <div class="mb-3 flex items-baseline justify-between gap-3">
+      <h2 id="chapters-heading" class="text-lg font-semibold tracking-tight text-txt-primary">Chapters</h2>
+      <p class="text-sm text-txt-secondary">{{ chapters|length }} in {{ book.name }}</p>
+    </div>
     <ul class="grid grid-cols-5 gap-2 sm:grid-cols-8 md:grid-cols-10">
       {% for number in chapters %}
-        <li><a href="{% url 'bible:chapter' book.osis_id number %}" class="card flex h-11 items-center justify-center font-mono text-txt-primary hover:border-accent" aria-label="{{ book.name }} chapter {{ number }}">{{ number }}</a></li>
+        <li>
+          <a href="{% url 'bible:chapter' book.osis_id number %}"
+             class="flex aspect-square items-center justify-center rounded-lg border border-txt-primary/10 bg-gradient-to-br from-surface/80 to-surface/50 font-mono text-base text-txt-primary shadow-[0_2px_8px_-2px_rgb(0_0_0/0.12),inset_0_1px_0_rgb(255_255_255/0.35)] backdrop-blur transition hover:-translate-y-0.5 hover:border-accent/40 hover:bg-accent/10 hover:shadow-[0_8px_20px_-6px_rgb(0_0_0/0.2),inset_0_1px_0_rgb(255_255_255/0.35)] focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-accent motion-reduce:transition-none motion-reduce:hover:translate-y-0"
+             aria-label="{{ book.name }} chapter {{ number }}">{{ number }}</a>
+        </li>
       {% endfor %}
     </ul>
   </section>

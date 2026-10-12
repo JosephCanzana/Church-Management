@@ -3,72 +3,140 @@
   {% for m in messages %}<span data-level="{{ m.level_tag }}">{{ m }}</span>{% endfor %}
 </div>
 
-{# Toasts #}
-<div x-data class="pointer-events-none fixed inset-x-0 bottom-4 z-[60] flex flex-col items-center gap-2 px-4 sm:items-end sm:px-6"
+<div x-data="{
+       tones: {
+         success: { chip: 'bg-success/15 text-success', d: 'M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm-2 15l-5-5 1.41-1.41L10 14.17l7.59-7.59L19 8l-9 9z' },
+         error:   { chip: 'bg-error/15 text-error',     d: 'M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm1 15h-2v-2h2v2zm0-4h-2V7h2v6z' },
+         warning: { chip: 'bg-warning/15 text-warning', d: 'M1 21h22L12 2 1 21zm12-3h-2v-2h2v2zm0-4h-2v-4h2v4z' },
+         info:    { chip: 'bg-info/15 text-info',       d: 'M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm1 15h-2v-6h2v6zm0-8h-2V7h2v2z' }
+       },
+       tone(level) { return this.tones[level === 'danger' ? 'error' : level] || this.tones.info },
+     }"
+     class="pointer-events-none fixed inset-x-0 bottom-4 z-[60] flex flex-col items-center gap-3 px-4 sm:items-end sm:px-6"
      role="status" aria-live="polite">
   <template x-for="t in $store.ui.toasts" :key="t.id">
-    <div x-transition
-         class="pointer-events-auto flex w-full max-w-sm items-start gap-3 rounded-lg border border-border bg-surface px-4 py-3 text-sm shadow-lg">
-      <span class="flex-1" x-text="t.message"></span>
-      <button type="button" @click="$store.ui.dismiss(t.id)" class="opacity-60 hover:opacity-100" aria-label="Dismiss">✕</button>
+    <div x-transition:enter="transition duration-200 ease-out"
+         x-transition:enter-start="translate-y-2 scale-95 opacity-0"
+         x-transition:enter-end="translate-y-0 scale-100 opacity-100"
+         x-transition:leave="transition duration-150 ease-in"
+         x-transition:leave-start="opacity-100"
+         x-transition:leave-end="scale-95 opacity-0"
+         class="pointer-events-auto flex w-full max-w-sm items-center gap-3 rounded-lg border border-txt-primary/10 bg-gradient-to-br from-surface/80 to-surface/50 p-3 pr-2 text-sm text-txt-primary backdrop-blur-xl backdrop-saturate-150 shadow-[0_10px_30px_-8px_rgb(0_0_0/0.25),0_2px_6px_rgb(0_0_0/0.08),inset_0_1px_0_rgb(255_255_255/0.35)]">
+      <span class="flex size-9 shrink-0 items-center justify-center rounded-lg" :class="tone(t.level).chip" aria-hidden="true">
+        <svg viewBox="0 0 24 24" class="size-5 fill-current"><path :d="tone(t.level).d"/></svg>
+      </span>
+      <span class="min-w-0 flex-1 py-1 leading-snug" x-text="t.message"></span>
+      <button type="button" @click="$store.ui.dismiss(t.id)" aria-label="Dismiss"
+              class="flex size-8 shrink-0 items-center justify-center rounded-lg text-txt-secondary transition-colors hover:bg-txt-primary/10 hover:text-txt-primary focus-visible:outline-2 focus-visible:outline-accent">
+        <svg viewBox="0 0 24 24" class="size-[18px] fill-current" aria-hidden="true"><path d="M19 6.41L17.59 5 12 10.59 6.41 5 5 6.41 10.59 12 5 17.59 6.41 19 12 13.41 17.59 19 19 17.59 13.41 12z"/></svg>
+      </button>
     </div>
   </template>
 </div>
 
-{# Confirm modal #}
+
 <div x-data x-show="$store.ui.dialog.open" x-cloak
+     x-effect="$store.ui.dialog.open && $nextTick(() => $refs.cancel && $refs.cancel.focus())"
      @keydown.escape.window="$store.ui.dialog.open && $store.ui.answer(false)"
+     x-transition:enter="transition duration-200 ease-out"
+     x-transition:enter-start="opacity-0"
+     x-transition:enter-end="opacity-100"
+     x-transition:leave="transition duration-150 ease-in"
+     x-transition:leave-start="opacity-100"
+     x-transition:leave-end="opacity-0"
      class="fixed inset-0 z-[70] flex items-center justify-center p-4"
-     role="alertdialog" aria-modal="true" aria-labelledby="confirm-title">
-  <div class="absolute inset-0 bg-primary/40" @click="$store.ui.answer(false)"></div>
-  <div x-show="$store.ui.dialog.open" x-transition
-       class="relative w-full max-w-md rounded-xl border border-border bg-surface p-6 shadow-xl">
-    <h2 id="confirm-title" class="text-lg font-semibold" x-text="$store.ui.dialog.title"></h2>
-    <p class="mt-2 text-sm text-txt-secondary" x-text="$store.ui.dialog.message"></p>
-    <div class="mt-6 flex justify-end gap-3">
+     role="alertdialog" aria-modal="true" aria-labelledby="confirm-title" aria-describedby="confirm-message">
+  <div class="absolute inset-0 bg-surface/10 backdrop-blur-md backdrop-saturate-125" @click="$store.ui.answer(false)"></div>
+
+  <div x-show="$store.ui.dialog.open"
+       x-transition:enter="transition duration-200 ease-out"
+       x-transition:enter-start="translate-y-3 scale-95 opacity-0"
+       x-transition:enter-end="translate-y-0 scale-100 opacity-100"
+       class="relative w-full max-w-md overflow-hidden rounded-xl border border-txt-primary/10 bg-gradient-to-br from-surface/85 to-surface/55 p-6 backdrop-blur-2xl backdrop-saturate-150 shadow-[0_24px_60px_-12px_rgb(0_0_0/0.35),0_4px_12px_rgb(0_0_0/0.08),inset_0_1px_0_rgb(255_255_255/0.4)]">
+    <div class="flex items-start gap-4">
+      <span class="flex size-11 shrink-0 items-center justify-center rounded-lg"
+            :class="$store.ui.dialog.danger ? 'bg-error/15 text-error' : 'bg-primary/15 text-primary'" aria-hidden="true">
+        <svg viewBox="0 0 24 24" class="size-6 fill-current">
+          <path :d="$store.ui.dialog.danger
+                    ? 'M1 21h22L12 2 1 21zm12-3h-2v-2h2v2zm0-4h-2v-4h2v4z'
+                    : 'M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm1 15h-2v-6h2v6zm0-8h-2V7h2v2z'"/>
+        </svg>
+      </span>
+      <div class="min-w-0 flex-1">
+        <h2 id="confirm-title" class="text-lg font-semibold tracking-tight text-txt-primary" x-text="$store.ui.dialog.title"></h2>
+        <p id="confirm-message" class="mt-1.5 text-sm leading-relaxed text-txt-secondary" x-text="$store.ui.dialog.message"></p>
+      </div>
+    </div>
+
+    <div class="mt-7 flex justify-end gap-2">
       <button type="button" x-ref="cancel" @click="$store.ui.answer(false)"
-              class="rounded-lg border border-border px-4 py-2 text-sm">Cancel</button>
+              class="rounded-lg border border-txt-primary/15 bg-surface/50 px-5 py-2.5 text-sm font-medium text-txt-primary shadow-sm backdrop-blur transition-colors hover:bg-surface/80 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-accent">
+        Cancel
+      </button>
       <button type="button" @click="$store.ui.answer(true)"
-              :class="$store.ui.dialog.danger ? 'bg-error text-on-primary' : 'bg-primary text-on-primary'"
-              class="rounded-lg px-4 py-2 text-sm font-medium" x-text="$store.ui.dialog.confirmText"></button>
+              :class="$store.ui.dialog.danger ? 'bg-error text-on-primary' : 'bg-primary text-on-primary hover:bg-primary-hover'"
+              class="rounded-lg px-5 py-2.5 text-sm font-medium shadow-md transition hover:shadow-lg hover:brightness-110 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-accent"
+              x-text="$store.ui.dialog.confirmText"></button>
     </div>
   </div>
 </div>
 
-{# Show-once secrets modal (generated passwords). It closes ONLY with its button, so a stray click or Escape cannot lose them. #}
+
 <div x-data x-show="$store.ui.secrets.open" x-cloak
      x-effect="$store.ui.secrets.open && $nextTick(() => $refs.done && $refs.done.focus())"
+     x-transition:enter="transition duration-200 ease-out"
+     x-transition:enter-start="opacity-0"
+     x-transition:enter-end="opacity-100"
      class="fixed inset-0 z-[80] flex items-center justify-center p-4"
      role="alertdialog" aria-modal="true" aria-labelledby="secrets-title" aria-describedby="secrets-message">
-  <div class="absolute inset-0 bg-primary/40"></div>
-  <div class="relative w-full max-w-2xl rounded-xl border border-border bg-surface p-6 shadow-xl">
-    <h2 id="secrets-title" class="text-lg font-semibold" x-text="$store.ui.secrets.title"></h2>
-    <p id="secrets-message" class="mt-2 text-sm text-txt-secondary" x-text="$store.ui.secrets.message"></p>
-    <div class="mt-4 max-h-[50dvh] overflow-auto rounded-lg border border-border">
+  <div class="absolute inset-0 bg-surface/10 backdrop-blur-md backdrop-saturate-125"></div>
+
+  <div x-show="$store.ui.secrets.open"
+       x-transition:enter="transition duration-200 ease-out"
+       x-transition:enter-start="translate-y-3 scale-95 opacity-0"
+       x-transition:enter-end="translate-y-0 scale-100 opacity-100"
+       class="relative w-full max-w-2xl overflow-hidden rounded-xl border border-txt-primary/10 bg-gradient-to-br from-surface/85 to-surface/55 p-6 backdrop-blur-2xl backdrop-saturate-150 shadow-[0_24px_60px_-12px_rgb(0_0_0/0.35),0_4px_12px_rgb(0_0_0/0.08),inset_0_1px_0_rgb(255_255_255/0.4)]">
+    <div class="flex items-start gap-4">
+      <span class="flex size-11 shrink-0 items-center justify-center rounded-lg bg-highlight/20 text-txt-primary" aria-hidden="true">
+        <svg viewBox="0 0 24 24" class="size-6 fill-current"><path d="M18 8h-1V6c0-2.76-2.24-5-5-5S7 3.24 7 6v2H6c-1.1 0-2 .9-2 2v10c0 1.1.9 2 2 2h12c1.1 0 2-.9 2-2V10c0-1.1-.9-2-2-2zm-6 9c-1.1 0-2-.9-2-2s.9-2 2-2 2 .9 2 2-.9 2-2 2zm3.1-9H8.9V6c0-1.71 1.39-3.1 3.1-3.1 1.71 0 3.1 1.39 3.1 3.1v2z"/></svg>
+      </span>
+      <div class="min-w-0 flex-1">
+        <h2 id="secrets-title" class="text-lg font-semibold tracking-tight text-txt-primary" x-text="$store.ui.secrets.title"></h2>
+        <p id="secrets-message" class="mt-1.5 text-sm leading-relaxed text-txt-secondary" x-text="$store.ui.secrets.message"></p>
+      </div>
+    </div>
+
+    <div class="mt-5 max-h-[50dvh] overflow-auto rounded-lg border border-txt-primary/10 bg-surface/40 backdrop-blur">
       <table class="w-full text-left text-sm">
-        <thead class="bg-surface-alt text-txt-secondary">
+        <thead class="sticky top-0 bg-surface/80 text-txt-secondary backdrop-blur-md">
           <tr>
             <template x-for="(h, i) in $store.ui.secrets.headers" :key="i">
-              <th scope="col" class="px-3 py-2 font-medium" x-text="h"></th>
+              <th scope="col" class="px-4 py-2.5 font-medium" x-text="h"></th>
             </template>
           </tr>
         </thead>
-        <tbody class="divide-y divide-border">
+        <tbody class="divide-y divide-txt-primary/10">
           <template x-for="(row, i) in $store.ui.secrets.rows" :key="i">
-            <tr>
+            <tr class="transition-colors hover:bg-surface/60">
               <template x-for="(cell, j) in row" :key="j">
-                <td class="px-3 py-2 font-mono" x-text="cell"></td>
+                <td class="px-4 py-2.5 font-mono text-txt-primary" x-text="cell"></td>
               </template>
             </tr>
           </template>
         </tbody>
       </table>
     </div>
-    <div class="mt-6 flex flex-wrap justify-end gap-3">
+
+    <div class="mt-7 flex flex-wrap justify-end gap-2">
       <button type="button" @click="$store.ui.copySecrets()"
-              class="rounded-lg border border-border px-4 py-2 text-sm">Copy all</button>
+              class="rounded-lg border border-txt-primary/15 bg-surface/50 px-5 py-2.5 text-sm font-medium text-txt-primary shadow-sm backdrop-blur transition-colors hover:bg-surface/80 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-accent">
+        Copy all
+      </button>
       <button type="button" x-ref="done" @click="$store.ui.closeSecrets()"
-              class="rounded-lg bg-primary px-4 py-2 text-sm font-medium text-on-primary">I have saved these</button>
+              class="rounded-lg bg-primary px-5 py-2.5 text-sm font-medium text-on-primary shadow-md transition hover:bg-primary-hover hover:shadow-lg focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-accent">
+        I have saved these
+      </button>
     </div>
   </div>
 </div>
+</document_content>

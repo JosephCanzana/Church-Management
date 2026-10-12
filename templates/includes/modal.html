@@ -6,21 +6,50 @@ Context set by the tag: modal_id, modal_title, modal_width (a max-w class), moda
 Open with $store.ui.openModal and the id; close with $store.ui.closeModal (also: Escape, the X
 button, a click on the backdrop). Focus moves to the first field when it opens and returns to the
 button that opened it. The confirm dialog (messages.html) sits above this one.
+
+Design: frosted-glass panel (blur, no colored backdrop). On phones it is a bottom sheet with a grab
+handle; from sm up it is a centered card. The header and body are separate glass layers so long
+content scrolls underneath the header.
 -->
 <div x-data x-show="$store.ui.modal === '{{ modal_id }}'" x-cloak style="display:none"
      data-modal="{{ modal_id }}"
      @keydown.escape.window="$store.ui.modal === '{{ modal_id }}' && !$store.ui.dialog.open && $store.ui.closeModal()"
+     x-transition:enter="transition duration-200 ease-out"
+     x-transition:enter-start="opacity-0"
+     x-transition:enter-end="opacity-100"
+     x-transition:leave="transition duration-150 ease-in"
+     x-transition:leave-start="opacity-100"
+     x-transition:leave-end="opacity-0"
      class="fixed inset-0 z-[65] flex items-end justify-center sm:items-center sm:p-4"
      role="dialog" aria-modal="true" aria-labelledby="modal-{{ modal_id }}-title">
-  <div class="absolute inset-0 bg-primary/40" @click="$store.ui.closeModal()"></div>
-  <div x-show="$store.ui.modal === '{{ modal_id }}'" x-transition
-       class="relative flex max-h-[90dvh] w-full {{ modal_width }} flex-col rounded-t-xl border border-border bg-surface shadow-xl sm:rounded-xl">
-    <div class="flex items-center justify-between gap-3 border-b border-border px-6 py-4">
-      <h2 id="modal-{{ modal_id }}-title" class="text-lg font-semibold">{{ modal_title }}</h2>
-      <button type="button" @click="$store.ui.closeModal()"
-              class="-mr-2 inline-flex size-9 items-center justify-center rounded-lg text-txt-secondary hover:bg-surface-alt hover:text-txt-primary focus-visible:outline-2 focus-visible:outline-accent"
-              aria-label="Close">✕</button>
+
+
+  <div class="absolute inset-0 bg-surface/10 backdrop-blur-md backdrop-saturate-125" @click="$store.ui.closeModal()"></div>
+
+
+  <div x-show="$store.ui.modal === '{{ modal_id }}'"
+       x-transition:enter="transition duration-250 ease-out"
+       x-transition:enter-start="translate-y-6 opacity-0 sm:translate-y-3 sm:scale-95"
+       x-transition:enter-end="translate-y-0 opacity-100 sm:scale-100"
+       x-transition:leave="transition duration-150 ease-in"
+       x-transition:leave-start="opacity-100 sm:scale-100"
+       x-transition:leave-end="translate-y-4 opacity-0 sm:scale-95"
+       class="relative flex max-h-[90dvh] w-full {{ modal_width }} flex-col overflow-hidden rounded-t-xl border border-txt-primary/10 bg-gradient-to-br from-surface/85 to-surface/55 backdrop-blur-2xl backdrop-saturate-150 shadow-[0_24px_60px_-12px_rgb(0_0_0/0.35),0_4px_12px_rgb(0_0_0/0.08),inset_0_1px_0_rgb(255_255_255/0.4)] sm:rounded-xl">
+
+
+    <div class="flex justify-center pt-2.5 sm:hidden" aria-hidden="true">
+      <span class="h-1 w-10 rounded-full bg-txt-primary/20"></span>
     </div>
+
+
+    <div class="relative z-10 flex items-center justify-between gap-3 border-b border-txt-primary/10 bg-surface/30 px-6 py-4 backdrop-blur-md">
+      <h2 id="modal-{{ modal_id }}-title" class="text-lg font-semibold tracking-tight text-txt-primary">{{ modal_title }}</h2>
+      <button type="button" @click="$store.ui.closeModal()" aria-label="Close"
+              class="-mr-2 inline-flex size-9 items-center justify-center rounded-lg text-txt-secondary transition-colors hover:bg-txt-primary/10 hover:text-txt-primary focus-visible:outline-2 focus-visible:outline-accent">
+        <svg viewBox="0 0 24 24" class="size-5 fill-current" aria-hidden="true"><path d="M19 6.41L17.59 5 12 10.59 6.41 5 5 6.41 10.59 12 5 17.59 6.41 19 12 13.41 17.59 19 19 17.59 13.41 12z"/></svg>
+      </button>
+    </div>
+
     <div class="overflow-y-auto px-6 py-5">{{ modal_body }}</div>
   </div>
 </div>

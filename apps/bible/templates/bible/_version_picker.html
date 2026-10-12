@@ -1,10 +1,10 @@
 <!-- Version picker (include). Not a page: no blocks.
 Context: statuses (list of VersionStatus: version, available, reason), version (the chosen BibleVersion), request.
 Usage: include "bible/_version_picker.html" inside a content block.
-Each version is a POST button; a locked version is disabled and shows why in text. -->
-<section class="card p-4" aria-label="Bible version">
-  <h2 class="label mb-2">Version</h2>
-  <ul class="flex flex-wrap gap-2">
+Each version is a POST button inside one glass segmented control; a locked version is disabled and its reason is written out below. -->
+<section class="flex flex-wrap items-center gap-x-4 gap-y-2" aria-label="Bible version">
+  <h2 class="text-sm font-medium text-txt-secondary">Version</h2>
+  <ul class="inline-flex flex-wrap gap-1 rounded-lg border border-txt-primary/10 bg-surface/50 p-1 shadow-[inset_0_1px_0_rgb(255_255_255/0.35)] backdrop-blur">
     {% for status in statuses %}
       <li>
         <form method="post" action="{% url 'bible:set_version' %}">
@@ -12,17 +12,18 @@ Each version is a POST button; a locked version is disabled and shows why in tex
           <input type="hidden" name="version" value="{{ status.version.code }}">
           <input type="hidden" name="next" value="{{ request.get_full_path }}">
           <button type="submit"
-                  class="btn {% if status.version.code == version.code %}btn-primary{% else %}btn-secondary{% endif %} min-h-11"
+                  class="inline-flex min-h-10 items-center gap-1.5 rounded-md px-4 text-sm font-medium transition-colors focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-accent disabled:pointer-events-none disabled:opacity-50
+                         {% if status.version.code == version.code %}bg-primary text-on-primary shadow-sm{% else %}text-txt-secondary hover:bg-txt-primary/10 hover:text-txt-primary{% endif %}"
                   {% if not status.available %}disabled aria-disabled="true"{% endif %}
                   {% if status.version.code == version.code %}aria-current="true"{% endif %}>
-            {% if not status.available %}<span class="mr-1">{% include "includes/icon.html" with name="lock-closed" class="h-4 w-4" %}</span>{% endif %}
+            {% if not status.available %}{% include "includes/icon.html" with name="lock-closed" class="size-4" %}{% endif %}
             {{ status.version.label }}
           </button>
         </form>
-        {% if not status.available %}
-          <p class="field-help mt-1 max-w-48">Locked. {{ status.reason }}</p>
-        {% endif %}
       </li>
     {% endfor %}
   </ul>
+  {% for status in statuses %}{% if not status.available %}
+    <p class="basis-full text-sm text-txt-secondary">{{ status.version.label }} is locked. {{ status.reason }}</p>
+  {% endif %}{% endfor %}
 </section>

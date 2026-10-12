@@ -5,23 +5,41 @@ Context: version, statuses, old_books, new_books (Book objects). -->
 {% block title %}Bible{% endblock %}
 {% block page_title %}Bible{% endblock %}
 {% block content %}
-<div class="mx-auto w-full max-w-4xl space-y-6">
+<div class="mx-auto w-full max-w-4xl space-y-8">
   {% include "bible/_version_picker.html" %}
 
   <section aria-labelledby="old-testament">
-    <h2 id="old-testament" class="mb-3 text-lg font-semibold text-txt-primary">Old Testament</h2>
+    <div class="mb-3 flex items-baseline justify-between gap-3">
+      <h2 id="old-testament" class="text-lg font-semibold tracking-tight text-txt-primary">Old Testament</h2>
+      <p class="text-sm text-txt-secondary">{{ old_books|length }} books</p>
+    </div>
     <ul class="grid grid-cols-2 gap-2 sm:grid-cols-3 lg:grid-cols-4">
       {% for book in old_books %}
-        <li><a href="{% url 'bible:book' book.osis_id %}" class="card flex min-h-11 items-center px-3 py-2 text-txt-primary hover:border-accent">{{ book.name }}</a></li>
+        <li>
+          <a href="{% url 'bible:book' book.osis_id %}"
+             class="group flex min-h-12 items-center justify-between gap-2 rounded-lg border border-txt-primary/10 bg-gradient-to-br from-surface/80 to-surface/50 px-4 py-2 text-txt-primary shadow-[0_2px_8px_-2px_rgb(0_0_0/0.12),inset_0_1px_0_rgb(255_255_255/0.35)] backdrop-blur transition hover:-translate-y-0.5 hover:border-accent/40 hover:shadow-[0_8px_20px_-6px_rgb(0_0_0/0.2),inset_0_1px_0_rgb(255_255_255/0.35)] focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-accent motion-reduce:transition-none motion-reduce:hover:translate-y-0">
+            <span class="truncate">{{ book.name }}</span>
+            {% include "includes/icon.html" with name="chevron-right" class="size-4 shrink-0 text-txt-muted transition-colors group-hover:text-accent" %}
+          </a>
+        </li>
       {% endfor %}
     </ul>
   </section>
 
   <section aria-labelledby="new-testament">
-    <h2 id="new-testament" class="mb-3 text-lg font-semibold text-txt-primary">New Testament</h2>
+    <div class="mb-3 flex items-baseline justify-between gap-3">
+      <h2 id="new-testament" class="text-lg font-semibold tracking-tight text-txt-primary">New Testament</h2>
+      <p class="text-sm text-txt-secondary">{{ new_books|length }} books</p>
+    </div>
     <ul class="grid grid-cols-2 gap-2 sm:grid-cols-3 lg:grid-cols-4">
       {% for book in new_books %}
-        <li><a href="{% url 'bible:book' book.osis_id %}" class="card flex min-h-11 items-center px-3 py-2 text-txt-primary hover:border-accent">{{ book.name }}</a></li>
+        <li>
+          <a href="{% url 'bible:book' book.osis_id %}"
+             class="group flex min-h-12 items-center justify-between gap-2 rounded-lg border border-txt-primary/10 bg-gradient-to-br from-surface/80 to-surface/50 px-4 py-2 text-txt-primary shadow-[0_2px_8px_-2px_rgb(0_0_0/0.12),inset_0_1px_0_rgb(255_255_255/0.35)] backdrop-blur transition hover:-translate-y-0.5 hover:border-accent/40 hover:shadow-[0_8px_20px_-6px_rgb(0_0_0/0.2),inset_0_1px_0_rgb(255_255_255/0.35)] focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-accent motion-reduce:transition-none motion-reduce:hover:translate-y-0">
+            <span class="truncate">{{ book.name }}</span>
+            {% include "includes/icon.html" with name="chevron-right" class="size-4 shrink-0 text-txt-muted transition-colors group-hover:text-accent" %}
+          </a>
+        </li>
       {% endfor %}
     </ul>
   </section>

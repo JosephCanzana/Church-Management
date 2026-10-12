@@ -2,7 +2,9 @@
 Extends base_app.html and fills: page_title, content.
 Context: version, statuses, book (Book), chapter (int), text (ChapterText or None),
 locked_reason (str, set when the version is locked), missing (bool, local text not imported),
-already_read (bool), previous / following (dict with book, chapter, url, or None). -->
+already_read (bool), previous / following (dict with book, chapter, url, or None).
+There is no separate Mark as read button: the Next button posts to bible:mark_read with next set to the following chapter's url,
+so moving on counts as reading. The mark_read view must redirect to a safe "next" when one is sent. -->
 {% extends "base_app.html" %}
 {% block title %}{{ book.name }} {{ chapter }}{% endblock %}
 {% block page_title %}{{ book.name }} {{ chapter }}{% endblock %}
@@ -13,44 +15,72 @@ already_read (bool), previous / following (dict with book, chapter, url, or None
   {% include "bible/_version_picker.html" %}
 
   {% if locked_reason %}
-    <section class="card p-4" role="status">
-      <h2 class="text-lg font-semibold text-txt-primary">{{ version.label }} is locked right now</h2>
-      <p class="mt-1 text-txt-secondary">{{ locked_reason }}</p>
-      <p class="mt-3 text-txt-secondary">Pick another version above to keep reading.</p>
+    <section class="flex items-start gap-4 rounded-xl border border-txt-primary/10 bg-gradient-to-br from-surface/80 to-surface/50 p-5 shadow-[0_10px_30px_-8px_rgb(0_0_0/0.2),inset_0_1px_0_rgb(255_255_255/0.35)] backdrop-blur-xl" role="status">
+      <span class="flex size-10 shrink-0 items-center justify-center rounded-lg bg-warning/15 text-warning" aria-hidden="true">{% include "includes/icon.html" with name="lock-closed" class="size-5" %}</span>
+      <div class="min-w-0">
+        <h2 class="text-lg font-semibold tracking-tight text-txt-primary">{{ version.label }} is locked right now</h2>
+        <p class="mt-1 text-txt-secondary">{{ locked_reason }}</p>
+        <p class="mt-3 text-txt-secondary">Pick another version above to keep reading.</p>
+      </div>
     </section>
   {% elif missing %}
-    <section class="card p-4" role="status">
-      <h2 class="text-lg font-semibold text-txt-primary">{{ version.label }} has not been loaded yet</h2>
-      <p class="mt-1 text-txt-secondary">An administrator needs to import this version. Pick another version above in the meantime.</p>
+    <section class="flex items-start gap-4 rounded-xl border border-txt-primary/10 bg-gradient-to-br from-surface/80 to-surface/50 p-5 shadow-[0_10px_30px_-8px_rgb(0_0_0/0.2),inset_0_1px_0_rgb(255_255_255/0.35)] backdrop-blur-xl" role="status">
+      <span class="flex size-10 shrink-0 items-center justify-center rounded-lg bg-info/15 text-info" aria-hidden="true">
+        <svg viewBox="0 0 24 24" class="size-5 fill-current"><path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm1 15h-2v-6h2v6zm0-8h-2V7h2v2z"/></svg>
+      </span>
+      <div class="min-w-0">
+        <h2 class="text-lg font-semibold tracking-tight text-txt-primary">{{ version.label }} has not been loaded yet</h2>
+        <p class="mt-1 text-txt-secondary">An administrator needs to import this version. Pick another version above in the meantime.</p>
+      </div>
     </section>
   {% else %}
-    <article class="card p-5" lang="{{ version.language }}">
-      <h2 class="mb-3 text-xl font-semibold text-txt-primary">{{ book.name }} {{ chapter }} <span class="text-base font-normal text-txt-secondary">({{ version.label }})</span></h2>
-      <p class="text-lg leading-8 text-txt-primary">
-        {% for number, verse_text in text.verses %}<span><sup class="mr-1 font-mono text-xs text-txt-secondary">{{ number }}</sup>{{ verse_text }}</span> {% endfor %}
-      </p>
-      {% if version.notice %}<p class="field-help mt-4 border-t border-border pt-3">{{ version.notice }}{% if version.notice_url %} <a href="{{ version.notice_url }}" target="_blank" rel="noopener noreferrer" class="underline">www.esv.org</a>{% endif %}</p>{% endif %}
+    <article class="overflow-hidden rounded-xl border border-txt-primary/10 bg-gradient-to-br from-surface/85 to-surface/55 shadow-[0_24px_60px_-16px_rgb(0_0_0/0.3),0_4px_12px_rgb(0_0_0/0.06),inset_0_1px_0_rgb(255_255_255/0.4)] backdrop-blur-xl" lang="{{ version.language }}">
+      <header class="flex flex-wrap items-center justify-between gap-x-4 gap-y-2 border-b border-txt-primary/10 bg-surface/30 px-6 py-4">
+        <h2 class="text-xl font-semibold tracking-tight text-txt-primary">{{ book.name }} {{ chapter }}</h2>
+        <div class="flex items-center gap-2">
+          {% if already_read %}
+            <span class="inline-flex items-center gap-1.5 rounded-md bg-success/15 px-2.5 py-1 text-sm font-medium text-success">{% include "includes/icon.html" with name="check" class="size-4" %}Read today</span>
+          {% endif %}
+          <span class="rounded-md bg-txt-primary/10 px-2.5 py-1 text-sm font-medium text-txt-secondary">{{ version.label }}</span>
+        </div>
+      </header>
+      <div class="px-6 py-6 sm:px-8">
+        <p class="text-lg leading-9 text-txt-primary text-pretty">
+          {% for number, verse_text in text.verses %}<span><sup class="mr-1 font-mono text-xs font-medium text-accent">{{ number }}</sup>{{ verse_text }}</span> {% endfor %}
+        </p>
+      </div>
+      {% if version.notice %}<p class="border-t border-txt-primary/10 bg-surface/20 px-6 py-3 text-sm text-txt-secondary">{{ version.notice }}{% if version.notice_url %} <a href="{{ version.notice_url }}" target="_blank" rel="noopener noreferrer" class="underline">www.esv.org</a>{% endif %}</p>{% endif %}
     </article>
+  {% endif %}
 
-    <div class="flex items-center justify-between gap-3">
-      {% if already_read %}
-        <p class="flex items-center gap-2 text-txt-primary">{% include "includes/icon.html" with name="check" class="h-5 w-5" %}<span>Read today</span></p>
-      {% else %}
+  {% if not locked_reason and not missing and not already_read and following %}
+    <p class="text-center text-sm text-txt-secondary">Going to the next chapter marks this one as read.</p>
+  {% endif %}
+
+  <nav class="grid grid-cols-2 gap-3" aria-label="Chapter navigation">
+    <div>
+      {% if previous %}
+        <a href="{{ previous.url }}" class="btn btn-secondary min-h-12 w-full justify-start">{% include "includes/icon.html" with name="chevron-left" class="size-4 shrink-0" %}<span class="truncate">{{ previous.book.name }} {{ previous.chapter }}</span></a>
+      {% endif %}
+    </div>
+    <div>
+      {% if following %}
+        {% if locked_reason or missing or already_read %}
+          <a href="{{ following.url }}" class="btn btn-primary min-h-12 w-full justify-end"><span class="truncate">{{ following.book.name }} {{ following.chapter }}</span>{% include "includes/icon.html" with name="chevron-right" class="size-4 shrink-0" %}</a>
+        {% else %}
+          <form method="post" action="{% url 'bible:mark_read' book.osis_id chapter %}">
+            {% csrf_token %}
+            <input type="hidden" name="next" value="{{ following.url }}">
+            <button type="submit" class="btn btn-primary min-h-12 w-full justify-end"><span class="truncate">{{ following.book.name }} {{ following.chapter }}</span>{% include "includes/icon.html" with name="chevron-right" class="size-4 shrink-0" %}</button>
+          </form>
+        {% endif %}
+      {% elif not locked_reason and not missing and not already_read %}
         <form method="post" action="{% url 'bible:mark_read' book.osis_id chapter %}">
           {% csrf_token %}
-          <button type="submit" class="btn btn-primary min-h-11">Mark as read</button>
+          <button type="submit" class="btn btn-primary min-h-12 w-full justify-end"><span>Finish</span>{% include "includes/icon.html" with name="check" class="size-4 shrink-0" %}</button>
         </form>
       {% endif %}
     </div>
-  {% endif %}
-
-  <nav class="flex items-center justify-between gap-3" aria-label="Chapter navigation">
-    {% if previous %}
-      <a href="{{ previous.url }}" class="btn btn-secondary min-h-11">{% include "includes/icon.html" with name="chevron-left" class="h-4 w-4" %}<span class="ml-1">{{ previous.book.name }} {{ previous.chapter }}</span></a>
-    {% else %}<span></span>{% endif %}
-    {% if following %}
-      <a href="{{ following.url }}" class="btn btn-secondary min-h-11"><span class="mr-1">{{ following.book.name }} {{ following.chapter }}</span>{% include "includes/icon.html" with name="chevron-right" class="h-4 w-4" %}</a>
-    {% endif %}
   </nav>
 </div>
 {% endblock %}
