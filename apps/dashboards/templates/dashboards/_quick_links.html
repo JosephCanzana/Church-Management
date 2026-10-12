@@ -1,0 +1,27 @@
+<!--
+dashboards/_quick_links.html
+Shortcut cards built from NAV_ITEMS (apps/accounts/navigation.py), so they always match the sidebar for this role.
+Context: dashboard.quick_links, a list of entries with label, icon, href, disabled.
+A page that does not exist yet is shown as plain text with "Soon", not as a dead link.
+-->
+<section aria-labelledby="quick-links-heading">
+  <h2 id="quick-links-heading" class="text-lg font-semibold text-txt-primary">Quick links</h2>
+  <ul class="mt-3 grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
+    {% for link in dashboard.quick_links %}
+    <li>
+      {% if link.disabled %}
+      <div class="flex min-h-11 items-center gap-3 rounded-lg border border-dashed border-border bg-surface p-3 text-txt-secondary" aria-disabled="true">
+        {% include 'includes/icon.html' with name=link.icon class='size-6 shrink-0' %}
+        <span class="min-w-0 flex-1 truncate text-base">{{ link.label }}</span>
+        <span class="text-sm">Soon</span>
+      </div>
+      {% else %}
+      <a href="{{ link.href }}" class="flex min-h-11 items-center gap-3 rounded-lg border border-border bg-surface p-3 text-txt-primary transition-colors hover:bg-txt-primary/5 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-accent">
+        {% include 'includes/icon.html' with name=link.icon class='size-6 shrink-0' %}
+        <span class="min-w-0 flex-1 truncate text-base">{{ link.label }}</span>
+      </a>
+      {% endif %}
+    </li>
+    {% endfor %}
+  </ul>
+</section>

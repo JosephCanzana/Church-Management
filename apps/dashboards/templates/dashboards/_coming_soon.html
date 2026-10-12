@@ -1,0 +1,19 @@
+<!--
+dashboards/_coming_soon.html
+Placeholder cards for features that are planned but not built yet (Bible streak, goals, events).
+Context: dashboard.coming_soon, a list with label, icon, text. Replace each card with the real widget as its app lands.
+-->
+<section aria-labelledby="coming-soon-heading">
+  <h2 id="coming-soon-heading" class="text-lg font-semibold text-txt-primary">Coming soon</h2>
+  <ul class="mt-3 grid gap-3 md:grid-cols-3">
+    {% for card in dashboard.coming_soon %}
+    <li class="rounded-lg border border-dashed border-border bg-surface p-4">
+      <div class="flex items-center gap-2 text-txt-primary">
+        {% include 'includes/icon.html' with name=card.icon class='size-6 shrink-0' %}
+        <h3 class="text-base font-semibold">{{ card.label }}</h3>
+      </div>
+      <p class="mt-2 text-base text-txt-secondary">{{ card.text }}</p>
+    </li>
+    {% endfor %}
+  </ul>
+</section>

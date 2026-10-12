@@ -1,0 +1,22 @@
+<!--
+dashboards/_continue_reading.html
+Card that sends the person back to the Bible where they left off.
+Context: dashboard.continue_reading (last_label, read_today, next_label, next_url), or None when nothing was read yet;
+dashboard.bible_url (the reader's URL, empty if the route does not exist yet).
+-->
+<section class="card p-5" aria-labelledby="continue-heading">
+  <h2 id="continue-heading" class="text-sm font-semibold uppercase tracking-wide text-txt-secondary">Continue reading</h2>
+  {% with card=dashboard.continue_reading %}
+  {% if card %}
+  <p class="mt-3 text-base text-txt-secondary">Last read</p>
+  <p class="text-xl font-semibold text-txt-primary">{{ card.last_label }}</p>
+  <p class="mt-1 text-sm text-txt-secondary">{% if card.read_today %}You read this today.{% else %}Not read today yet.{% endif %}</p>
+  {% if card.next_url %}
+  <a href="{{ card.next_url }}" class="btn btn-primary mt-4 inline-flex">Next: {{ card.next_label }}</a>
+  {% endif %}
+  {% else %}
+  <p class="mt-3 text-base text-txt-secondary">You have not marked a chapter as read yet.</p>
+  {% if dashboard.bible_url %}<a href="{{ dashboard.bible_url }}" class="btn btn-primary mt-4 inline-flex">Open the Bible</a>{% endif %}
+  {% endif %}
+  {% endwith %}
+</section>

@@ -1,0 +1,42 @@
+<!--
+dashboards/_leader_overview.html
+Counts and charts for super-admin, admin and coordinator (a coordinator's numbers are only for their own extension).
+Context: dashboard.leader (scope_label, tiles, role_bars, status_bars, show_extensions, extension_bars, extension_more,
+attendance_bars, first_timer_bars, tithe_bars). Nothing is shown when dashboard.leader is empty (members).
+Uses _bar_list.html and _column_chart.html. Attendance and tithes come from uploaded sheets only (frozen values).
+-->
+{% with leader=dashboard.leader %}
+{% if leader %}
+<section aria-labelledby="overview-heading" class="space-y-6">
+  <div class="flex flex-wrap items-baseline justify-between gap-2">
+    <h2 id="overview-heading" class="text-lg font-semibold text-txt-primary">Overview</h2>
+    <p class="text-base text-txt-secondary">{{ leader.scope_label }}</p>
+  </div>
+
+  <ul class="grid gap-4 sm:grid-cols-3">
+    {% for tile in leader.tiles %}
+    <li class="card p-5">
+      <p class="text-sm font-semibold uppercase tracking-wide text-txt-secondary">{{ tile.label }}</p>
+      <p class="mt-2 font-mono text-3xl font-semibold text-txt-primary">{{ tile.value }}</p>
+      <p class="mt-1 text-sm text-txt-secondary">{{ tile.hint }}</p>
+    </li>
+    {% endfor %}
+  </ul>
+
+  <div class="grid gap-6 lg:grid-cols-2">
+    {% include "dashboards/_bar_list.html" with title="People by role" caption="Not archived" bars=leader.role_bars empty="No people yet." %}
+    {% include "dashboards/_bar_list.html" with title="People by status" caption="Everyone, including archived" bars=leader.status_bars empty="No people yet." %}
+  </div>
+
+  {% if leader.show_extensions %}
+  {% include "dashboards/_bar_list.html" with title="People per extension" caption="Biggest extensions, not archived" bars=leader.extension_bars empty="No extensions yet." more=leader.extension_more %}
+  {% endif %}
+
+  <div class="grid gap-6 lg:grid-cols-3">
+    {% include "dashboards/_column_chart.html" with title="Attendance" caption="Total present, recent gatherings" bars=leader.attendance_bars empty="No uploaded attendance sheets yet." %}
+    {% include "dashboards/_column_chart.html" with title="First-timers" caption="Recent gatherings" bars=leader.first_timer_bars empty="No uploaded attendance sheets yet." %}
+    {% include "dashboards/_column_chart.html" with title="Tithes and offering" caption="Pesos, k means thousand" bars=leader.tithe_bars empty="No uploaded tithes records yet." %}
+  </div>
+</section>
+{% endif %}
+{% endwith %}

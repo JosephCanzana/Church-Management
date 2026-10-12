@@ -1,0 +1,38 @@
+<!--
+dashboards/dashboard_base.html
+Shared layout of the four role dashboards. Each role template extends this file and may fill:
+  role_intro       a short line under the greeting (optional)
+  leader_sections  extra sections between the verse row and the quick links (leaders only)
+Context: dashboard (built by get_dashboard_context in dashboards/services.py).
+Extends base_app.html, so the page heading (h1) comes from page_title; sections here use h2 and below.
+Includes (all in this folder): _daily_verse, _continue_reading, _quick_links, _coming_soon.
+-->
+{% extends "base_app.html" %}
+
+{% block title %}Dashboard{% endblock %}
+{% block page_title %}Dashboard{% endblock %}
+
+{% block content %}
+<div class="space-y-6">
+
+  <section aria-labelledby="greeting-heading" x-data="{ hour: new Date().getHours() }">
+    <h2 id="greeting-heading" class="text-2xl font-semibold tracking-tight text-txt-primary">
+      <span x-text="hour &lt; 12 ? 'Good morning' : (hour &lt; 18 ? 'Good afternoon' : 'Good evening')">Welcome</span>{% if dashboard.greeting_name %}, {{ dashboard.greeting_name }}{% endif %}
+    </h2>
+    {% block role_intro %}{% endblock %}
+  </section>
+
+  <div class="grid gap-6 lg:grid-cols-3">
+    <div class="lg:col-span-2">
+      {% include "dashboards/_daily_verse.html" %}
+    </div>
+    {% include "dashboards/_continue_reading.html" %}
+  </div>
+
+  {% block leader_sections %}{% endblock %}
+
+  {% include "dashboards/_quick_links.html" %}
+  {% include "dashboards/_coming_soon.html" %}
+
+</div>
+{% endblock %}

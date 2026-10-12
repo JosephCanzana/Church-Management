@@ -1,0 +1,14 @@
+<!--
+dashboards/admin.html
+Admin dashboard: the shared sections plus the overview (people, extensions, attendance, tithes) for every extension.
+Context: dashboard.
+-->
+{% extends "dashboards/dashboard_base.html" %}
+
+{% block role_intro %}
+<p class="mt-1 text-base text-txt-secondary">Here is how every extension is doing.</p>
+{% endblock %}
+
+{% block leader_sections %}
+{% include "dashboards/_leader_overview.html" %}
+{% endblock %}

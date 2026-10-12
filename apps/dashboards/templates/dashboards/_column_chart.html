@@ -1,0 +1,27 @@
+<!--
+dashboards/_column_chart.html
+Vertical columns over time (oldest on the left). Pass: title, caption (optional), bars (label, display, short, pct),
+empty (text shown when there are no bars).
+Each column prints its short value above and its date below; the chart as a whole has one text description
+(aria-label) with every full value, so it reads the same without sight or color.
+-->
+<section class="card p-5">
+  <h3 class="text-base font-semibold text-txt-primary">{{ title }}</h3>
+  {% if caption %}<p class="text-sm text-txt-secondary">{{ caption }}</p>{% endif %}
+  {% if bars %}
+  <div class="mt-4 flex items-end gap-1.5" role="img"
+       aria-label="{{ title }}: {% for bar in bars %}{{ bar.label }} {{ bar.display }}{% if not forloop.last %}, {% endif %}{% endfor %}">
+    {% for bar in bars %}
+    <div class="flex min-w-0 flex-1 flex-col items-center gap-1" title="{{ bar.label }}: {{ bar.display }}">
+      <span class="font-mono text-sm text-txt-primary">{{ bar.short }}</span>
+      <div class="flex h-32 w-full items-end">
+        <div class="w-full rounded-t bg-accent" style="height: {{ bar.pct }}%"></div>
+      </div>
+      <span class="max-w-full truncate text-sm text-txt-secondary">{{ bar.label }}</span>
+    </div>
+    {% endfor %}
+  </div>
+  {% else %}
+  <p class="mt-4 text-base text-txt-secondary">{{ empty }}</p>
+  {% endif %}
+</section>

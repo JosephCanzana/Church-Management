@@ -1,0 +1,29 @@
+<!--
+dashboards/_bar_list.html
+Horizontal bars: one row per item, label and value as text, bar below. Colors come from tokens only.
+Pass: title, caption (optional), bars (list of label, display, pct), empty (text shown when there are no bars),
+more (optional number of items left out, shown as "and N more").
+The value is always written as text, so no meaning depends on the bar or its color.
+-->
+<section class="card p-5">
+  <h3 class="text-base font-semibold text-txt-primary">{{ title }}</h3>
+  {% if caption %}<p class="text-sm text-txt-secondary">{{ caption }}</p>{% endif %}
+  {% if bars %}
+  <ul class="mt-4 space-y-3">
+    {% for bar in bars %}
+    <li>
+      <div class="flex items-baseline justify-between gap-3 text-base">
+        <span class="min-w-0 truncate text-txt-primary">{{ bar.label }}</span>
+        <span class="font-mono text-txt-primary">{{ bar.display }}</span>
+      </div>
+      <div class="mt-1 h-2 rounded-full bg-border" aria-hidden="true">
+        <div class="h-2 rounded-full bg-accent" style="width: {{ bar.pct }}%"></div>
+      </div>
+    </li>
+    {% endfor %}
+  </ul>
+  {% if more %}<p class="mt-3 text-sm text-txt-secondary">and {{ more }} more</p>{% endif %}
+  {% else %}
+  <p class="mt-4 text-base text-txt-secondary">{{ empty }}</p>
+  {% endif %}
+</section>

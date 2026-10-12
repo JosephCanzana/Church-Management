@@ -1,0 +1,14 @@
+<!--
+dashboards/coordinator.html
+Coordinator dashboard: the shared sections plus the overview for the coordinator's own extension only.
+Context: dashboard (dashboard.leader.scope_label is the extension name).
+-->
+{% extends "dashboards/dashboard_base.html" %}
+
+{% block role_intro %}
+<p class="mt-1 text-base text-txt-secondary">Numbers for {{ dashboard.leader.scope_label }}.</p>
+{% endblock %}
+
+{% block leader_sections %}
+{% include "dashboards/_leader_overview.html" %}
+{% endblock %}

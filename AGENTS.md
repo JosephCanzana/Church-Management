@@ -18,11 +18,14 @@ buddies, prayer requests, events, resources, notifications and audit logging.
   - A global toast and confirm dialog (`static/js/ui.js`, rendered by `includes/messages.html`).
   - Bible: reader with three versions (KJV and Ang Dating Biblia from the database, ESV from api.esv.org), version
     picker with locking, chapter reads, ESV call limits, locks and a size-capped cache, and the super-admin
-    switches for every version (`/superadmin/site-settings/`, see Bible).
+    switches for every version (`/superadmin/site-settings/`, see Bible), and the verse of the day.
+  - Dashboards: one page per role (super-admin, admin, coordinator, member) with the verse of the day, continue
+    reading, quick links and, for leaders, counts and charts (see Dashboards).
 - **Not built yet:**
   - Forgot/reset password (the "Forgot password?" link on the login page is a placeholder, `href="#"`) and
     brute-force login throttling.
-  - The daily verse and the `faith` listener that turns a chapter read into a streak, MBBTAG.
+  - The `faith` listener that turns a chapter read into a streak, MBBTAG. The dashboards show "Coming soon"
+    cards for the Bible streak, goals and events until those apps have views.
   - Beyond the list above, services, views and forms are mostly not built yet: features are being added on top of
     the models, one app at a time.
 
@@ -108,7 +111,7 @@ moving or reorganizing app code.
 | `accounts` | `extension`, `app_user`, `special_role`, `user_special_role`, `extension_special_role_limit`, `default_password`, `email_token`, `user_extension_history` | Login/logout/activation, forgot + reset password, email verification, profile, create/manage accounts, extensions, special roles and limits, default passwords, `archive_inactive_users`, `auto_transfer_extension`, `cleanup_email_tokens`, `mark_attended()` |
 | `theming` | `theme`, `theme_palette`, `user_settings` | Theme CRUD (both palettes in one transaction), contrast warning (including `highlight` / `on_highlight`), CSS generation + cache, context processor; `UserSettings` row created by `signals.py` |
 | `pages` | `church_content`, `landing_image`, `donation_account`, `jil_video` | Landing page (`get_landing_context()` in `pages/services.py`, a default for every block) and terms editing, donation page, `fetch_jil_videos` |
-| `bible` | `bible_verse`, `bible_esv_cache`, `daily_verse`, `bible_chapter_read` | Reader (KJV, Ang Dating Biblia, ESV), `import_bible`, ESV client with limits, locks and cache, version picker, daily verse, `record_chapter_read()` |
+| `bible` | `bible_verse`, `bible_esv_cache`, `daily_verse`, `bible_chapter_read` | Reader (KJV, Ang Dating Biblia, ESV), `import_bible`, ESV client with limits, locks and cache, version picker, daily verse (`daily_verse.py`, `seed_daily_verses`), `record_chapter_read()` |
 | `faith` | `goal`, `goal_checkin`, `user_daily_activity`, `user_streak` | Goals, check-ins, consistency, heatmap, streak rules, `complete_ended_goals` |
 | `events` | `event` | Event CRUD, change/cancel notices, `send_event_reminders` |
 | `resources` | `monthly_theme`, `monthly_resource`, `weekly_powerpoint`, `general_resource` | Monthly theme + files, weekly PPT (admin/coordinator only), general resources |
@@ -352,6 +355,14 @@ with. Only create a new app if the answer is "none".
 - **Locked versions:** shown in the picker, disabled, with the reason as text, and refused on the server
   (`VersionLocked`) when chosen. A saved version that is locked shows a notice instead of text, never a silent swap.
   The service layer (`services.get_chapter`) may still serve an ESV chapter from the cache while ESV is locked.
+- **Verse of the day:** `daily_verse.py` + the curated list in `daily_verse_refs.py` (63 references, no text). The
+  verse for a Manila date is `DAILY_VERSE_REFS[date.toordinal() % len]`, saved once as a `daily_verse` row by
+  `get_daily_verse()` (`get_or_create`, so a row that already exists, for example one set by hand, always wins).
+  Rows are a *reference only*: `translation` is always KJV (whose verse numbers the list uses) and `verse_text` is
+  never written, so ESV text is never stored. The text is read at view time with `get_daily_verse_text(row, version)`,
+  which goes through `services.get_chapter()`, so switches, ESV locks and the ESV cache all apply. A version that
+  cannot be read gives a notice, never another version. `manage.py seed_daily_verses [--days N]` saves the next N
+  days ahead (optional, safe to repeat). Tests: `apps/bible/tests/test_daily_verse.py`.
 - **Chapter reads:** `record_chapter_read()` is idempotent and sends `bible.signals.chapter_read` only for a new row;
   `faith` listens to it for the Bible streak. It does not check version availability (the text may have come from the
   cache). Reads are not written to `audit_log` (high volume, not an administrative action).
@@ -437,6 +448,38 @@ with. Only create a new app if the answer is "none".
   copyright line. The Privacy Policy link is a `#` placeholder until that page exists.
 - **Before changing the page:** run `docker compose exec web python manage.py test apps.pages.tests.test_landing`
   and `make tailwind-build` (the template uses new utility classes).
+
+## Dashboards
+- **Where:** `apps/dashboards/`: `urls.py` (namespace `dashboards`: `superadmin/`, `admin/`, `coordinator/`, `home/`),
+  `views.py` (four thin views, each `never_cache` + `role_required`), `services.py` (`get_dashboard_context(user,
+  version_code, path)`, all the logic), templates in `apps/dashboards/templates/dashboards/`, tests in
+  `apps/dashboards/tests.py`. Role home URLs still live only in `accounts/decorators.py` (`ROLE_HOME_NAMES`).
+- **One template per role** (`superadmin.html`, `admin.html`, `coordinator.html`, `member.html`) extending
+  `dashboard_base.html`, so a role can change on its own. Shared sections are includes: `_daily_verse`,
+  `_continue_reading`, `_quick_links`, `_coming_soon`; leaders also get `_leader_overview` with the charts
+  `_bar_list` and `_column_chart`. Members get no overview.
+- **Shared sections:** greeting (device clock, "Welcome" without JavaScript); verse of the day in the version from the
+  `bible_version` cookie (`VERSION_COOKIE` in `services.py`, must match the reader); continue reading (newest
+  `BibleChapterRead`, suggests the next chapter, crosses book ends); quick links taken from `NAV_ITEMS` through
+  `build_nav()` (so they always match the sidebar; Home and Django admin are left out; routes that do not exist yet
+  show "Soon"); "Coming soon" cards for the Bible streak, goals and events (replace each with the real widget when
+  its app has views).
+- **Leader overview:** headline tiles, people by role (not archived) and by status (everyone), people per extension
+  (super-admin and admin only, top 10), and three trend charts over the last 8 gathering dates: attendance,
+  first-timers, tithes and offering. Trends use **uploaded** sheets only and their **frozen** values (never a
+  recount); sheets on the same date are added together. The coordinator's numbers are limited to their own
+  extension. Only the super-admin sees super-admin rows. Amounts are shown in pesos (`CURRENCY` in `services.py`).
+- **Scoping:** the only code that narrows data to a coordinator's extension is `_scope_people`, `_scope_attendance`
+  and `_scope_tithes` in `services.py`. Replace their bodies with the project's `for_user(user)` helper when it
+  exists; nothing else changes.
+- **Privacy:** tithe amounts appear only on leader dashboards and are never written to `audit_log` or
+  `notification.data`. The dashboard writes nothing except today's `daily_verse` reference row.
+- **Charts:** server-rendered with Tailwind (no JavaScript, no library); colors are tokens only (`bg-accent`,
+  `bg-border`). Every value is also written as text and each column chart has an `aria-label` listing its values.
+  Rebuild Tailwind after changing the templates (`make tailwind-build`).
+- **ESV on the dashboard:** a member whose version is ESV makes the dashboard fetch (or reuse from the cache) the
+  verse's chapter through `esv.get_verses()`, so the normal call budget, locks and cache limits apply. The ESV
+  notice, "(ESV)" and the esv.org link are printed from `versions.py` in `_daily_verse.html`.
 
 ## Nightly jobs (each is a management command in its own app)
 `purge_archived` (core, children first, files before rows, skips extensions
