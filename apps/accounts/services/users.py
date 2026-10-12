@@ -36,8 +36,9 @@ from ..models import (
 )
 from ..permissions import (
     ARCHIVE, CHANGE_PLACEMENT, DEACTIVATE, DELETE, EDIT, RESET_PASSWORD, RESTORE, SUSPEND, UNSUSPEND,
-    allowed_bulk_actions, assignable_roles, default_password_roles, require_can_act,
-    require_can_create, require_placement_manager, require_user_manager,
+    allowed_bulk_actions, assignable_roles, can_type_password, default_password_roles,
+    default_password_view_roles, require_can_act,
+    require_can_create, require_password_typer, require_placement_manager, require_user_manager,
 )
 
 ROLES_WITH_EXTENSION = (Role.COORDINATOR, Role.MEMBER)
@@ -75,21 +76,77 @@ def generate_password(length=12):
     return "".join(secrets.choice(PASSWORD_ALPHABET) for _ in range(length))
 
 
-def _default_password_hash(actor, role):
-    """The hash of `actor`'s OWN default password for people of `role`, or None.
+def global_default_row(role):
+    """The global default password for people of `role`, or None.
 
-    Defaults are personal: coordinator A may keep one password and coordinator
-    B another. Only roles beneath the actor can have one.
+    The global default is the one a super-admin keeps. If several super-admins keep
+    one, the most recently changed row of an active super-admin counts.
     """
-    if role not in default_password_roles(actor):
-        return None
-    row = DefaultPassword.objects.filter(owner=actor, applies_to_role=role).first()
+    return (
+        DefaultPassword.objects
+        .filter(owner__role=Role.SUPER_ADMIN, owner__status=Status.ACTIVE, applies_to_role=role)
+        .order_by("-updated_at", "-pk").first()
+    )
+
+
+def default_password_row(actor, role):
+    """The DefaultPassword row `actor` uses when giving a person of `role` a default, or None.
+
+    The password a person gets depends on WHO creates or resets them:
+      super-admin  their own default for the role (the global one, by definition)
+      admin        their own default for the role, else the global one
+      coordinator  the global member password (a coordinator keeps none of their own)
+    None means no default exists, and a password is generated instead.
+    """
+    if actor.role == Role.SUPER_ADMIN:
+        if role not in default_password_roles(actor):
+            return None
+        return DefaultPassword.objects.filter(owner=actor, applies_to_role=role).first()
+    if actor.role == Role.ADMIN:
+        if role not in default_password_roles(actor):
+            return None
+        own = DefaultPassword.objects.filter(owner=actor, applies_to_role=role).first()
+        return own or global_default_row(role)
+    if actor.role == Role.COORDINATOR and role == Role.MEMBER:
+        return global_default_row(role)
+    return None
+
+
+def reveal_default_password(actor, request, role=Role.MEMBER):
+    """Show `actor` the default password they use for `role` (read-only) and log that they looked.
+
+    This is what a coordinator's Default passwords button does: it displays the global member
+    password and nothing else (a coordinator cannot set one). Returns the password, or None when
+    none is set or it cannot be shown (saved before encryption existed, or the key changed).
+    Only roles in `default_password_view_roles(actor)` may be looked at. The audit row says WHO
+    looked and whether a password was shown, never the password itself.
+    """
+    require_user_manager(actor)
+    if role not in default_password_view_roles(actor):
+        raise PermissionDenied("You cannot see that password.")
+    row = default_password_row(actor, role)
+    plain = row.plain if row else None
+    log_action(
+        "default_password.view", actor=actor, request=request,
+        entity_type="default_password", entity_id=row.pk if row else None,
+        entity_label=f"{role} default password", after={"role": role, "shown": plain is not None},
+    )
+    return plain
+
+
+def _default_password_hash(actor, role):
+    """The hash of the default password `actor` uses for people of `role`, or None."""
+    row = default_password_row(actor, role)
     return row.password_hash if row else None
 
 
 def _set_initial_password(actor, person, typed):
-    """Set `person`'s password: what was typed, else `actor`'s default, else a random one."""
+    """Set `person`'s password: what was typed, else `actor`'s default, else a random one.
+
+    Only the super-admin and admin may type one; a coordinator always gets the global member password.
+    """
     if typed:
+        require_password_typer(actor)
         try:
             validate_strong_password(typed)
         except ValidationError as exc:
@@ -345,7 +402,8 @@ def create_user(actor, request, data, *, token):
 
         _refuse_duplicate(data)
 
-        activated = bool(data.get("activated"))
+        # Skipping activation would keep a shared default for good, so only those who may choose passwords can.
+        activated = bool(data.get("activated")) and can_type_password(actor)
         person = User(
             first_name=data["first_name"],
             middle_name=data.get("middle_name", ""),

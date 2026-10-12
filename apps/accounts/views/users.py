@@ -42,6 +42,7 @@ from ..services.users import (
     force_delete_user,
     reset_password,
     restore_user,
+    reveal_default_password,
     run_bulk,
     suspend_user,
     unsuspend_user,
@@ -434,6 +435,42 @@ def user_reset_password(request, pk):
     return _render_detail(request, _person_or_none(request.user, pk), secrets=_secrets(
         [[person.full_name, person.account_id, result.password.display]], "New password",
     ))
+
+
+# ----------------------------------------------------- default password (coordinator)
+@role_required(Role.COORDINATOR)
+@never_cache
+@require_POST
+def default_password_show(request):
+    """A coordinator's Default passwords button: display the global member password, read-only.
+
+    A coordinator has no screen of their own for this and cannot set a default. The list page is
+    rendered again with the password in the show-once dialog (never cached, never redirected), and
+    each look is written to the audit log without the password.
+    """
+    return_to = QueryDict(request.POST.get("qs", "")[:RETURN_QS_MAX])
+    plain = reveal_default_password(request.user, request)
+    if plain is None:
+        messages.info(
+            request,
+            "No member password is set, or it cannot be shown. Ask an admin to set it. Until then "
+            "new members get a generated password, shown once when you create them.",
+        )
+        url = _url(request, "user_list")
+        query = return_to.urlencode()
+        return redirect(f"{url}?{query}" if query else url)
+    context = _list_context(return_to, request.user)
+    context["submit_token"] = new_submission_token()
+    context["secrets"] = {
+        "title": "Member password",
+        "message": (
+            "This is the password new members get, and the one given when you reset a member's password. "
+            "They must change it the first time they sign in. Share it only with the member."
+        ),
+        "headers": ["For", "Password"],
+        "rows": [["New members and password resets", plain]],
+    }
+    return render(request, LIST_TEMPLATE, context)
 
 
 # ------------------------------------------------------------------- bulk

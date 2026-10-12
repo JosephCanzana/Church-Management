@@ -117,12 +117,20 @@
 
   {% if not person %}
   <h2 class="mt-8 text-base font-semibold">Sign-in</h2>
+  {% if form.password %}
   <div class="mt-3 sm:max-w-sm">
     <label for="{{ form.password.id_for_label }}" class="label">Password <span class="font-normal text-txt-secondary">(optional)</span></label>
     {{ form.password }}
     {% for error in form.password.errors %}<p class="field-error">{{ error }}</p>{% endfor %}
     <p class="field-help">{{ form.password.help_text }}</p>
   </div>
+  {% else %}
+  {# Only the super-admin and admin choose passwords; a coordinator's new members get the global member password. #}
+  <p class="mt-3 text-sm text-txt-secondary">
+    The new member gets the global member password and must change it the first time they sign in.
+  </p>
+  {% endif %}
+  {% if form.activated %}
   <div class="mt-4">
     <label class="flex items-start gap-3 text-sm">
       {{ form.activated }}
@@ -132,6 +140,7 @@
       </span>
     </label>
   </div>
+  {% endif %}
   {% endif %}
 
   <div class="mt-8 flex flex-wrap items-center gap-3">

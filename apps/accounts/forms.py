@@ -22,7 +22,7 @@ from apps.core.text import clean_suffix as normalize_suffix, clean_text, title_c
 from .address import ADDRESS_FIELDS, COUNTRIES, HIERARCHY, PHILIPPINES, canonical_country, check_address
 from .contact import PHONE_MESSAGE, clean_phone, is_valid_phone
 from .models import Extension, Role, Status, User
-from .permissions import assignable_roles
+from .permissions import assignable_roles, can_type_password
 from .validators import validate_strong_password, STRONG_PASSWORD_MESSAGE
 
 # One message for every login failure, so the page never reveals whether the
@@ -354,6 +354,11 @@ class UserForm(forms.Form):
         self.fixed_extension = None
         if actor.role == Role.COORDINATOR:
             self.fixed_extension = Extension.objects.filter(pk=actor.extension_id).first()
+        # A coordinator cannot choose a password or skip activation: new people get the global
+        # member password and must change it. The service refuses it too.
+        if not can_type_password(actor):
+            self.fields.pop("password", None)
+            self.fields.pop("activated", None)
         roles = list(assignable_roles(actor))
         if keep_role and keep_role not in roles:
             roles.insert(0, keep_role)

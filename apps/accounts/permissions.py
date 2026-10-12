@@ -213,12 +213,48 @@ def assignable_roles(actor):
 
 
 def default_password_roles(actor):
-    """Roles whose default password `actor` keeps: the roles beneath them.
+    """Roles `actor` keeps their OWN default password for, and may set.
 
-    Default passwords are personal. Each person who manages others has their
-    own, one per role below them.
+    Default passwords are personal to the super-admin and each admin, one per role
+    beneath them. A coordinator keeps none: they only use and see the global member
+    password (`default_password_view_roles`).
     """
-    return list(assignable_roles(actor))
+    if is_super_admin(actor):
+        return [Role.ADMIN, Role.COORDINATOR, Role.MEMBER]
+    if is_admin(actor):
+        return [Role.COORDINATOR, Role.MEMBER]
+    return []
+
+
+def can_set_default_passwords(actor):
+    """Set or remove default passwords (super-admin and admin only)."""
+    return bool(default_password_roles(actor))
+
+
+def default_password_view_roles(actor):
+    """Roles whose default password `actor` may LOOK at on the default passwords screen.
+
+    The super-admin and admins see their own. A coordinator sees only the global
+    member password (read-only); they cannot set anything.
+    """
+    if is_coordinator(actor):
+        return [Role.MEMBER]
+    return default_password_roles(actor)
+
+
+def can_type_password(actor):
+    """Choose a password by hand when creating or resetting someone (super-admin and admin only).
+
+    A coordinator always gives the global member password. Skipping activation (which
+    would keep that shared password for good) is limited the same way.
+    """
+    return is_super_admin(actor) or is_admin(actor)
+
+
+def require_password_typer(actor):
+    """Raise PermissionDenied (HTTP 403) unless `actor` may type a password for someone."""
+    if not can_type_password(actor):
+        raise PermissionDenied("Only an admin can choose a password for someone.")
 
 
 # ------------------------------------------------------------- special roles

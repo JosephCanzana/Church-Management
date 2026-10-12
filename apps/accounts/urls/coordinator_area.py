@@ -4,16 +4,18 @@ Included from the project urls with:  path("coordinator/", include("apps.account
 A coordinator manages the members of their own extension only: create, edit details, reset a
 password, archive and restore. No suspend, deactivate or delete routes exist for this role, and
 the services refuse them anyway. The views are shared with the other roles (see admin_area).
+There is no default-passwords screen either: the Default passwords button on the list POSTs to
+`default_password_show`, which displays the global member password read-only.
 """
 from django.urls import path
 
-from ..views import default_passwords as defaults
 from ..views import users as people
 
 app_name = "coordinator_area"
 
 urlpatterns = [
-    path("default-passwords/", defaults.default_passwords, name="default_passwords"),
+    # A coordinator keeps no default password of their own: the button shows the global member one.
+    path("default-password/", people.default_password_show, name="default_password_show"),
     path("users/", people.user_list, name="user_list"),
     path("users/new/", people.user_create, name="user_create"),
     path("users/bulk/", people.user_bulk, name="user_bulk"),

@@ -3,6 +3,7 @@
     {% load people_tags %}
     {% role_url 'user_detail' person.pk %}      -> /superadmin/users/5/, /admin/users/5/ or /coordinator/users/5/
     {% person_actions person as can %}           -> then {% if 'archive' in can %} ... {% endif %}
+    {% may_type_password as may_type %}          -> then {% if may_type %} ... {% endif %}
 
 `role_url` reverses the name inside the url namespace of the page being shown, so one template
 serves all three roles. `person_actions` asks `accounts.permissions.available_actions`, the same
@@ -12,7 +13,7 @@ Hiding a button is not access control; the services still check.
 from django import template
 from django.urls import reverse
 
-from ..permissions import available_actions
+from ..permissions import available_actions, can_type_password
 
 register = template.Library()
 
@@ -28,3 +29,9 @@ def role_url(context, name, *args):
 def person_actions(context, person):
     """Set of action names the signed-in person may do to `person` right now."""
     return available_actions(context["request"].user, person)
+
+
+@register.simple_tag(takes_context=True)
+def may_type_password(context):
+    """True when the signed-in person may choose a password by hand (super-admin and admin only)."""
+    return can_type_password(context["request"].user)
