@@ -74,7 +74,10 @@ NAV_ITEMS = [
     NavItem("Settings", "theming:settings", "cog-6-tooth"),
     # Management section (sidebar heading "Manage")
     NavItem("Extensions", "superadmin:extension_list", "building-office", roles=(SUPER_ADMIN, ADMIN), group="Manage"),
-    NavItem("People", "superadmin:user_list", "users", roles=(SUPER_ADMIN, ADMIN, COORDINATOR), group="Manage"),
+    # One People entry per role: each role has its own url namespace (see accounts/urls/).
+    NavItem("People", "superadmin:user_list", "users", roles=(SUPER_ADMIN,), group="Manage"),
+    NavItem("People", "admin_area:user_list", "users", roles=(ADMIN,), group="Manage"),
+    NavItem("People", "coordinator_area:user_list", "users", roles=(COORDINATOR,), group="Manage"),
     NavItem("Site settings", "bible_superadmin:site_settings", "adjustments-horizontal", roles=(SUPER_ADMIN,), group="Manage"),
     NavItem("Audit log", "audit:log", "shield-check", roles=(SUPER_ADMIN, ADMIN), group="Manage"),
     NavItem("Django admin", "admin:index", "wrench-screwdriver", roles=(SUPER_ADMIN, ADMIN), group="Manage"),

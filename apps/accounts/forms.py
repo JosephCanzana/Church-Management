@@ -17,9 +17,10 @@ from django.utils import timezone
 
 from django.db.models import Q
 
-from apps.core.text import clean_text, title_case
+from apps.core.text import clean_suffix as normalize_suffix, clean_text, title_case
 
-from .address import COUNTRIES, HIERARCHY, PHILIPPINES, canonical_country, check_address
+from .address import ADDRESS_FIELDS, COUNTRIES, HIERARCHY, PHILIPPINES, canonical_country, check_address
+from .contact import PHONE_MESSAGE, clean_phone, is_valid_phone
 from .models import Extension, Role, Status, User
 from .permissions import assignable_roles
 from .validators import validate_strong_password, STRONG_PASSWORD_MESSAGE
@@ -284,6 +285,10 @@ class UserForm(forms.Form):
         max_length=150, strip=True, required=False, widget=forms.TextInput(attrs={"class": "input"}),
     )
     last_name = forms.CharField(max_length=150, strip=True, widget=forms.TextInput(attrs={"class": "input"}))
+    suffix = forms.CharField(
+        max_length=10, strip=True, required=False, label="Suffix",
+        widget=forms.TextInput(attrs={"class": "input", "placeholder": "Jr., Sr., III", "autocomplete": "off"}),
+    )
     birth_date = forms.DateField(
         required=False,
         widget=forms.DateInput(attrs={"class": "input", "type": "date"}, format="%Y-%m-%d"),
@@ -297,9 +302,58 @@ class UserForm(forms.Form):
     # Set by the confirmation dialog when a coordinator may replace the current one.
     replace_coordinator = forms.BooleanField(required=False, widget=forms.HiddenInput())
 
-    def __init__(self, *args, actor, keep_extension=None, keep_role=None, exclude_pk=None, **kwargs):
+    # Optional contact details (so a coordinator can follow someone up). The address has the
+    # same parts as an extension; the page turns the Philippine ones into cascading dropdowns.
+    phone_number = forms.CharField(
+        max_length=25, strip=True, required=False, label="Phone number",
+        widget=forms.TextInput(attrs={
+            "class": "input font-mono", "inputmode": "tel", "autocomplete": "off",
+            "placeholder": "0917 123 4567",
+        }),
+    )
+    country = forms.ChoiceField(
+        required=False, label="Country", choices=[],
+        widget=forms.Select(attrs={"class": "input", "x-model": "country", "autocomplete": "off"}),
+    )
+    province = forms.CharField(
+        max_length=150, required=False, label="Province",
+        widget=forms.TextInput(attrs={"class": "input", "autocomplete": "off"}),
+    )
+    municipality = forms.CharField(
+        max_length=150, required=False, label="Municipality",
+        widget=forms.TextInput(attrs={"class": "input", "autocomplete": "off"}),
+    )
+    barangay = forms.CharField(
+        max_length=150, required=False, label="Barangay",
+        widget=forms.TextInput(attrs={"class": "input", "autocomplete": "off"}),
+    )
+    postal_code = forms.CharField(
+        max_length=10, required=False, label="Postal code",
+        widget=forms.TextInput(attrs={
+            "class": "input font-mono", "maxlength": "10", "inputmode": "numeric", "autocomplete": "off",
+        }),
+    )
+    street = forms.CharField(
+        max_length=150, required=False, label="Street",
+        widget=forms.TextInput(attrs={"class": "input", "autocomplete": "off"}),
+    )
+    building_number = forms.CharField(
+        max_length=50, required=False, label="Building number",
+        widget=forms.TextInput(attrs={"class": "input", "autocomplete": "off"}),
+    )
+
+    def __init__(self, *args, actor, keep_extension=None, keep_role=None, exclude_pk=None,
+                 saved_address=None, **kwargs):
         super().__init__(*args, **kwargs)
         self.exclude_pk = exclude_pk
+        # The person's saved address, so an old value that is no longer in the list can stay.
+        self.saved_address = saved_address
+        self.fields["country"].choices = [("", "Not given")] + [(c, c) for c in COUNTRIES]
+        # A coordinator only ever works inside their own extension: it is fixed here and
+        # again in the service, whatever the browser posts.
+        self.fixed_extension = None
+        if actor.role == Role.COORDINATOR:
+            self.fixed_extension = Extension.objects.filter(pk=actor.extension_id).first()
         roles = list(assignable_roles(actor))
         if keep_role and keep_role not in roles:
             roles.insert(0, keep_role)
@@ -308,9 +362,10 @@ class UserForm(forms.Form):
         allowed = Q(archived_at__isnull=True)
         if keep_extension:
             allowed |= Q(pk=keep_extension)
-        self.fields["extension"].queryset = (
-            Extension.objects.filter(allowed).select_related("coordinator").order_by("name")
-        )
+        extensions = Extension.objects.filter(allowed)
+        if self.fixed_extension is not None:
+            extensions = extensions.filter(pk=self.fixed_extension.pk)
+        self.fields["extension"].queryset = extensions.select_related("coordinator").order_by("name")
 
     @cached_property
     def extension_data(self):
@@ -339,14 +394,64 @@ class UserForm(forms.Form):
     def clean_last_name(self):
         return clean_text(self.cleaned_data.get("last_name"))
 
+    def clean_suffix(self):
+        return normalize_suffix(self.cleaned_data.get("suffix"))
+
+    def clean_phone_number(self):
+        value = clean_phone(self.cleaned_data.get("phone_number"))
+        if value and not is_valid_phone(value):
+            raise ValidationError(PHONE_MESSAGE)
+        return value
+
+    # Address text is stored the way an extension stores it: lowercase, single spaces.
+    def clean_country(self):
+        return clean_text(self.cleaned_data.get("country"))
+
+    def clean_province(self):
+        return clean_text(self.cleaned_data.get("province"))
+
+    def clean_municipality(self):
+        return clean_text(self.cleaned_data.get("municipality"))
+
+    def clean_barangay(self):
+        return clean_text(self.cleaned_data.get("barangay"))
+
+    def clean_street(self):
+        return clean_text(self.cleaned_data.get("street"))
+
+    def clean_building_number(self):
+        return clean_text(self.cleaned_data.get("building_number"))
+
+    def clean_postal_code(self):
+        """Single spaces only; the case is left alone (foreign codes like 'SW1A 1AA')."""
+        return " ".join((self.cleaned_data.get("postal_code") or "").split())
+
+    @property
+    def address_state(self):
+        """Current country/province/municipality/barangay for the page's JavaScript."""
+        return {name: self[name].value() or "" for name in HIERARCHY}
+
     def clean(self):
         cleaned = super().clean()
         role = cleaned.get("role")
         if role in (Role.COORDINATOR, Role.MEMBER):
-            if cleaned.get("extension") is None and "extension" not in self.errors:
+            if self.fixed_extension is not None:
+                cleaned["extension"] = self.fixed_extension
+            elif cleaned.get("extension") is None and "extension" not in self.errors:
                 self.add_error("extension", "Choose an extension for this role.")
         elif role:
             cleaned["extension"] = None
+
+        # The address is optional, but whatever is filled in must make sense.
+        address = {name: cleaned.get(name) or "" for name in ADDRESS_FIELDS}
+        if any(address.values()):
+            if not address["country"]:
+                if "country" not in self.errors:
+                    self.add_error("country", "Choose a country for the address, or clear it.")
+            else:
+                for field, message in check_address(address, self.saved_address).items():
+                    if field not in self.errors:
+                        self.add_error(field, message)
 
         names_ok = cleaned.get("first_name") and cleaned.get("last_name") and not any(
             n in self.errors for n in ("first_name", "middle_name", "last_name", "birth_date")

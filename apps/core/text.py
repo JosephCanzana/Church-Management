@@ -1,7 +1,8 @@
 """core.text: small text helpers shared by every app.
 
 Today: `clean_text` (what we store), `title_case` (what we show for places and
-other text) and `name_case` / `person_name` (what we show for people).
+other text), `name_case` / `person_name` (what we show for people) and
+`clean_suffix` / `suffix_case` (the optional Jr., Sr., III after a name).
 Names and addresses are STORED in lowercase with single spaces, and SHOWN in
 title case, so "SANTA  rosa" and "santa rosa" are never two different values.
 """
@@ -83,7 +84,31 @@ def name_case(value):
     return shown + suffix
 
 
-def person_name(first_name, middle_name, last_name):
-    """A person's full name for display: first, middle and last, each through `name_case`."""
-    parts = (name_case(first_name), name_case(middle_name), name_case(last_name))
+# Suffixes as they are shown. Stored lowercase without dots ("jr", "iii").
+_SUFFIX_SHOWN = {"jr": "Jr.", "sr": "Sr."}
+_SUFFIX_ALIASES = {"junior": "jr", "senior": "sr"}
+_ROMAN_SUFFIXES = {"ii", "iii", "iv", "v", "vi", "vii", "viii", "ix", "x"}
+
+
+def clean_suffix(value):
+    """What gets stored for a name suffix: lowercase, no dots or spaces ("Jr." -> "jr")."""
+    text = clean_text(value).replace(".", "").replace(" ", "")
+    return _SUFFIX_ALIASES.get(text, text)
+
+
+def suffix_case(value):
+    """What gets shown for a name suffix: "jr" -> "Jr.", "iii" -> "III", anything else in name case."""
+    text = clean_suffix(value)
+    if not text:
+        return ""
+    if text in _SUFFIX_SHOWN:
+        return _SUFFIX_SHOWN[text]
+    if text in _ROMAN_SUFFIXES:
+        return text.upper()
+    return name_case(text)
+
+
+def person_name(first_name, middle_name, last_name, suffix=""):
+    """A person's full name for display: first, middle and last through `name_case`, then the suffix."""
+    parts = (name_case(first_name), name_case(middle_name), name_case(last_name), suffix_case(suffix))
     return " ".join(p for p in parts if p)

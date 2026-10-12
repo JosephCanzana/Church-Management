@@ -83,6 +83,28 @@ class UserManager(BaseUserManager):
         extra_fields.setdefault("must_change_password", False)
         return self.create_user(account_id, password, **extra_fields)
 
+    def for_user(self, actor):
+        """The people `actor` is allowed to see on the people screens (AGENTS.md: scoping).
+
+        This is the ONE place that narrows people by who is asking. Views and
+        services start from it, never from an ad hoc `.filter(extension=...)`.
+          super-admin -> everyone
+          admin       -> coordinators and members (never super-admins or other admins)
+          coordinator -> members of their own extension
+          anyone else -> nobody
+        The actor's own row is NOT removed here; the list view leaves it out.
+        """
+        people = self.get_queryset()
+        if actor is None or not getattr(actor, "is_authenticated", False):
+            return people.none()
+        if actor.role == Role.SUPER_ADMIN:
+            return people
+        if actor.role == Role.ADMIN:
+            return people.filter(role__in=[Role.COORDINATOR, Role.MEMBER])
+        if actor.role == Role.COORDINATOR and actor.extension_id:
+            return people.filter(role=Role.MEMBER, extension_id=actor.extension_id)
+        return people.none()
+
 
 class User(AbstractBaseUser, TimestampedModel, ArchivableModel):
     # AbstractBaseUser supplies `password` (the hash) and `last_login`.
@@ -90,10 +112,22 @@ class User(AbstractBaseUser, TimestampedModel, ArchivableModel):
     first_name = models.CharField(max_length=150)
     middle_name = models.CharField(max_length=150, blank=True)
     last_name = models.CharField(max_length=150)
+    suffix = models.CharField(max_length=10, blank=True)         # optional: "jr", "sr", "iii"
     email = models.EmailField(null=True, blank=True)            # VERIFIED only
     email_verified_at = models.DateTimeField(null=True, blank=True)
     pending_email = models.EmailField(null=True, blank=True)    # waiting for link click
     birth_date = models.DateField(null=True, blank=True)
+    # Contact details, all optional, so a coordinator can follow someone up.
+    # The address uses the same parts as Extension (see accounts.address) but has
+    # no defaults: an empty address means "not given". Never written to audit_log.
+    phone_number = models.CharField(max_length=20, blank=True)
+    building_number = models.CharField(max_length=50, blank=True)
+    street = models.CharField(max_length=150, blank=True)
+    barangay = models.CharField(max_length=150, blank=True)
+    municipality = models.CharField(max_length=150, blank=True)
+    province = models.CharField(max_length=150, blank=True)
+    country = models.CharField(max_length=150, blank=True)
+    postal_code = models.CharField(max_length=10, blank=True)
     profile_image = models.ImageField(upload_to="profile_images/", blank=True)  # needs Pillow
     role = models.CharField(max_length=20, choices=Role.choices)
     extension = models.ForeignKey(
@@ -162,8 +196,8 @@ class User(AbstractBaseUser, TimestampedModel, ArchivableModel):
 
     @property
     def full_name(self):
-        """First, middle and last name for display (stored lowercase, shown in name case)."""
-        return person_name(self.first_name, self.middle_name, self.last_name)
+        """First, middle, last name and suffix for display (stored lowercase, shown in name case)."""
+        return person_name(self.first_name, self.middle_name, self.last_name, self.suffix)
 
     def __str__(self):
         return f"{self.full_name} ({self.account_id})"
@@ -217,7 +251,7 @@ class DefaultPassword(models.Model):
     """A default password kept by one person for the roles beneath them.
 
     Personal: coordinator A may keep one password for their members and
-    coordinator B another; t Stored twice: a hash (what is copied onto new accounts) and an encrypted
+    coordinator B another. Stored twice: a hash (what is copied onto new accounts) and an encrypted
     copy (so the owner can see it again). The key is DEFAULT_PASSWORD_KEY in .env.
     """
 

@@ -1,14 +1,21 @@
-"""accounts.views.users: the super-admin screens for managing people.
+"""accounts.views.users: the people screens, shared by the super-admin, the admin and the coordinator.
 
-Every view is wrapped in
-role_required(SUPER_ADMIN), the services check permission again, destructive
-actions are POST-only, and an action on someone who is already in the wanted
-state (or already gone) answers calmly instead of failing.
+One set of views serves all three roles. Each role has its own URL namespace
+(`superadmin`, `admin_area`, `coordinator_area`, see accounts/urls/) and the views read the
+namespace of the request, so every redirect stays inside the area the person came from; the
+templates do the same through `{% role_url %}`.
 
-Pages that can show a password (create, reset, bulk reset) are `never_cache`
-and render the show-once dialog directly in the POST response. They are not
-redirected, because a redirect would need the password to be kept somewhere.
-Re-posting such a form is harmless: its one-time token was already used.
+Two guards, both required: `people_manager` on the view guards the page, and every service checks
+permission again for the particular person (`accounts.permissions.can_act_on`). Everything a
+person can see starts from `User.objects.for_user(viewer)`, so a coordinator never reaches
+anyone outside their extension, even by typing an id. Someone out of reach looks exactly like
+someone who no longer exists. Destructive actions are POST-only, and an action on someone who
+is already in the wanted state answers calmly instead of failing.
+
+Pages that can show a password (create, reset, bulk reset) are `never_cache` and render the
+show-once dialog directly in the POST response. They are not redirected, because a redirect
+would need the password to be kept somewhere. Re-posting such a form is harmless: its
+one-time token was already used.
 """
 from django.contrib import messages
 from django.core.paginator import Paginator
@@ -21,11 +28,13 @@ from django.views.decorators.cache import never_cache
 from django.views.decorators.http import require_http_methods, require_POST
 
 from apps.core.services import ServiceError, new_submission_token
-from apps.core.text import name_case
+from apps.core.text import name_case, suffix_case, title_case
 
+from ..address import ADDRESS_FIELDS, canonical_country
 from ..decorators import role_required
 from ..forms import UserCreateForm, UserFilterForm, UserForm
 from ..models import Role, Status, User, UserExtensionHistory
+from ..permissions import EDIT, allowed_bulk_actions, can_change_placement, require_can_act
 from ..services.users import (
     archive_user,
     create_user,
@@ -47,6 +56,11 @@ SECRETS_MESSAGE = (
     "through a private channel. They will be asked to change it."
 )
 
+LIST_TEMPLATE = "accounts/people/user_list.html"
+FORM_TEMPLATE = "accounts/people/user_form.html"
+DETAIL_TEMPLATE = "accounts/people/user_detail.html"
+
+people_manager = role_required(Role.SUPER_ADMIN, Role.ADMIN, Role.COORDINATOR)
 super_admin_only = role_required(Role.SUPER_ADMIN)
 
 SORTS = {
@@ -58,20 +72,20 @@ SORTS = {
     "-account_id": ["-account_id"],
 }
 
-# What each bulk button says and asks. {n} becomes the number of ticked people (ui.js).
+# What each bulk button says and asks. {n} becomes the number of people it applies to.
 BULK_BUTTONS = {
     "archive": dict(label="Archive", icon="archive-box", past="archived", danger=False,
                     title="Archive {n} selected?",
                     message="They will be archived and can no longer log in. You can restore them later."),
     "suspend": dict(label="Suspend", icon="pause-circle", past="suspended", danger=False,
                     title="Suspend {n} selected?",
-                    message="They cannot log in until you lift the suspension. Nothing is deleted."),
+                    message="They cannot log in until the suspension is lifted. Nothing is deleted."),
     "unsuspend": dict(label="Unsuspend", icon="play-circle", past="unsuspended", danger=False,
                       title="Unsuspend {n} selected?",
                       message="They can log in again."),
     "deactivate": dict(label="Deactivate", icon="power", past="deactivated", danger=False,
                        title="Deactivate {n} selected?",
-                       message="They go back to 'not activated' and must activate again."),
+                       message="They go back to not activated and must activate again."),
     "reset_password": dict(label="Reset password", icon="key", past="given a new password", danger=False,
                            title="Reset the password of {n} selected?",
                            message="Each person gets a new password, shown once. Their open sessions end."),
@@ -82,26 +96,51 @@ BULK_BUTTONS = {
                    title="Delete {n} selected permanently?",
                    message="This cannot be undone. Only archived people can be deleted."),
 }
+BULK_ORDER = ("archive", "suspend", "unsuspend", "deactivate", "reset_password", "restore", "delete")
+# The statuses each bulk action can do something for. The list page counts only the ticked rows
+# in these statuses and hides a button when none of them apply, so Restore never shows for
+# someone who is not archived.
+_LIVE = (Status.NOT_ACTIVATED, Status.ACTIVE, Status.SUSPENDED)
+BULK_APPLIES = {
+    "archive": _LIVE,
+    "suspend": (Status.NOT_ACTIVATED, Status.ACTIVE),
+    "unsuspend": (Status.SUSPENDED,),
+    "deactivate": (Status.ACTIVE,),
+    "reset_password": _LIVE,
+    "restore": (Status.ARCHIVED,),
+    "delete": (Status.ARCHIVED,),
+}
 
 
-def _bulk_buttons(status):
-    """The bulk buttons that make sense for the list being shown."""
+def _bulk_buttons(status, viewer):
+    """The bulk buttons this person may use on the list being shown."""
+    allowed = allowed_bulk_actions(viewer)
+    names = [n for n in BULK_ORDER if n in allowed]
     if status == "archived":
-        names = ["restore", "delete"]
-    elif status == "all":
-        names = ["archive", "suspend", "unsuspend", "deactivate", "reset_password", "restore", "delete"]
-    else:
-        names = ["archive", "suspend", "unsuspend", "deactivate", "reset_password"]
-    return [{"value": n, **BULK_BUTTONS[n]} for n in names]
+        names = [n for n in names if n in ("restore", "delete")]
+    elif status != "all":
+        names = [n for n in names if n not in ("restore", "delete")]
+    return [{"value": n, "applies": " ".join(BULK_APPLIES[n]), **BULK_BUTTONS[n]} for n in names]
 
 
-def _person_or_none(pk):
-    return User.objects.select_related("extension").filter(pk=pk).first()
+# --------------------------------------------------------------- namespaces
+def _to(request, name, **kwargs):
+    """Redirect to url `name` in the role area the request came from."""
+    return redirect(f"{request.resolver_match.namespace}:{name}", **kwargs)
+
+
+def _url(request, name, *args):
+    return reverse(f"{request.resolver_match.namespace}:{name}", args=args)
+
+
+def _person_or_none(viewer, pk):
+    """The person, only if `viewer` may see them (None looks the same as 'deleted')."""
+    return User.objects.for_user(viewer).select_related("extension").filter(pk=pk).first()
 
 
 def _gone(request):
     messages.info(request, "That person no longer exists.")
-    return redirect("superadmin:user_list")
+    return _to(request, "user_list")
 
 
 def _secrets(rows, title):
@@ -109,13 +148,50 @@ def _secrets(rows, title):
     return {"title": title, "message": SECRETS_MESSAGE, "headers": SECRETS_HEADERS, "rows": rows}
 
 
+def _address_text(person):
+    """The person's address on one line in title case, or '' when none was given."""
+    parts = [
+        title_case(person.building_number), title_case(person.street), title_case(person.barangay),
+        title_case(person.municipality), title_case(person.province), person.postal_code,
+        canonical_country(person.country) or title_case(person.country),
+    ]
+    return ", ".join(p for p in parts if p)
+
+
+def _form_initial(person):
+    """Saved values for the edit form, shown the way the pages show them (title case)."""
+    initial = {
+        "first_name": name_case(person.first_name), "middle_name": name_case(person.middle_name),
+        "last_name": name_case(person.last_name), "suffix": suffix_case(person.suffix),
+        "birth_date": person.birth_date, "phone_number": person.phone_number,
+        "role": person.role, "extension": person.extension_id,
+        "postal_code": person.postal_code,
+        "country": canonical_country(person.country) or title_case(person.country),
+    }
+    for name in ("province", "municipality", "barangay", "street", "building_number"):
+        initial[name] = title_case(getattr(person, name))
+    return initial
+
+
 # ------------------------------------------------------------------- list
 def _list_context(params, viewer):
     """Everything the people list page needs, from a QueryDict of filters.
 
-    `viewer` (the signed-in super-admin) is left out of the list.
+    Only people `viewer` may see are listed, and `viewer` is left out.
     """
     form = UserFilterForm(params)
+    show_role = viewer.role != Role.COORDINATOR          # a coordinator only has members
+    show_extension = viewer.role != Role.COORDINATOR     # ...and only in their own extension
+    if not show_role:
+        del form.fields["role"]
+    else:
+        # Nobody is offered a role they cannot see.
+        visible = [Role.SUPER_ADMIN, Role.ADMIN, Role.COORDINATOR, Role.MEMBER]
+        if viewer.role == Role.ADMIN:
+            visible = [Role.COORDINATOR, Role.MEMBER]
+        form.fields["role"].choices = [("", "All roles"), *[(r, Role(r).label) for r in visible]]
+    if not show_extension:
+        del form.fields["extension"]
     form.is_valid()
     data = getattr(form, "cleaned_data", {})
     status = data.get("status") or "current"
@@ -123,7 +199,7 @@ def _list_context(params, viewer):
     extension = data.get("extension")
     sort = data.get("sort") or "last_name"
 
-    queryset = User.objects.select_related("extension").exclude(pk=viewer.pk)
+    queryset = User.objects.for_user(viewer).select_related("extension").exclude(pk=viewer.pk)
     if status == "current":
         queryset = queryset.exclude(status=Status.ARCHIVED)
     elif status != "all":
@@ -148,7 +224,9 @@ def _list_context(params, viewer):
         "page": page,
         "total": paginator.count,
         "status": status,
-        "bulk_buttons": _bulk_buttons(status),
+        "show_role_filter": show_role,
+        "show_extension_filter": show_extension,
+        "bulk_buttons": _bulk_buttons(status, viewer),
         "querystring": without_page.urlencode(),
         "full_querystring": params.urlencode(),
         # How many filters differ from the defaults (badge on the Filters button).
@@ -159,25 +237,25 @@ def _list_context(params, viewer):
     }
 
 
-@super_admin_only
+@people_manager
 @never_cache
 @require_http_methods(["GET"])
 def user_list(request):
-    """People with search, filters, sorting, paging and bulk selection."""
+    """People with search, filters, sorting, paging, bulk selection and a right-click menu."""
     context = _list_context(request.GET, request.user)
     context["submit_token"] = new_submission_token()
-    return render(request, "accounts/superadmin/user_list.html", context)
+    return render(request, LIST_TEMPLATE, context)
 
 
 # -------------------------------------------------------------- create / edit
-@super_admin_only
+@people_manager
 @never_cache
 @require_http_methods(["GET", "POST"])
 def user_create(request):
     """New-person form (GET) and save (POST). Shows the password once."""
     initial = {"role": Role.MEMBER}
     wanted = request.GET.get("extension", "")
-    if wanted.isdigit():
+    if wanted.isdigit() and can_change_placement(request.user):
         initial["extension"] = int(wanted)
     form = UserCreateForm(request.POST or None, actor=request.user, initial=initial)
 
@@ -192,37 +270,34 @@ def user_create(request):
         else:
             if result.duplicate:
                 messages.info(request, "That form was already submitted, so nothing was created a second time.")
-                return redirect("superadmin:user_list")
+                return _to(request, "user_list")
             person = result.user
             messages.success(request, f"{person.full_name} was created. Account ID {person.account_id}.")
             return _render_detail(request, person, secrets=_secrets(
                 [[person.full_name, person.account_id, result.password.display]], "Account created",
             ))
-    return render(request, "accounts/superadmin/user_form.html", {
+    return render(request, FORM_TEMPLATE, {
         "form": form, "person": None, "submit_token": new_submission_token(),
     })
 
 
-@super_admin_only
+@people_manager
 @never_cache
 @require_http_methods(["GET", "POST"])
 def user_edit(request, pk):
-    """Edit details, role and extension (GET shows the form, POST saves it)."""
-    person = _person_or_none(pk)
+    """Edit details, contact, role and extension (GET shows the form, POST saves it)."""
+    person = _person_or_none(request.user, pk)
     if person is None:
         return _gone(request)
+    require_can_act(request.user, person, EDIT)
     if person.status == Status.ARCHIVED:
         messages.error(request, "Restore this person before editing them.")
-        return redirect("superadmin:user_detail", pk=pk)
+        return _to(request, "user_detail", pk=pk)
 
-    initial = {
-        "first_name": name_case(person.first_name), "middle_name": name_case(person.middle_name),
-        "last_name": name_case(person.last_name), "birth_date": person.birth_date,
-        "role": person.role, "extension": person.extension_id,
-    }
     form = UserForm(
-        request.POST or None, actor=request.user, initial=initial,
+        request.POST or None, actor=request.user, initial=_form_initial(person),
         keep_extension=person.extension_id, keep_role=person.role, exclude_pk=person.pk,
+        saved_address={name: getattr(person, name) for name in ADDRESS_FIELDS},
     )
     if request.method == "POST" and form.is_valid():
         try:
@@ -234,10 +309,8 @@ def user_edit(request, pk):
                 messages.success(request, f"{updated.full_name} was updated.")
             else:
                 messages.info(request, "No changes to save.")
-            return redirect("superadmin:user_detail", pk=pk)
-    return render(request, "accounts/superadmin/user_form.html", {
-        "form": form, "person": person,
-    })
+            return _to(request, "user_detail", pk=pk)
+    return render(request, FORM_TEMPLATE, {"form": form, "person": person})
 
 
 # ----------------------------------------------------------------- detail
@@ -247,21 +320,22 @@ def _render_detail(request, person, secrets=None):
         UserExtensionHistory.objects.filter(user=person)
         .select_related("extension").order_by("-from_date", "-pk")[:20]
     )
-    return render(request, "accounts/superadmin/user_detail.html", {
+    return render(request, DETAIL_TEMPLATE, {
         "person": person,
         "history": history,
+        "address": _address_text(person),
         "is_self": person.pk == request.user.pk,
         "secrets": secrets,
         "submit_token": new_submission_token(),
     })
 
 
-@super_admin_only
+@people_manager
 @never_cache
 @require_http_methods(["GET"])
 def user_detail(request, pk):
     """One person: details, status, extension history and the action buttons."""
-    person = _person_or_none(pk)
+    person = _person_or_none(request.user, pk)
     if person is None:
         return _gone(request)
     return _render_detail(request, person)
@@ -272,9 +346,11 @@ def _run_user_action(request, pk, service, done, nothing, *, to_list=False):
     """Run one POST action on a person and answer with a message.
 
     done / nothing use {name}. `nothing` is shown when the person was already
-    in the wanted state (for example a second click).
+    in the wanted state (for example a second click). A person out of reach looks
+    like a person who is gone; a person in reach but not allowed raises
+    PermissionDenied in the service (HTTP 403).
     """
-    person = _person_or_none(pk)
+    person = _person_or_none(request.user, pk)
     if person is None:
         return _gone(request)
     name = person.full_name
@@ -282,45 +358,45 @@ def _run_user_action(request, pk, service, done, nothing, *, to_list=False):
         _, changed = service(request.user, request, person)
     except ServiceError as exc:
         messages.error(request, str(exc))
-        return redirect("superadmin:user_detail", pk=pk)
+        return _to(request, "user_detail", pk=pk)
     if changed:
         messages.success(request, done.format(name=name))
     else:
         messages.info(request, nothing.format(name=name))
     if to_list:
-        return redirect("superadmin:user_list")
-    return redirect("superadmin:user_detail", pk=pk)
+        return _to(request, "user_list")
+    return _to(request, "user_detail", pk=pk)
 
 
-@super_admin_only
+@people_manager
 @require_POST
 def user_archive(request, pk):
     return _run_user_action(request, pk, archive_user,
                             "{name} was archived.", "{name} is already archived.")
 
 
-@super_admin_only
+@people_manager
 @require_POST
 def user_restore(request, pk):
     return _run_user_action(request, pk, restore_user,
                             "{name} was restored.", "{name} is not archived.")
 
 
-@super_admin_only
+@people_manager
 @require_POST
 def user_suspend(request, pk):
     return _run_user_action(request, pk, suspend_user,
                             "{name} was suspended.", "{name} is already suspended.")
 
 
-@super_admin_only
+@people_manager
 @require_POST
 def user_unsuspend(request, pk):
     return _run_user_action(request, pk, unsuspend_user,
                             "{name} can log in again.", "{name} is not suspended.")
 
 
-@super_admin_only
+@people_manager
 @require_POST
 def user_deactivate(request, pk):
     return _run_user_action(request, pk, deactivate_user,
@@ -330,16 +406,17 @@ def user_deactivate(request, pk):
 @super_admin_only
 @require_POST
 def user_delete(request, pk):
+    """Force delete: super-admin only, and only for archived people."""
     return _run_user_action(request, pk, force_delete_user,
                             "{name} was deleted.", "{name} was not deleted.", to_list=True)
 
 
-@super_admin_only
+@people_manager
 @never_cache
 @require_POST
 def user_reset_password(request, pk):
     """Give one person a new password and show it once."""
-    person = _person_or_none(pk)
+    person = _person_or_none(request.user, pk)
     if person is None:
         return _gone(request)
     try:
@@ -349,12 +426,12 @@ def user_reset_password(request, pk):
         )
     except ServiceError as exc:
         messages.error(request, str(exc))
-        return redirect("superadmin:user_detail", pk=pk)
+        return _to(request, "user_detail", pk=pk)
     if result.duplicate:
         messages.info(request, "That password reset was already done. Reset again if you need a new one.")
-        return redirect("superadmin:user_detail", pk=pk)
+        return _to(request, "user_detail", pk=pk)
     messages.success(request, f"{person.full_name} has a new password.")
-    return _render_detail(request, _person_or_none(pk), secrets=_secrets(
+    return _render_detail(request, _person_or_none(request.user, pk), secrets=_secrets(
         [[person.full_name, person.account_id, result.password.display]], "New password",
     ))
 
@@ -373,7 +450,7 @@ def _bulk_messages(request, action, result):
         messages.warning(request, f"Skipped {len(result.skipped)}: {shown}{more}.")
 
 
-@super_admin_only
+@people_manager
 @never_cache
 @require_POST
 def user_bulk(request):
@@ -384,7 +461,7 @@ def user_bulk(request):
     return_to = QueryDict(request.POST.get("qs", "")[:RETURN_QS_MAX])
 
     def back():
-        url = reverse("superadmin:user_list")
+        url = _url(request, "user_list")
         query = return_to.urlencode()
         return redirect(f"{url}?{query}" if query else url)
 
@@ -402,5 +479,5 @@ def user_bulk(request):
         context = _list_context(return_to, request.user)
         context["submit_token"] = new_submission_token()
         context["secrets"] = _secrets(result.passwords, "New passwords")
-        return render(request, "accounts/superadmin/user_list.html", context)
+        return render(request, LIST_TEMPLATE, context)
     return back()

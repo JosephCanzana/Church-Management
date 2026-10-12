@@ -1,4 +1,4 @@
-"""accounts.services.users: business rules for managing people (super-admin).
+"""accounts.services.users: business rules for managing people (super-admin, admin, coordinator).
 
 Same conventions as accounts.services: every function checks permission
 first, does its work in `transaction.atomic()`, writes `log_action()` in the
@@ -25,17 +25,27 @@ from django.utils import timezone
 from apps.audit.services import log_action
 from apps.core import services as core_services
 from apps.core.services import ServiceError, consume_submission_token
-from apps.core.text import clean_text, title_case
+from apps.core.text import clean_suffix, clean_text, title_case
 
 from ..validators import generate_strong_password, validate_strong_password
 
+from ..address import ADDRESS_FIELDS, check_address
+from ..contact import PHONE_MESSAGE, clean_phone, is_valid_phone
 from ..models import (
     ArchiveReason, DefaultPassword, Extension, Role, Status, User, UserExtensionHistory,
 )
-from ..permissions import assignable_roles, default_password_roles, require_user_manager
+from ..permissions import (
+    ARCHIVE, CHANGE_PLACEMENT, DEACTIVATE, DELETE, EDIT, RESET_PASSWORD, RESTORE, SUSPEND, UNSUSPEND,
+    allowed_bulk_actions, assignable_roles, default_password_roles, require_can_act,
+    require_can_create, require_placement_manager, require_user_manager,
+)
 
 ROLES_WITH_EXTENSION = (Role.COORDINATOR, Role.MEMBER)
-USER_DETAIL_FIELDS = ("first_name", "middle_name", "last_name", "birth_date")
+# Who a person is: a change here re-runs the duplicate-name check.
+IDENTITY_FIELDS = ("first_name", "middle_name", "last_name", "suffix", "birth_date")
+# Optional contact details. Never written to audit_log (only the field NAMES that changed).
+CONTACT_FIELDS = ("phone_number", *ADDRESS_FIELDS)
+USER_DETAIL_FIELDS = (*IDENTITY_FIELDS, *CONTACT_FIELDS)
 MAX_BULK = 100
 MIN_PASSWORD_LENGTH = 8
 # No 0/O, 1/l/I: generated passwords get read aloud and typed by hand.
@@ -110,11 +120,42 @@ def normalize_details(data):
     for name in NAME_FIELDS:
         if name in cleaned:
             cleaned[name] = clean_text(cleaned[name])
+    if "suffix" in cleaned:
+        cleaned["suffix"] = clean_suffix(cleaned["suffix"])
+    if "phone_number" in cleaned:
+        cleaned["phone_number"] = clean_phone(cleaned["phone_number"])
+    for name in ADDRESS_FIELDS:
+        if name in cleaned:
+            raw = cleaned[name] or ""
+            # Like an extension: lowercase and single spaces, but a postal code keeps its case.
+            cleaned[name] = " ".join(str(raw).split()) if name == "postal_code" else clean_text(raw)
     return cleaned
 
 
-def find_duplicate_person(first_name, middle_name, last_name, birth_date=None, *, exclude_pk=None):
-    """Someone with the same name, or None. Archived people count.
+def check_contact(data, existing=None):
+    """Raise ServiceError when the phone number or address in `data` breaks a rule.
+
+    `data` is already normalized. Both are optional, so an empty phone and an empty
+    address pass. A partly filled address needs a country, and a Philippine one must
+    follow the same province > municipality > barangay and 4-digit postal rules as an
+    extension (`accounts.address.check_address`). `existing` (the saved address of the
+    person being edited) lets an old value that is not in the list stay until changed.
+    """
+    phone = data.get("phone_number") or ""
+    if phone and not is_valid_phone(phone):
+        raise ServiceError(PHONE_MESSAGE)
+    values = {name: data.get(name) or "" for name in ADDRESS_FIELDS}
+    if not any(values.values()):
+        return
+    if not values["country"]:
+        raise ServiceError("Choose a country for the address, or clear the address.")
+    problems = check_address(values, existing)
+    if problems:
+        raise ServiceError(next(iter(problems.values())))
+
+
+def find_duplicate_person(first_name, middle_name, last_name, birth_date=None, *, suffix="", exclude_pk=None):
+    """Someone with the same name and suffix, or None. Archived people count.
 
     Two real people can share a name, so a match is ignored only when BOTH have
     a birth date and the dates differ. `__iexact` also catches rows saved
@@ -122,6 +163,7 @@ def find_duplicate_person(first_name, middle_name, last_name, birth_date=None, *
     """
     people = User.objects.filter(
         first_name__iexact=first_name, middle_name__iexact=middle_name, last_name__iexact=last_name,
+        suffix__iexact=suffix,
     )
     if exclude_pk is not None:
         people = people.exclude(pk=exclude_pk)
@@ -137,7 +179,7 @@ def duplicate_message(data, *, exclude_pk=None):
     data = normalize_details(data)
     other = find_duplicate_person(
         data.get("first_name") or "", data.get("middle_name") or "", data.get("last_name") or "",
-        data.get("birth_date"), exclude_pk=exclude_pk,
+        data.get("birth_date"), suffix=data.get("suffix") or "", exclude_pk=exclude_pk,
     )
     if other is None:
         return None
@@ -282,11 +324,12 @@ def create_user(actor, request, data, *, token):
     require_user_manager(actor)
     data = normalize_details(data)
     role = data["role"]
-    if role not in assignable_roles(actor):
-        raise PermissionDenied("You cannot create that role.")
     wanted = data.get("extension") if role in ROLES_WITH_EXTENSION else None
+    # The role must be one the actor hands out and, for a coordinator, the extension their own.
+    require_can_create(actor, role, wanted)
     if role in ROLES_WITH_EXTENSION and wanted is None:
         raise ServiceError("Choose an extension for this role.")
+    check_contact(data)
 
     with transaction.atomic():
         if not consume_submission_token(token):
@@ -307,7 +350,10 @@ def create_user(actor, request, data, *, token):
             first_name=data["first_name"],
             middle_name=data.get("middle_name", ""),
             last_name=data["last_name"],
+            suffix=data.get("suffix", ""),
             birth_date=data.get("birth_date"),
+            phone_number=data.get("phone_number", ""),
+            **{name: data.get(name, "") for name in ADDRESS_FIELDS},
             role=role,
             extension=ext,
             status=Status.ACTIVE if activated else Status.NOT_ACTIVATED,
@@ -370,8 +416,14 @@ def update_user(actor, request, ref, data):
              .values_list("pk", flat=True))
         locked = _lock_person(ref.pk)
         person = locked.person
+        require_can_act(actor, person, EDIT)
         if person.status == Status.ARCHIVED:
             raise ServiceError("Restore this person before editing them.")
+        # Phone and address are checked on what the person would end up with.
+        check_contact(
+            {name: data[name] if name in data else getattr(person, name) for name in CONTACT_FIELDS},
+            existing={name: getattr(person, name) for name in ADDRESS_FIELDS},
+        )
         # Checked on the locked row: keeping the current role is always fine (a
         # super-admin stays one); giving a role nobody can hand out is not.
         if new_role != person.role and new_role not in assignable_roles(actor):
@@ -386,8 +438,9 @@ def update_user(actor, request, ref, data):
             if name in data:
                 setattr(person, name, data[name])
         details_changed = [n for n in USER_DETAIL_FIELDS if before[n] != getattr(person, n)]
-        if details_changed:
-            _refuse_duplicate({n: getattr(person, n) for n in USER_DETAIL_FIELDS}, exclude_pk=person.pk)
+        if any(n in IDENTITY_FIELDS for n in details_changed):
+            # Only a change to who they are can clash; fixing a phone number must never be blocked by one.
+            _refuse_duplicate({n: getattr(person, n) for n in IDENTITY_FIELDS}, exclude_pk=person.pk)
         old_role = person.role
         old_ext_id = person.extension_id
         role_changed = new_role != old_role
@@ -397,6 +450,9 @@ def update_user(actor, request, ref, data):
             _refuse_self(actor, person, "change the role of")
             if new_role != Role.SUPER_ADMIN:
                 _refuse_last_super_admin(locked, "change the role of")
+        if (role_changed or ext_changed) and actor.pk != person.pk:
+            # A coordinator can edit details but never move or re-role anyone.
+            require_can_act(actor, person, CHANGE_PLACEMENT)
         if ext_changed and new_ext is not None and new_ext.is_archived:
             raise ServiceError("Choose an extension that is not archived.")
         if not (details_changed or role_changed or ext_changed):
@@ -438,10 +494,14 @@ def update_user(actor, request, ref, data):
                 )
 
         if details_changed:
+            shown = [n for n in details_changed if n not in CONTACT_FIELDS]
+            after = {n: getattr(person, n) for n in shown}
+            contact = [n for n in details_changed if n in CONTACT_FIELDS]
+            if contact:
+                after["contact_fields_changed"] = contact     # names only, never the phone or address
             _log_person(
                 "account.update", actor, request, person,
-                before={n: before[n] for n in details_changed},
-                after={n: getattr(person, n) for n in details_changed},
+                before={n: before[n] for n in shown}, after=after,
             )
         if role_changed:
             _log_person("account.role_change", actor, request, person,
@@ -464,12 +524,14 @@ def archive_user(actor, request, ref):
     with transaction.atomic():
         locked = _lock_person(ref.pk)
         person = locked.person
+        require_can_act(actor, person, ARCHIVE)
         if person.status == Status.ARCHIVED:
             return person, False
         _refuse_self(actor, person, "archive")
         _refuse_last_super_admin(locked, "archive")
 
         old_status = person.status
+        cleared = _clear_special_roles(person)      # an archived person no longer holds a seat
         extra = ["status", "archive_reason"]
         if person.role == Role.COORDINATOR:
             ext = locked.extension
@@ -484,7 +546,8 @@ def archive_user(actor, request, ref):
         person.archive_reason = ArchiveReason.MANUAL
         core_services.archive(person, extra_fields=extra)
         _log_person("account.archive", actor, request, person,
-                    before={"status": old_status}, after={"status": Status.ARCHIVED})
+                    before={"status": old_status},
+                    after={"status": Status.ARCHIVED, "special_roles_cleared": cleared})
     return person, True
 
 
@@ -494,6 +557,7 @@ def restore_user(actor, request, ref):
     with transaction.atomic():
         locked = _lock_person(ref.pk)
         person = locked.person
+        require_can_act(actor, person, RESTORE)
         if person.status != Status.ARCHIVED:
             return person, False
         ext = locked.extension
@@ -513,6 +577,7 @@ def suspend_user(actor, request, ref):
     with transaction.atomic():
         locked = _lock_person(ref.pk)
         person = locked.person
+        require_can_act(actor, person, SUSPEND)
         if person.status == Status.SUSPENDED:
             return person, False
         if person.status == Status.ARCHIVED:
@@ -533,6 +598,7 @@ def unsuspend_user(actor, request, ref):
     with transaction.atomic():
         locked = _lock_person(ref.pk)
         person = locked.person
+        require_can_act(actor, person, UNSUSPEND)
         if person.status != Status.SUSPENDED:
             return person, False
         person.status = _usable_status(person)
@@ -548,6 +614,7 @@ def deactivate_user(actor, request, ref):
     with transaction.atomic():
         locked = _lock_person(ref.pk)
         person = locked.person
+        require_can_act(actor, person, DEACTIVATE)
         if person.status == Status.NOT_ACTIVATED:
             return person, False
         if person.status != Status.ACTIVE:
@@ -578,6 +645,7 @@ def _reset_password(actor, request, ref, typed=""):
     with transaction.atomic():
         locked = _lock_person(ref.pk)
         person = locked.person
+        require_can_act(actor, person, RESET_PASSWORD)
         if person.status == Status.ARCHIVED:
             raise ServiceError("Restore this person before resetting their password.")
         _refuse_self(actor, person, "reset the password of")
@@ -618,6 +686,7 @@ def force_delete_user(actor, request, ref):
         with transaction.atomic():
             locked = _lock_person(ref.pk)
             person = locked.person
+            require_can_act(actor, person, DELETE)
             if person.status != Status.ARCHIVED:
                 raise ServiceError("Only archived people can be deleted.")
             _refuse_self(actor, person, "delete")
@@ -664,10 +733,12 @@ def move_person(actor, request, person_ref, target_ref, *, confirmed=False, expe
     Lock order: extensions ascending, then the person.
     """
     require_user_manager(actor)
+    require_placement_manager(actor)
     with transaction.atomic():
         current = User.objects.filter(pk=person_ref.pk).values_list("extension_id", flat=True).first()
         exts = _lock_extensions([current, target_ref.pk])
         person = _lock_person(person_ref.pk).person
+        require_can_act(actor, person, CHANGE_PLACEMENT)
         target = exts.get(target_ref.pk)
         if target is None:
             raise ServiceError("That extension no longer exists.")
@@ -722,6 +793,7 @@ def transfer_people_in(actor, request, extension, ids, *, token, confirmed=False
     dialog); the others (no extension) are simply added.
     """
     require_user_manager(actor)
+    require_placement_manager(actor)
     ids = sorted({int(i) for i in ids})
     if not ids:
         raise ServiceError("Select at least one person.")
@@ -787,7 +859,7 @@ def run_bulk(actor, request, action, ids, *, token):
     repeated submission of the same selection does nothing.
     """
     require_user_manager(actor)
-    if action not in BULK_ACTION_NAMES:
+    if action not in BULK_ACTION_NAMES or action not in allowed_bulk_actions(actor):
         raise ServiceError("That action is not available.")
     ids = sorted({int(i) for i in ids})
     if not ids:
@@ -801,7 +873,9 @@ def run_bulk(actor, request, action, ids, *, token):
 
     result = BulkResult()
     for pk in ids:
-        person = User.objects.filter(pk=pk).first()
+        # for_user: someone outside the actor's reach looks exactly like someone who is gone,
+        # so a name from another extension is never shown in the result.
+        person = User.objects.for_user(actor).filter(pk=pk).first()
         if person is None:
             result.skipped.append((f"#{pk}", "no longer exists"))
             continue
@@ -817,6 +891,8 @@ def run_bulk(actor, request, action, ids, *, token):
                     result.done.append(label)
                 else:
                     result.skipped.append((label, NOTHING_TO_DO.get(action, "nothing to do")))
+        except PermissionDenied:
+            result.skipped.append((label, "you cannot do this to them"))
         except ServiceError as exc:
             result.skipped.append((label, str(exc)))
 

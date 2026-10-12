@@ -1,0 +1,222 @@
+
+{% extends "base_app.html" %}
+{% load static people_tags %}
+
+{% block title %}{% if person %}Edit {{ person.full_name }}{% else %}New person{% endif %}{% endblock %}
+{% block page_title %}{% if person %}Edit person{% else %}New person{% endif %}{% endblock %}
+
+{% block content %}
+{{ form.extension_data|json_script:"extension-data" }}
+{{ form.address_state|json_script:"address-state" }}
+<form method="post" class="card max-w-2xl" novalidate
+      x-data="userForm({ role: '{{ form.role.value|default:'member'|escapejs }}', extId: '{{ form.extension.value|default:''|escapejs }}', personId: '{{ person.pk|default:''|escapejs }}' })"
+      @submit="onSubmit($event)">
+  {% csrf_token %}
+  <input type="hidden" name="replace_coordinator" :value="replace ? '1' : ''">
+  <input type="hidden" name="extension" :value="extId">
+  {% if not person %}<input type="hidden" name="submit_token" value="{{ submit_token }}">{% endif %}
+  {% if form.fixed_extension %}<input type="hidden" name="role" value="member">{% endif %}
+
+  {% if form.non_field_errors %}
+  <div class="mb-5 rounded-lg border border-error p-3 text-sm text-error" role="alert">
+    {% for error in form.non_field_errors %}<p>{{ error }}</p>{% endfor %}
+  </div>
+  {% endif %}
+
+  <h2 class="text-base font-semibold">Name</h2>
+  <div class="mt-3 grid gap-4 sm:grid-cols-3">
+    {% for field in form %}{% if field.name == "first_name" or field.name == "middle_name" or field.name == "last_name" %}
+    <div>
+      <label for="{{ field.id_for_label }}" class="label">{{ field.label }}{% if not field.field.required %} <span class="font-normal text-txt-secondary">(optional)</span>{% endif %}</label>
+      {{ field }}
+      {% for error in field.errors %}<p class="field-error">{{ error }}</p>{% endfor %}
+    </div>
+    {% endif %}{% endfor %}
+  </div>
+
+  <div class="mt-4 grid gap-4 sm:grid-cols-2">
+    <div>
+      <label for="{{ form.suffix.id_for_label }}" class="label">Suffix <span class="font-normal text-txt-secondary">(optional)</span></label>
+      {{ form.suffix }}
+      {% for error in form.suffix.errors %}<p class="field-error">{{ error }}</p>{% endfor %}
+    </div>
+    <div>
+      <label for="{{ form.birth_date.id_for_label }}" class="label">Birth date <span class="font-normal text-txt-secondary">(optional)</span></label>
+      {{ form.birth_date }}
+      {% for error in form.birth_date.errors %}<p class="field-error">{{ error }}</p>{% endfor %}
+    </div>
+  </div>
+
+  {% if not form.fixed_extension %}
+  <h2 class="mt-8 text-base font-semibold">Role and extension</h2>
+  <div class="mt-3 grid gap-4 sm:grid-cols-2">
+    <div>
+      <label for="{{ form.role.id_for_label }}" class="label">Role</label>
+      {{ form.role }}
+      {% for error in form.role.errors %}<p class="field-error">{{ error }}</p>{% endfor %}
+    </div>
+    <div x-show="role === 'coordinator' || role === 'member'" x-cloak>
+      <label for="{{ form.extension.id_for_label }}" class="label">Extension</label>
+      {{ form.extension }}
+      {% for error in form.extension.errors %}<p class="field-error">{{ error }}</p>{% endfor %}
+      <p class="field-help" x-show="taken" x-cloak style="display:none">
+        <span x-text="match && match.name"></span> already has
+        <span x-text="match && match.coordinator"></span> as coordinator. You will be asked to confirm replacing them;
+        they stay in the extension as a member.
+      </p>
+    </div>
+  </div>
+  <p class="field-help" x-show="role === 'admin'" x-cloak>
+    Admins do not belong to an extension.
+  </p>
+  {% else %}
+  {# A coordinator's role and extension are fixed, so the page only says where the person will go. #}
+  <p class="mt-6 text-sm text-txt-secondary">
+    {% if person %}This person stays a member of{% else %}New people join as members of{% endif %}
+    your extension.
+  </p>
+  {% for error in form.extension.errors %}<p class="field-error">{{ error }}</p>{% endfor %}
+  {% endif %}
+
+  {# Contact: all optional, so a coordinator can follow someone up. #}
+  <h2 class="mt-8 text-base font-semibold">Contact <span class="text-sm font-normal text-txt-secondary">(optional)</span></h2>
+  <div class="mt-3 sm:max-w-xs">
+    <label for="{{ form.phone_number.id_for_label }}" class="label">Phone number</label>
+    {{ form.phone_number }}
+    {% for error in form.phone_number.errors %}<p class="field-error">{{ error }}</p>{% endfor %}
+    <p class="field-help">For example 0917 123 4567 or +63 917 123 4567.</p>
+  </div>
+
+  <div class="mt-5 grid gap-4 sm:grid-cols-2"
+       x-data="addressForm({ url: '{% static 'data/ph_address.json' %}', state: JSON.parse(document.getElementById('address-state').textContent) })">
+    <div class="sm:col-span-2">
+      <label for="{{ form.country.id_for_label }}" class="label">Country <span class="font-normal text-txt-secondary">(optional)</span></label>
+      {{ form.country }}
+      {% for error in form.country.errors %}<p class="field-error">{{ error }}</p>{% endfor %}
+      <p class="field-help">Leave the address empty if you do not have it.</p>
+    </div>
+    {% include "accounts/superadmin/_cascade_field.html" with field=form.province key="province" placeholder="Choose a province" options="provinces" parent="false" on_change="province = $event.target.value; municipality = ''; barangay = ''" optional=True %}
+    {% include "accounts/superadmin/_cascade_field.html" with field=form.municipality key="municipality" placeholder="Choose a municipality" options="municipalities" parent="!province" on_change="municipality = $event.target.value; barangay = ''" optional=True %}
+    {% include "accounts/superadmin/_cascade_field.html" with field=form.barangay key="barangay" placeholder="Choose a barangay" options="barangays" parent="!municipality" on_change="barangay = $event.target.value" optional=True %}
+    <div>
+      <label for="{{ form.postal_code.id_for_label }}" class="label">Postal code <span class="font-normal text-txt-secondary">(optional)</span></label>
+      {{ form.postal_code }}
+      {% for error in form.postal_code.errors %}<p class="field-error">{{ error }}</p>{% endfor %}
+    </div>
+    <div>
+      <label for="{{ form.street.id_for_label }}" class="label">Street <span class="font-normal text-txt-secondary">(optional)</span></label>
+      {{ form.street }}
+      {% for error in form.street.errors %}<p class="field-error">{{ error }}</p>{% endfor %}
+    </div>
+    <div>
+      <label for="{{ form.building_number.id_for_label }}" class="label">Building number <span class="font-normal text-txt-secondary">(optional)</span></label>
+      {{ form.building_number }}
+      {% for error in form.building_number.errors %}<p class="field-error">{{ error }}</p>{% endfor %}
+    </div>
+  </div>
+
+  {% if not person %}
+  <h2 class="mt-8 text-base font-semibold">Sign-in</h2>
+  <div class="mt-3 sm:max-w-sm">
+    <label for="{{ form.password.id_for_label }}" class="label">Password <span class="font-normal text-txt-secondary">(optional)</span></label>
+    {{ form.password }}
+    {% for error in form.password.errors %}<p class="field-error">{{ error }}</p>{% endfor %}
+    <p class="field-help">{{ form.password.help_text }}</p>
+  </div>
+  <div class="mt-4">
+    <label class="flex items-start gap-3 text-sm">
+      {{ form.activated }}
+      <span>
+        <span class="font-medium">{{ form.activated.label }}</span>
+        <span class="mt-0.5 block text-txt-secondary">{{ form.activated.help_text }}</span>
+      </span>
+    </label>
+  </div>
+  {% endif %}
+
+  <div class="mt-8 flex flex-wrap items-center gap-3">
+    <button type="submit" class="btn btn-primary">{% if person %}Save changes{% else %}Create person{% endif %}</button>
+    <a href="{% if person %}{% role_url 'user_detail' person.pk %}{% else %}{% role_url 'user_list' %}{% endif %}"
+       class="btn btn-ghost">Cancel</a>
+  </div>
+</form>
+{% endblock %}
+
+{% block extra_js %}
+<script>
+document.addEventListener('alpine:init', () => {
+  // Coordinator replacement confirmation for the person form.
+  Alpine.data('userForm', (cfg) => ({
+    role: cfg.role, extId: cfg.extId, personId: cfg.personId,
+    replace: false, confirmed: false,
+    options: JSON.parse(document.getElementById('extension-data').textContent),
+
+    // The selected extension, or null when the placeholder is selected.
+    get match() {
+      return this.options.find(o => String(o.id) === String(this.extId)) || null;
+    },
+    pick() { this.replace = false; },
+    // A coordinator is wanted for an extension whose seat is held by someone else.
+    get taken() {
+      return this.role === 'coordinator' && !!this.match && !!this.match.coordinatorId
+        && String(this.match.coordinatorId) !== String(this.personId);
+    },
+
+    async onSubmit(event) {
+      if (this.confirmed || !this.taken) return;
+      event.preventDefault();
+      const ok = await Alpine.store('ui').confirm({
+        title: 'Replace the coordinator?',
+        message: `${this.match.name} already has ${this.match.coordinator} as coordinator. `
+          + `${this.match.coordinator} will stay in ${this.match.name} as a member.`,
+        confirmText: 'Replace coordinator', danger: false,
+      });
+      if (!ok) return;
+      this.replace = true; this.confirmed = true;
+      this.$nextTick(() => this.$root.requestSubmit());
+    },
+  }));
+
+  // Cascading address for the optional contact section. The Philippine list is one JSON file,
+  // {province: {municipality: [barangay, ...]}}, the same file the server checks against. The
+  // dropdowns are only used once it has loaded and the country is the Philippines; otherwise
+  // (another country, a failed download, no JavaScript) the plain text inputs stay in use.
+  Alpine.data('addressForm', (cfg) => ({
+    country: cfg.state.country || '', province: cfg.state.province || '',
+    municipality: cfg.state.municipality || '', barangay: cfg.state.barangay || '',
+    data: {}, loaded: false,
+
+    get usePicker() { return this.loaded && this.country.trim().toLowerCase() === 'philippines'; },
+    get provinces() { return this.sorted(this.data); },
+    get municipalities() { return this.sorted(this.child(this.data, this.province)); },
+    get barangays() {
+      const list = this.child(this.child(this.data, this.province), this.municipality);
+      return Array.isArray(list) ? [...list].sort((a, b) => a.localeCompare(b)) : [];
+    },
+
+    sorted(obj) { return obj && !Array.isArray(obj) ? Object.keys(obj).sort((a, b) => a.localeCompare(b)) : []; },
+    // Case-insensitive lookup: saved values are lowercase, the list is in title case.
+    key(obj, value) {
+      if (!obj || Array.isArray(obj) || !value) return null;
+      const v = String(value).trim().toLowerCase();
+      return Object.keys(obj).find(k => k.toLowerCase() === v) || null;
+    },
+    child(obj, value) { const k = this.key(obj, value); return k === null ? null : obj[k]; },
+
+    async init() {
+      try {
+        const response = await fetch(cfg.url);
+        if (response.ok) this.data = await response.json();
+      } catch (error) { /* keep the text inputs */ }
+      // Show saved values in the list's own spelling so the right option is selected.
+      const p = this.key(this.data, this.province); if (p) this.province = p;
+      const m = this.key(this.child(this.data, this.province), this.municipality); if (m) this.municipality = m;
+      const list = this.child(this.child(this.data, this.province), this.municipality);
+      const b = Array.isArray(list) ? list.find(x => x.toLowerCase() === this.barangay.trim().toLowerCase()) : null;
+      if (b) this.barangay = b;
+      this.loaded = Object.keys(this.data).length > 0;
+    },
+  }));
+});
+</script>
+{% endblock %}

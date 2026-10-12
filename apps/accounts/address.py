@@ -26,6 +26,9 @@ PHILIPPINES = "Philippines"
 #: Address fields from the widest area to the smallest (the form's order).
 HIERARCHY = ("country", "province", "municipality", "barangay")
 
+#: Every address part, widest to smallest. Extensions and people store the same parts.
+ADDRESS_FIELDS = (*HIERARCHY, "postal_code", "street", "building_number")
+
 COUNTRIES = (
     "Afghanistan",
     "Albania",
