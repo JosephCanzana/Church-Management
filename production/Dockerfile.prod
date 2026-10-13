@@ -5,15 +5,15 @@
 
 # ---------- Stage 1: build the CSS (output.css is not committed) ----------
 FROM debian:bookworm-slim AS assets
-ARG TAILWIND_VERSION=latest
+# Pin to the SAME version you use in dev (check: ./theme/tailwindcss --help | head -1).
+ARG TAILWIND_VERSION=v4.1.11
+ARG ALPINE_VERSION=3.14.9
 ARG TARGETARCH
 RUN apt-get update \
     && apt-get install -y --no-install-recommends make curl ca-certificates \
     && rm -rf /var/lib/apt/lists/*
-WORKDIR /src
-COPY . .
-# Same download as README step 3, but picks the right binary for the CPU.
-# Set TAILWIND_VERSION (for example v4.1.11) to pin it instead of "latest".
+
+# Tools first: these layers stay cached until the ARGs change.
 RUN set -eu; \
     case "${TARGETARCH:-amd64}" in amd64) T=x64 ;; arm64) T=arm64 ;; *) echo "unsupported arch" >&2; exit 1 ;; esac; \
     if [ "$TAILWIND_VERSION" = "latest" ]; then \
@@ -21,12 +21,17 @@ RUN set -eu; \
     else \
       URL="https://github.com/tailwindlabs/tailwindcss/releases/download/$TAILWIND_VERSION/tailwindcss-linux-$T"; \
     fi; \
-    mkdir -p theme; \
-    curl -fsSL -o theme/tailwindcss "$URL"; \
-    chmod +x theme/tailwindcss
-# Same download as README step 4, only if the file is not already in the repo.
-RUN mkdir -p static/js \
-    && { [ -f static/js/alpine.min.js ] || curl -fsSL -o static/js/alpine.min.js https://cdn.jsdelivr.net/npm/alpinejs@3.14.9/dist/cdn.min.js; }
+    curl -fsSL --retry 3 -o /opt/tailwindcss "$URL"; \
+    chmod +x /opt/tailwindcss
+RUN curl -fsSL --retry 3 -o /opt/alpine.min.js \
+    "https://cdn.jsdelivr.net/npm/alpinejs@${ALPINE_VERSION}/dist/cdn.min.js"
+
+# Source next: this layer (and the build below) reruns on any code/template change.
+WORKDIR /src
+COPY . .
+RUN mkdir -p theme static/js \
+    && cp /opt/tailwindcss theme/tailwindcss \
+    && { [ -f static/js/alpine.min.js ] || cp /opt/alpine.min.js static/js/alpine.min.js; }
 # Uses YOUR Makefile target, so the build matches what you run in dev.
 RUN make tailwind-build
 
