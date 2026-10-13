@@ -37,14 +37,5 @@ Usage: {% include 'includes/sidebar_utilities.html' with layout='row' %}
     <span x-text="$store.mode.dark ? 'Light mode' : 'Dark mode'">Switch mode</span>
   </button>
 
-  <form method="post" action="{% url 'accounts:logout' %}"
-        data-confirm="Are you sure you want to sign out?" data-confirm-title="Sign out">
-    {% csrf_token %}
-    <button type="submit"
-            class="flex min-h-11 w-full items-center gap-3 rounded-lg px-3 text-left text-base text-txt-secondary transition-colors hover:bg-error/10 hover:text-error focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-accent">
-      {% include 'includes/icon.html' with name='arrow-right-start-on-rectangle' class='size-5 shrink-0' %}
-      <span>Log out</span>
-    </button>
-  </form>
 </div>
 {% endif %}
