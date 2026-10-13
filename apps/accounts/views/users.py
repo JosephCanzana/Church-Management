@@ -37,7 +37,7 @@ from ..models import Role, Status, User, UserExtensionHistory
 from ..permissions import (
     EDIT, allowed_bulk_actions, can_assign_special_roles, can_change_placement, require_can_act,
 )
-from ..services.special_roles import special_role_rows
+from ..services.special_roles import attach_special_roles, filter_by_special_role, special_role_rows
 from ..services.users import (
     archive_user,
     create_user,
@@ -202,6 +202,7 @@ def _list_context(params, viewer):
     role = data.get("role") or ""
     extension = data.get("extension")
     sort = data.get("sort") or "last_name"
+    special_role = data.get("special_role") or ""
 
     queryset = User.objects.for_user(viewer).select_related("extension").exclude(pk=viewer.pk)
     if status == "current":
@@ -212,6 +213,7 @@ def _list_context(params, viewer):
         queryset = queryset.filter(role=role)
     if extension is not None:
         queryset = queryset.filter(extension=extension)
+    queryset = filter_by_special_role(queryset, special_role)
     for term in (data.get("q") or "").split():
         queryset = queryset.filter(
             Q(first_name__icontains=term) | Q(middle_name__icontains=term)
@@ -221,6 +223,8 @@ def _list_context(params, viewer):
 
     paginator = Paginator(queryset, PAGE_SIZE)
     page = paginator.get_page(params.get("page"))
+    # One query for the whole page: the tags (Tithes member, Attendance member) read this.
+    page.object_list = attach_special_roles(page.object_list)
     without_page = params.copy()
     without_page.pop("page", None)
     return {
@@ -236,7 +240,7 @@ def _list_context(params, viewer):
         # How many filters differ from the defaults (badge on the Filters button).
         "active_filters": sum([
             bool(data.get("q")), status != "current", bool(role),
-            extension is not None, sort != "last_name",
+            extension is not None, bool(special_role), sort != "last_name",
         ]),
     }
 
@@ -320,6 +324,7 @@ def user_edit(request, pk):
 # ----------------------------------------------------------------- detail
 def _render_detail(request, person, secrets=None):
     """The detail page, optionally with the show-once dialog."""
+    attach_special_roles([person])      # the tags under the heading
     history = (
         UserExtensionHistory.objects.filter(user=person)
         .select_related("extension").order_by("-from_date", "-pk")[:20]

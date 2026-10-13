@@ -528,6 +528,11 @@ class UserFilterForm(forms.Form):
         queryset=Extension.objects.order_by("name"), required=False, empty_label="All extensions",
         widget=forms.Select(attrs={"class": "input"}),
     )
+    special_role = forms.ChoiceField(
+        required=False, label="Special role",
+        choices=[("", "Anyone"), ("tithes_offering", "Tithes member"), ("attendance", "Attendance member")],
+        widget=forms.Select(attrs={"class": "input"}),
+    )
     sort = forms.ChoiceField(
         required=False, choices=SORT_CHOICES, label="Sort by",
         widget=forms.Select(attrs={"class": "input"}),

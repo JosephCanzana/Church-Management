@@ -35,3 +35,15 @@ def person_actions(context, person):
 def may_type_password(context):
     """True when the signed-in person may choose a password by hand (super-admin and admin only)."""
     return can_type_password(context["request"].user)
+
+
+@register.inclusion_tag("accounts/people/_special_role_badges.html")
+def special_role_badges(person):
+    """Tags ("Tithes member", "Attendance member") for the special roles a person holds.
+
+    The list and detail views call `attach_special_roles(people)` first, so this costs no
+    extra query per row.
+    """
+    from ..services.special_roles import special_role_labels  # lazy: keeps the import order simple
+
+    return {"labels": special_role_labels(getattr(person, "special_role_codes", []))}

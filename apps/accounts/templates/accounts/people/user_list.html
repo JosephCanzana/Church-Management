@@ -38,6 +38,13 @@
         Default passwords
       </a>
       {% endif %}
+      {% if request.user.role == 'admin' %}
+      {# The super-admin manages these limits in Site settings; an admin does it here. #}
+      <a href="{% role_url 'special_role_limits' %}" class="btn btn-secondary">
+        {% include 'includes/icon.html' with name='user-group' class='size-4' %}
+        Special roles
+      </a>
+      {% endif %}
       <a href="{% role_url 'user_create' %}" class="btn btn-primary">
         {% include 'includes/icon.html' with name='user-plus' class='size-4' %}
         New person
@@ -104,6 +111,9 @@
         <a href="{% role_url 'user_detail' person.pk %}"
            class="block truncate font-medium text-txt-primary after:absolute after:inset-0 after:content-[''] hover:underline focus-visible:outline-2 focus-visible:outline-accent">{{ person.full_name }}</a>
         <p class="font-mono text-sm text-txt-secondary">{{ person.account_id }}</p>
+        {% if person.special_role_codes %}
+        <p class="mt-1 flex flex-wrap gap-1.5">{% special_role_badges person %}</p>
+        {% endif %}
       </div>
       <button type="button" class="btn btn-ghost relative z-10 -mr-2 px-2 lg:order-last"
               @click.stop="openMenu($event, $el.closest('[data-row]'), true)"
@@ -176,6 +186,10 @@
       {{ form.extension }}
     </div>
     {% endif %}
+    <div>
+      <label for="{{ form.special_role.id_for_label }}" class="label">{{ form.special_role.label }}</label>
+      {{ form.special_role }}
+    </div>
     <div>
       <label for="{{ form.sort.id_for_label }}" class="label">{{ form.sort.label }}</label>
       {{ form.sort }}

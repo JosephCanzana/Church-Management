@@ -473,6 +473,27 @@ with. Only create a new app if the answer is "none".
     `SiteSetting.objects.filter(key="bible_esv_state").delete()` (this also resets the call counters). Check the
     state with `from apps.bible import esv; print(esv.lock_reason() or "ESV is available")`.
 
+## Site settings sections
+- **One page, many sections.** `/superadmin/site-settings/` (route name `bible_superadmin:site_settings`, kept so the
+  sidebar entry works) is the shell in `accounts/views/site_settings.py` + `accounts/templates/accounts/superadmin/site_settings.html`.
+  A section is a `SiteSection` (key, title, icon, partial template, `context(request)`, order) added with
+  `register_section(...)` from `accounts/site_sections.py`. To add a function: write its partial and its POST views, register
+  the section from the owning app (import the module once, for example from that app's urls). The shell needs no change.
+  Sections today: `bible` (`apps/bible/site_section.py`, order 10) and `special-roles` (order 20). `accounts` never imports
+  feature apps; they register themselves. A section's POST views keep their own `role_required` and service guard: the
+  registry only decides what is displayed. Section icons must exist in `sprite.svg`.
+- **Special-role limits live in two places with one panel.** The super-admin uses the "Special roles" section; an admin uses
+  the "Special roles" button on `/admin/users/` (`admin_area:special_role_limits`). Both include
+  `accounts/people/_special_role_limits.html` with `views.special_roles.limits_context()`. A super-admin GET of
+  `/superadmin/special-roles/` redirects to the section; POSTs still go to `special_role_limits`.
+- **Limit rules (`services/special_roles.py`):** a limit cannot exceed `member_counts()` (members who can sign in: role member,
+  in the extension, not archived or suspended), cannot be below the people holding the role, and cannot be cleared while anyone
+  holds it. `bulk_set_special_role_limits(actor, request, role, value, extension_ids=None)` runs `set_special_role_limits`
+  once per extension (own transaction, ascending id) and returns `LimitBulkResult(done, unchanged, skipped)`; it is idempotent,
+  so it needs no one-time token.
+- **Tags on the people screens:** the list and detail views call `attach_special_roles(people)` (one query for the page) and the
+  templates use `{% special_role_badges person %}`. The list filter `special_role` uses `filter_by_special_role()` (a subquery).
+
 ## Landing page
 - **Where:** `apps/pages/views.py` (`landing_view`, thin; the root URL must import that exact name),
   `apps/pages/services.py` (`get_landing_context()`, all the logic and every default),

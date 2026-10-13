@@ -162,6 +162,15 @@ class ScreenTests(TestCase):
             self.assertContains(response, reverse("bible_superadmin:version_toggle", args=[code]))
         self.assertContains(response, reverse("bible_superadmin:online_toggle"))
 
+    def test_special_roles_section_uses_superadmin_limits_route(self):
+        self.client.force_login(self.admin)
+        response = self.client.get(self.page, {"section": "special-roles"})
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(
+            response.context["limits_action_url"],
+            reverse("superadmin:special_role_limits"),
+        )
+
     def test_toggle_off_then_on_through_the_screen(self):
         self.client.force_login(self.admin)
         url = reverse("bible_superadmin:version_toggle", args=["KJV"])

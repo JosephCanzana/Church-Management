@@ -1,19 +1,7 @@
 <!--
-bible/superadmin/site_settings.html
-Super-admin only. Turn the Bible on and off: one master switch for the online services and one switch
-for each Bible version. A switched-off version is blocked for everyone: it shows as locked in the
-version picker and its text is not shown (not even ESV text from the cache).
-Extends base_app.html. Blocks filled: title, page_title, content.
-Context: cards (list of dicts: version, on, locked_reason), online_on (master switch, true or false).
-Each switch has its own POST button (bible/superadmin/_switch_button.html). Status is always written
-as text ("On" / "Off"), never color alone. Needs the confirm dialog from static/js/ui.js.
+  _bible_section.html: the Bible switches as a Site settings section (see apps/bible/site_section.py).
+  Included by accounts/superadmin/site_settings.html. Context: cards, online_on.
 -->
-{% extends "base_app.html" %}
-
-{% block title %}Site settings{% endblock %}
-{% block page_title %}Site settings{% endblock %}
-
-{% block content %}
 <div class="grid gap-8">
 
   <section aria-labelledby="online-heading">
@@ -69,4 +57,3 @@ as text ("On" / "Off"), never color alone. Needs the confirm dialog from static/
   </section>
 
 </div>
-{% endblock %}

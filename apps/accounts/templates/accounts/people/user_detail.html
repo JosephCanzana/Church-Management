@@ -93,6 +93,10 @@
   </div>
 </div>
 
+{% if person.special_role_codes %}
+<p class="mt-4 flex flex-wrap gap-1.5">{% special_role_badges person %}</p>
+{% endif %}
+
 {% if person.status == 'archived' %}
 <div class="card mt-4 bg-surface-alt" role="status">
   <p class="text-sm">
