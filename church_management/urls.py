@@ -21,14 +21,16 @@ from django.urls import path, include
 
 urlpatterns = [
     path("", include("apps.pages.urls")),
+    path("", include("apps.dashboards.urls")),
     path("django-admin/", admin.site.urls),
     path("accounts/", include("apps.accounts.urls")),
     path("superadmin/", include("apps.accounts.urls.superadmin")),
     path("superadmin/site-settings/", include("apps.bible.urls_superadmin")),
-    path("", include("apps.dashboards.urls")),
     path("bible/", include("apps.bible.urls")),
     path("audit/", include("apps.accounts.urls.audit_log")),
-    path("notifications/", include("apps.notifications.urls"))
+    path("notifications/", include("apps.notifications.urls")),
+    path("admin/", include("apps.accounts.urls.admin_area")),
+    path("coordinator/", include("apps.accounts.urls.coordinator_area"),)
 ]
 
 # Dev only: Django serves uploaded photos. In production Caddy serves /media/.

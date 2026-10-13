@@ -1,0 +1,107 @@
+<!--
+  _special_role_limits.html: the special-role limits panel (search, bulk bar, one row per extension).
+  Included by: accounts/people/special_role_limits.html (admin page) and, through the section registry,
+  accounts/superadmin/site_settings.html (super-admin).
+  Context: roles, rows (limit_rows), page, q, total, section_key, querystring, next_url, search_action,
+  limits_action_url.
+  Posts to the role's own `special_role_limits` route; the view checks permission again.
+-->
+{% load ui_tags %}
+<div x-data="{ selected: [] }">
+
+  <div class="flex flex-wrap items-end justify-between gap-3">
+    <form method="get" action="{{ search_action }}" role="search" class="flex min-w-0 flex-1 flex-wrap items-end gap-2">
+      {% if section_key %}<input type="hidden" name="section" value="{{ section_key }}">{% endif %}
+      <div class="min-w-0 flex-1 sm:max-w-sm">
+        <label for="limits-search" class="label">Search extensions</label>
+        <input id="limits-search" type="search" name="q" value="{{ q }}" class="input"
+               placeholder="Name, province or municipality" autocomplete="off">
+      </div>
+      <button type="submit" class="btn btn-secondary">Search</button>
+      {% if q %}
+      <a href="{{ search_action }}{% if section_key %}?section={{ section_key }}{% endif %}" class="btn btn-ghost">Clear</a>
+      {% endif %}
+    </form>
+    <p class="text-sm text-txt-secondary" aria-live="polite">{{ total }} {% if total == 1 %}extension{% else %}extensions{% endif %}</p>
+  </div>
+
+  <p class="mt-3 text-sm text-txt-secondary">
+    Leave a box empty for no limit (nobody there can be given that role yet). A limit cannot be
+    higher than the number of members who can sign in, or lower than the people who already hold the role.
+  </p>
+
+  {% if rows %}
+  <form id="limits-bulk" method="post" action="{{ limits_action_url }}"
+        class="mt-4 flex flex-wrap items-end gap-3 rounded-xl border border-border-strong bg-surface-alt px-4 py-3"
+        role="region" aria-label="Set one limit for many extensions">
+    {% csrf_token %}
+    <input type="hidden" name="next" value="{{ next_url }}">
+    <div>
+      <label for="bulk-role" class="label">Role</label>
+      <select id="bulk-role" name="role" class="input">
+        {% for role in roles %}<option value="{{ role.code }}">{{ role.name }}</option>{% endfor %}
+      </select>
+    </div>
+    <div>
+      <label for="bulk-value" class="label">Limit</label>
+      <input id="bulk-value" type="number" name="value" min="1" step="1" inputmode="numeric" class="input w-28" required>
+    </div>
+    <button type="submit" name="action" value="set_selected" class="btn btn-secondary" :disabled="!selected.length">
+      Set for <span x-text="selected.length"></span> selected
+    </button>
+    <button type="submit" name="action" value="set_all" class="btn btn-primary"
+            data-confirm="This sets the chosen role's limit in every extension that can take it, not only this page. Extensions that cannot take the value are skipped and listed."
+            data-confirm-title="Set it for all {{ total|default:0 }} extensions?" data-confirm-text="Set for all">
+      Set for all extensions
+    </button>
+  </form>
+
+  <div class="mt-4 flex items-center gap-3 px-1">
+    <label class="inline-flex cursor-pointer items-center gap-2 text-sm text-txt-secondary">
+      <input type="checkbox" class="size-5 rounded border-border-strong accent-[var(--color-accent)]"
+             :checked="selected.length === {{ rows|length }}"
+             @change="selected = $event.target.checked ? [{% for row in rows %}'{{ row.extension.pk }}'{% if not forloop.last %},{% endif %}{% endfor %}] : []">
+      Select everyone on this page
+    </label>
+  </div>
+
+  <ul class="card mt-2 divide-y divide-border overflow-hidden p-0">
+    {% for row in rows %}
+    <li class="flex flex-wrap items-end gap-x-4 gap-y-3 px-5 py-4"
+        :class="selected.includes('{{ row.extension.pk }}') && 'bg-surface-alt'">
+      <form id="limit-row-{{ row.extension.pk }}" method="post" action="{{ limits_action_url }}" hidden>
+        {% csrf_token %}
+        <input type="hidden" name="extension" value="{{ row.extension.pk }}">
+        <input type="hidden" name="next" value="{{ next_url }}">
+      </form>
+      <input type="checkbox" form="limits-bulk" name="ids" value="{{ row.extension.pk }}" x-model="selected"
+             class="mb-2 size-5 shrink-0 rounded border-border-strong accent-[var(--color-accent)]"
+             aria-label="Select {{ row.extension.name|title_case }}">
+      <div class="min-w-0 flex-1 basis-48">
+        <p class="truncate font-medium text-txt-primary">{{ row.extension.name|title_case }}</p>
+        <p class="text-sm text-txt-secondary">{{ row.members }} {% if row.members == 1 %}member{% else %}members{% endif %} who can sign in</p>
+      </div>
+      {% for cell in row.cells %}
+      <div>
+        <label for="limit-{{ row.extension.pk }}-{{ cell.role.code }}" class="label">{{ cell.role.name }}</label>
+        <input id="limit-{{ row.extension.pk }}-{{ cell.role.code }}" form="limit-row-{{ row.extension.pk }}"
+               type="number" name="limit_{{ cell.role.code }}" class="input w-28" inputmode="numeric" step="1"
+               min="{% if cell.used %}{{ cell.used }}{% else %}1{% endif %}" max="{{ row.members }}"
+               value="{{ cell.limit|default_if_none:'' }}" placeholder="None"
+               {% if row.members == 0 and cell.limit is None %}disabled{% endif %}
+               aria-describedby="used-{{ row.extension.pk }}-{{ cell.role.code }}">
+        <p id="used-{{ row.extension.pk }}-{{ cell.role.code }}" class="field-help">{{ cell.used }} in use</p>
+      </div>
+      {% endfor %}
+      <button type="submit" form="limit-row-{{ row.extension.pk }}" class="btn btn-secondary mb-5">Save</button>
+    </li>
+    {% endfor %}
+  </ul>
+  {% include 'includes/pagination.html' with page=page querystring=querystring %}
+  {% else %}
+  <div class="card mt-6 text-center">
+    <p class="font-medium text-txt-primary">No extensions found</p>
+    <p class="mt-1 text-sm text-txt-secondary">{% if q %}Try a different search.{% else %}Add an extension first.{% endif %}</p>
+  </div>
+  {% endif %}
+</div>

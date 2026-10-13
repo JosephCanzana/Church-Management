@@ -1,0 +1,22 @@
+<!--
+  special_role_limits.html: the admin's page for special-role limits (the super-admin uses Site settings).
+  Fills: title, page_title, content. Context: see _special_role_limits.html.
+-->
+{% extends "base_app.html" %}
+{% load people_tags %}
+
+{% block title %}Special roles{% endblock %}
+{% block page_title %}Special roles{% endblock %}
+
+{% block content %}
+<a href="{% role_url 'user_list' %}" class="btn btn-ghost -ml-3">
+  {% include 'includes/icon.html' with name='arrow-left' class='size-4' %}
+  All people
+</a>
+<p class="mt-2 max-w-prose text-sm text-txt-secondary">
+  Set how many members of each extension may help the coordinator with tithes and offering and with attendance.
+</p>
+<div class="mt-4">
+  {% include "accounts/people/_special_role_limits.html" %}
+</div>
+{% endblock %}

@@ -1,20 +1,23 @@
 <!--
 accounts/superadmin/_cascade_field.html
-One level of the address hierarchy (province, municipality or barangay), used by extension_form.html.
+One level of the address hierarchy (province, municipality or barangay), used by extension_form.html
+and by the person form (accounts/people/user_form.html).
 It draws TWO controls for the same field: a dropdown (used when the country is the Philippines,
 filled from the PSGC list by the Alpine component addressForm) and the plain text input Django
 renders (used for any other country). Only the one in use is enabled, so only it is submitted.
 Without JavaScript the dropdown stays hidden and the text input works; the server still checks it.
 Parameters: field (the bound form field), key (the field name), placeholder (first option text),
 options (Alpine expression listing the choices), parent (Alpine expression, true while the
-level above is still empty), on_change (Alpine statement run when the person picks a value).
+level above is still empty), on_change (Alpine statement run when the person picks a value),
+optional (pass True when the field may stay empty: no asterisk, no `required`; the person form).
 -->
 <div>
   <label :for="usePicker ? 'id_{{ key }}_select' : '{{ field.id_for_label }}'" class="label">
-    {{ field.label }} <span class="text-error" aria-hidden="true">*</span>
+    {{ field.label }}
+    {% if optional %}<span class="font-normal text-txt-secondary">(optional)</span>{% else %}<span class="text-error" aria-hidden="true">*</span>{% endif %}
   </label>
 
-  <select id="id_{{ key }}_select" name="{{ key }}" class="input" required disabled
+  <select id="id_{{ key }}_select" name="{{ key }}" class="input" {% if not optional %}required{% endif %} disabled
           style="display:none" x-show="usePicker" x-cloak
           :disabled="!usePicker || {{ parent }}"
           @change="{{ on_change }}">

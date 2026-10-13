@@ -1,0 +1,40 @@
+<!--
+  site_settings.html: the super-admin Site settings shell. A menu of sections and the chosen one.
+  Fills: title, page_title, content. Context: sections, current (SiteSection) and whatever the
+  section's context function returns. Add a section in accounts/site_sections.py, not here.
+-->
+{% extends "base_app.html" %}
+{% load static %}
+
+{% block title %}Site settings{% endblock %}
+{% block page_title %}Site settings{% endblock %}
+
+{% block content %}
+<div class="grid gap-6 lg:grid-cols-[14rem_minmax(0,1fr)]">
+
+  {# Section menu: a vertical list from lg up, a scrolling row of tabs below it. #}
+  <nav aria-label="Site settings sections">
+    <ul class="-mx-1 flex gap-1 overflow-x-auto px-1 pb-1 lg:flex-col lg:overflow-visible lg:pb-0">
+      {% for section in sections %}
+      <li class="shrink-0">
+        <a href="?section={{ section.key }}"
+           class="flex min-h-11 items-center gap-2 rounded-lg px-3 py-2 text-sm hover:bg-surface-alt focus-visible:outline-2 focus-visible:outline-accent
+                  {% if section.key == current.key %}border border-border-strong bg-surface-alt font-medium text-txt-primary{% else %}border border-transparent text-txt-secondary{% endif %}"
+           {% if section.key == current.key %}aria-current="page"{% endif %}>
+          {% include 'includes/icon.html' with name=section.icon class='size-4' %}
+          {{ section.title }}
+        </a>
+      </li>
+      {% endfor %}
+    </ul>
+  </nav>
+
+  <section class="min-w-0" aria-labelledby="section-heading">
+    <h2 id="section-heading" class="text-lg font-semibold">{{ current.title }}</h2>
+    {% if current.description %}<p class="mt-1 text-sm text-txt-secondary">{{ current.description }}</p>{% endif %}
+    <div class="mt-4">
+      {% include current.template %}
+    </div>
+  </section>
+</div>
+{% endblock %}

@@ -14,7 +14,11 @@ buddies, prayer requests, events, resources, notifications and audit logging.
     `pages` content is managed) and the redesigned login page.
   - Accounts: login (`/accounts/login/`, `/accounts/logout/`), activation (`/accounts/activate/`), profile
     (`/accounts/profile/`), `role_required` (`accounts/decorators.py`).
-  - Super-admin extension management (`/superadmin/extensions/`) and user management (`/superadmin/users/`).
+  - Super-admin extension management (`/superadmin/extensions/`).
+  - People management for three roles, one set of screens with role-based rules: super-admin (`/superadmin/users/`),
+    admin (`/admin/users/`) and coordinator (`/coordinator/users/`); optional contact details (suffix, phone, address);
+    special member roles with per-extension limits (`/admin/special-roles/`, `/superadmin/special-roles/`); default
+    passwords for the super-admin and admins (see People screens for admin and coordinator).
   - A global toast and confirm dialog (`static/js/ui.js`, rendered by `includes/messages.html`).
   - Bible: reader with three versions (KJV and Ang Dating Biblia from the database, ESV from api.esv.org), version
     picker with locking, chapter reads, ESV call limits, locks and a size-capped cache, and the super-admin
@@ -26,6 +30,9 @@ buddies, prayer requests, events, resources, notifications and audit logging.
     brute-force login throttling.
   - The `faith` listener that turns a chapter read into a streak, MBBTAG. The dashboards show "Coming soon"
     cards for the Bible streak, goals and events until those apps have views.
+  - Linking an attendance first timer to a new account (`attendance_first_timer.converted_user`, then showing it in the
+    member's attendance history), the attendance and tithes screens that check the special roles, and the admin alert
+    when a special role is given.
   - Beyond the list above, services, views and forms are mostly not built yet: features are being added on top of
     the models, one app at a time.
 
@@ -161,7 +168,8 @@ with. Only create a new app if the answer is "none".
 - Four join tables use a surrogate `id` plus a unique constraint instead of a
   composite primary key (Django limitation).
 - A table added in Django first (`bible_verse`, `bible_esv_cache`) must also be added to `docs/schema.sql`,
-  and the table count in `core.test_schema` updated.
+  and the table count in `core.test_schema` updated. A column added to an existing table (for example the contact
+  fields on `app_user`) is added there too.
 
 ## Roles and routing
 - Four roles: super-admin, admin, coordinator, member. Role is stored in
@@ -172,11 +180,14 @@ with. Only create a new app if the answer is "none".
   custom Admin role area, not Django admin. Never "fix" this by moving
   Django admin back to `/admin/`.
 - Route groups: `/superadmin/`, `/admin/`, `/coordinator/`, and member
-  pages at the root (the Bible is at `/bible/`, open to all four roles). Each group has its own urls module.
+  pages at the root (the Bible is at `/bible/`, open to all four roles). Each group has its own urls module and URL
+  namespace: `superadmin`, `admin_area` and `coordinator_area`. Never name one `admin`: that is Django's own admin.
 - Every view in a role group must be protected with `role_required(...)`.
   Hiding a link in a template is not access control.
 - Coordinator-scoped data must be fetched through the `for_user(user)`
-  queryset helper, not with ad hoc `.filter(extension=...)` calls in views.
+  queryset helper, not with ad hoc `.filter(extension=...)` calls in views. For people this is
+  `User.objects.for_user(actor)` (see People screens for admin and coordinator); attendance and tithes get their own
+  `for_user` when their screens are built.
 - Use `{% url 'admin:index' %}` to link to Django admin, never a hardcoded
   path.
 
@@ -185,7 +196,7 @@ with. Only create a new app if the answer is "none".
   in `User.save()`. Never reused, never edited. `bulk_create()` skips it, so
   create users one by one.
 - **Special-role limits** are enforced in a transaction with the extension row
-  locked.
+  locked. An extension with no limit row for a role cannot give that role to anyone until an admin sets one.
 - **Uploaded attendance/tithes** are locked; only an admin reopens them
   (logged and alerts admins). Force delete is super admin only, archived rows
   only, logged before deleting; delete files from disk first.
@@ -216,13 +227,14 @@ with. Only create a new app if the answer is "none".
   `decorators.ROLE_HOME_NAMES` (the `dashboards` routes). Brute-force
   throttling is not built yet.
 - **Status:** `not_activated -> active -> archived`, plus `suspended` (a reversible login block set by the
-  super-admin; never purged; `User.is_active` is false, so open sessions end at once). "Inactive for a year" is an
+  super-admin or an admin; never purged; `User.is_active` is false, so open sessions end at once). "Inactive for a year" is an
   automatic archive with `archive_reason='inactive'`. Restore and unsuspend go back to `active` when
   `must_change_password` is false, otherwise to `not_activated`. Deactivate = back to `not_activated` with
   `must_change_password=True`.
-- **Default passwords:** hash only, and personal: each person who manages others keeps their own, one per role
-  beneath them (`DefaultPassword.owner` + `applies_to_role`). Used when that person creates or resets someone and
-  types nothing; a typed custom password always overrides. No global or per-extension default.
+- **Default passwords:** kept by the super-admin (the global ones) and by each admin, one per role beneath them
+  (`DefaultPassword.owner` + `applies_to_role`); a coordinator keeps none. Stored as a hash plus an encrypted copy so the
+  owner can see it again. Which one a person gets depends on who creates or resets them; the rules are under People
+  screens for admin and coordinator.
 - **Activation:** `accounts/services/activation.py` (`user_needs_activation`, `activate_account`), form `ActivationForm`,
   view `activate_view`, template `accounts/activate.html`. A person must activate when `status=not_activated` OR
   `must_change_password=True` (a reset leaves the status `active`). `activate_account` locks the row, sets the password,
@@ -284,9 +296,10 @@ with. Only create a new app if the answer is "none".
   106.25% for pages that have it. Public and login pages keep the default.
 
 ### User management
-- **Where:** `accounts/services/users.py` (rules), `accounts/views/users.py` (screens), forms in `accounts/forms.py`,
-  templates `accounts/templates/accounts/superadmin/user_*.html`, routes in `accounts/urls/superadmin.py`
-  (`/superadmin/users/...`). Permission helpers (`assignable_roles`, `can_manage_users`) are in `accounts/permissions.py`.
+- **Where:** `accounts/services/users.py` (rules), `accounts/views/users.py` (screens, shared by three roles), forms in
+  `accounts/forms.py`, templates `accounts/templates/accounts/people/user_*.html`, routes in `accounts/urls/superadmin.py`
+  (`/superadmin/users/...`), `admin_area.py` (`/admin/users/...`) and `coordinator_area.py` (`/coordinator/users/...`).
+  Permission helpers (`can_act_on`, `available_actions`, `assignable_roles`, ...) are in `accounts/permissions.py`.
 - **One-time form tokens (`submission_token` table):** a form that must not run twice (create a person,
   reset a password, any bulk action) carries `new_submission_token()` in a hidden field; the service calls
   `consume_submission_token()` INSIDE its `transaction.atomic()`. The token is the primary key, so two simultaneous
@@ -295,9 +308,11 @@ with. Only create a new app if the answer is "none".
 - **Bulk actions:** `run_bulk()`, max 100 people, each person in its own transaction in ascending id order. Anyone the
   action does not apply to (yourself, wrong status, gone) is skipped with a reason; it never fails the rest. One audit
   row per person, plus one `account.bulk_archive` summary row when two or more are archived. Bulk reset shows all new
-  passwords in one show-once dialog.
+  passwords in one show-once dialog. Which bulk actions a role has comes from `allowed_bulk_actions(actor)`; people are
+  looked up through `for_user`, so anyone outside the actor's reach is skipped as "no longer exists".
 - **Guards:** you cannot archive, suspend, deactivate, reset, delete or change the role of yourself; the last active
-  super-admin cannot be archived, suspended, deactivated or demoted (checked under a lock on all super-admin rows).
+  super-admin cannot be archived, suspended, deactivated or demoted (checked under a lock on all super-admin rows). Who may
+  act on whom is checked on the locked person row with `require_can_act` (see People screens for admin and coordinator).
 - **Coordinators:** archiving a coordinator frees the seat and makes them a member; a person leaving or entering a
   seat updates `Extension.coordinator` in the same transaction. Putting a coordinator into a seat that is taken is
   refused UNLESS the form sent `replace_coordinator` (the confirmation dialog in `user_form.html`): then the old
@@ -312,15 +327,69 @@ with. Only create a new app if the answer is "none".
   special roles are cleared) and `transfer_people_in` (max 100, one transaction per person, one-time token, skipped
   rows explained). Only members and coordinators belong to an extension; admins and super-admins never do.
   Route: `/superadmin/extensions/<pk>/people/add/`.
-- **Passwords:** shown once, never stored, logged or put in the session. Order used: typed (min 8 characters), else the
-  acting person's own default for the role, else a generated 12-character password. A reset forces a change at next
-  login and ends the person's sessions (the hash changes). "Skip activation" on create is for test accounts that should not
-  go through the activation page.
+- **Passwords:** shown once, never stored, logged or put in the session. Order used: typed (min 8 characters; only the
+  super-admin and admin may type one), else the default that applies to the acting person (see People screens for admin and
+  coordinator), else a generated 12-character password. A reset forces a change at next login and ends the person's
+  sessions (the hash changes). "Skip activation" on create is for test accounts that should not go through the activation
+  page; only the super-admin and admin may use it, since it would keep a shared default password for good.
 - **Pages that can show a password** (`user_create`, `user_reset_password`, `user_bulk`) are `never_cache` and render the
   dialog in the POST response (`json_script:"secrets-data"`), not a redirect.
 - Names are stored lowercase (`core.text.clean_text`), shown with `name_case` / `person_name`, and checked for duplicates
-  (same first, middle and last name, unless both have different birth dates). The super-admin role cannot be handed out
-  from a screen.
+  (same first, middle and last name and suffix, unless both have different birth dates). The super-admin role cannot be
+  handed out from a screen.
+
+### People screens for admin and coordinator
+- **One set of screens, three roles.** `accounts/views/users.py` and `accounts/templates/accounts/people/user_*.html` serve
+  `/superadmin/users/`, `/admin/users/` and `/coordinator/users/`. The views redirect through
+  `request.resolver_match.namespace`; shared templates use `{% load people_tags %}` and `{% role_url 'user_detail' pk %}`.
+  Never hardcode `superadmin:...` in a shared template. The address dropdown partial `_cascade_field.html` stays in
+  `accounts/superadmin/` (the extension form includes it too) and takes `optional=True` for the person form.
+- **Who may do what** (`accounts/permissions.py`, `_ACTOR_RULES`; `can_act_on`, `require_can_act`):
+  - Super-admin: everything.
+  - Admin: acts on coordinators and members anywhere (create, edit, move, reset password, archive, restore, suspend,
+    unsuspend, deactivate). Never force delete; never super-admins or other admins.
+  - Coordinator: acts on members of their OWN extension only (create, edit details, reset password, archive, restore).
+    No role or extension change, no suspend or deactivate, no delete, no typed passwords.
+  - `assignable_roles`: super-admin admin/coordinator/member; admin coordinator/member; coordinator member.
+    `require_can_create` also pins a coordinator's new people to their own extension. `require_placement_manager`
+    (move people, change role or extension) is super-admin and admin only. Every service calls these on the LOCKED
+    person row; the view decorator (`role_required(SUPER_ADMIN, ADMIN, COORDINATOR)`) only guards the page.
+- **Scoping:** `User.objects.for_user(actor)` (a manager method in `models.py`) is the only place that narrows people by
+  who is asking: super-admin everyone, admin coordinators and members, coordinator the members of their extension. Views
+  and bulk actions start from it, so someone out of reach looks exactly like someone who no longer exists. A coordinator's
+  extension is forced in the form (`UserForm.fixed_extension`) AND checked in the service, whatever the browser posts.
+- **Buttons follow the rules:** `available_actions(actor, person)` (the same matrix plus the person's status) feeds
+  `{% person_actions person as can %}`. The detail page, the list's right-click / three-dot menu (`data-can` on each row)
+  and the bulk bar all use it, so Restore shows only on archived people and Archive never on archived ones. A bulk button
+  shows only while a ticked row has a status it applies to (`BULK_APPLIES` in `views/users.py`). Hiding a button is never
+  access control; the services check again.
+- **Contact details:** `app_user` has optional `suffix`, `phone_number` and an address with the same parts as `extension`
+  (`country`, `province`, `municipality`, `barangay`, `postal_code`, `street`, `building_number`), all blank by default.
+  `address.ADDRESS_FIELDS` lists the parts. Rules: `check_address` (the Philippine rules, same as extensions) plus "a partly
+  filled address needs a country" (`services.users.check_contact`, and in `UserForm`). Phone: `accounts/contact.py`
+  (stored as digits; `+639...` becomes `09...`). Suffix: `core.text.clean_suffix` / `suffix_case` (stored `jr`, shown
+  `Jr.`). The duplicate-name check includes the suffix and only runs when a name, the suffix or the birth date changes.
+  Phone and address values are NEVER written to `audit_log`: `update_user` logs only `contact_fields_changed` (field names).
+- **Special roles** (`services/special_roles.py`, `views/special_roles.py`): `tithes_offering` and `attendance`. The
+  super-admin and admins (any extension) and a coordinator (their own) give or take them on a member's detail page. Only a
+  member who can sign in (not archived, not suspended) can hold one. `assign_special_role` locks the extension row, then
+  the person, and refuses when no `extension_special_role_limit` row exists or the limit is full. Limits are set per
+  extension on `/admin/special-roles/` and `/superadmin/special-roles/` (super-admin and admin only,
+  `set_special_role_limits`, all or nothing; a limit cannot go below the current holders and cannot be cleared while
+  someone holds the role). Archiving or moving a person clears their roles (`_clear_special_roles`). Audit actions:
+  `special_role.assign`, `special_role.remove`, `special_role.limit`.
+- **Default passwords:** personal to the super-admin and each admin, one per role beneath them (super-admin: admin,
+  coordinator, member; admin: coordinator, member); a coordinator keeps none. The password a person gets depends on WHO
+  creates or resets them (`services.users.default_password_row`): the super-admin their own (the global default); an admin
+  their own, else the global one (`global_default_row`: the most recently changed row of an active super-admin); a
+  coordinator the global MEMBER one only. No default means a generated password. Only the super-admin and admin may type a
+  password or skip activation (`can_type_password`); a coordinator's new members always get the global member password
+  and must change it at first sign-in. Screen: `views/default_passwords.py` with
+  `accounts/people/default_passwords.html` (super-admin and admin; an admin with none of their own for a role sees that the
+  global one is used). A coordinator has no screen: the "Default password" button on their people list POSTs to
+  `coordinator_area:default_password_show` (`reveal_default_password`), which shows the global member password read-only in
+  the show-once dialog and writes the audit row `default_password.view` (who looked, never the password). Each default is
+  stored as a hash plus an encrypted copy (`DefaultPassword.password_encrypted`, key `DEFAULT_PASSWORD_KEY`).
 
 ## Bible
 - **Where:** `apps/bible/`: `models.py`, `books.py` (the 66 books, OSIS ids), `osis.py` (file reader),
@@ -404,6 +473,27 @@ with. Only create a new app if the answer is "none".
     `SiteSetting.objects.filter(key="bible_esv_state").delete()` (this also resets the call counters). Check the
     state with `from apps.bible import esv; print(esv.lock_reason() or "ESV is available")`.
 
+## Site settings sections
+- **One page, many sections.** `/superadmin/site-settings/` (route name `bible_superadmin:site_settings`, kept so the
+  sidebar entry works) is the shell in `accounts/views/site_settings.py` + `accounts/templates/accounts/superadmin/site_settings.html`.
+  A section is a `SiteSection` (key, title, icon, partial template, `context(request)`, order) added with
+  `register_section(...)` from `accounts/site_sections.py`. To add a function: write its partial and its POST views, register
+  the section from the owning app (import the module once, for example from that app's urls). The shell needs no change.
+  Sections today: `bible` (`apps/bible/site_section.py`, order 10) and `special-roles` (order 20). `accounts` never imports
+  feature apps; they register themselves. A section's POST views keep their own `role_required` and service guard: the
+  registry only decides what is displayed. Section icons must exist in `sprite.svg`.
+- **Special-role limits live in two places with one panel.** The super-admin uses the "Special roles" section; an admin uses
+  the "Special roles" button on `/admin/users/` (`admin_area:special_role_limits`). Both include
+  `accounts/people/_special_role_limits.html` with `views.special_roles.limits_context()`. A super-admin GET of
+  `/superadmin/special-roles/` redirects to the section; POSTs still go to `special_role_limits`.
+- **Limit rules (`services/special_roles.py`):** a limit cannot exceed `member_counts()` (members who can sign in: role member,
+  in the extension, not archived or suspended), cannot be below the people holding the role, and cannot be cleared while anyone
+  holds it. `bulk_set_special_role_limits(actor, request, role, value, extension_ids=None)` runs `set_special_role_limits`
+  once per extension (own transaction, ascending id) and returns `LimitBulkResult(done, unchanged, skipped)`; it is idempotent,
+  so it needs no one-time token.
+- **Tags on the people screens:** the list and detail views call `attach_special_roles(people)` (one query for the page) and the
+  templates use `{% special_role_badges person %}`. The list filter `special_role` uses `filter_by_special_role()` (a subquery).
+
 ## Landing page
 - **Where:** `apps/pages/views.py` (`landing_view`, thin; the root URL must import that exact name),
   `apps/pages/services.py` (`get_landing_context()`, all the logic and every default),
@@ -470,8 +560,8 @@ with. Only create a new app if the answer is "none".
   recount); sheets on the same date are added together. The coordinator's numbers are limited to their own
   extension. Only the super-admin sees super-admin rows. Amounts are shown in pesos (`CURRENCY` in `services.py`).
 - **Scoping:** the only code that narrows data to a coordinator's extension is `_scope_people`, `_scope_attendance`
-  and `_scope_tithes` in `services.py`. Replace their bodies with the project's `for_user(user)` helper when it
-  exists; nothing else changes.
+  and `_scope_tithes` in `services.py`. `User.objects.for_user(user)` now exists for people, so `_scope_people` can use it;
+  attendance and tithes still need their own helper. Nothing else changes.
 - **Privacy:** tithe amounts appear only on leader dashboards and are never written to `audit_log` or
   `notification.data`. The dashboard writes nothing except today's `daily_verse` reference row.
 - **Charts:** server-rendered with Tailwind (no JavaScript, no library); colors are tokens only (`bg-accent`,
@@ -652,6 +742,14 @@ still in use), `archive_inactive_users`, `auto_transfer_extension`,
   `docker compose exec web python manage.py shell -c "from apps.bible import esv; print(repr(esv.lock_reason()))"`
   (`''` means available; `'ESV is not set up yet.'` means no key reached the app).
 - `import_bible` needs the container to reach the internet when you use `--url`; use `--file` otherwise.
+- A new field on `User` (such as `suffix` or `phone_number`) breaks every page, login included, with
+  `column app_user.<name> does not exist` until `makemigrations accounts` and `migrate` have run in the `web` container:
+  the auth backend reads `app_user` on every request.
+- The URL namespace `admin` is Django's built-in admin. The Admin role's screens use `admin_area`, so reverse names such
+  as `admin_area:user_list`, never `admin:user_list`.
+- The people templates are shared by three roles. Link through `{% role_url %}` and gate buttons with
+  `{% person_actions %}`; a hardcoded `superadmin:` URL works for the super-admin and raises `NoReverseMatch` or sends an
+  admin or coordinator to the wrong area.
 
 ## Working rules for agents
 - Use Docker commands; run `check` and `core.test_schema` after any model change.
