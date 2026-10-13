@@ -221,3 +221,8 @@ DEFAULT_PASSWORD_KEY = config("DEFAULT_PASSWORD_KEY")
 SECURE_REFERRER_POLICY = "strict-origin-when-cross-origin"
 
 ESV_API_KEY = os.environ.get("ESV_API_KEY", "")
+
+STORAGES = {
+    "default": {"BACKEND": "django.core.files.storage.FileSystemStorage"},
+    "staticfiles": {"BACKEND": "django.contrib.staticfiles.storage.ManifestStaticFilesStorage"},
+}
