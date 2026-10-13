@@ -9,6 +9,7 @@ There is no default-passwords screen either: the Default passwords button on the
 """
 from django.urls import path
 
+from ..views import special_roles as special
 from ..views import users as people
 
 app_name = "coordinator_area"
@@ -24,4 +25,6 @@ urlpatterns = [
     path("users/<int:pk>/archive/", people.user_archive, name="user_archive"),
     path("users/<int:pk>/restore/", people.user_restore, name="user_restore"),
     path("users/<int:pk>/reset-password/", people.user_reset_password, name="user_reset_password"),
+    path("users/<int:pk>/special-roles/assign/", special.special_role_assign, name="special_role_assign"),
+    path("users/<int:pk>/special-roles/remove/", special.special_role_remove, name="special_role_remove"),
 ]

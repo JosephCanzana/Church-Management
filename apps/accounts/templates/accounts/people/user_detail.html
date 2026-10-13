@@ -147,6 +147,40 @@
   </section>
 </div>
 
+{% if special_roles %}
+<section class="card mt-6" aria-labelledby="special-heading">
+  <h2 id="special-heading" class="text-base font-semibold">Special roles</h2>
+  <p class="mt-1 text-sm text-txt-secondary">Roles that let this member help the coordinator. The number of people allowed in each is set per extension by an admin.</p>
+  <ul class="mt-3 divide-y divide-border text-sm">
+    {% for r in special_roles %}
+    <li class="flex flex-wrap items-center justify-between gap-3 py-3">
+      <div>
+        <p class="font-medium">{{ r.name }}{% if r.held %} <span class="ml-1 rounded-full border border-success px-2 py-0.5 text-xs font-normal text-success">Has this role</span>{% endif %}</p>
+        <p class="text-txt-secondary">{% if r.limit %}{{ r.used }} of {{ r.limit }} used in this extension{% else %}No limit set for this extension yet{% endif %}</p>
+      </div>
+      {% if can_assign_special %}
+        {% if r.held %}
+        <form method="post" action="{% role_url 'special_role_remove' person.pk %}">
+          {% csrf_token %}
+          <input type="hidden" name="role" value="{{ r.code }}">
+          <button type="submit" class="btn btn-secondary"
+                  data-confirm="{{ person.full_name }} will no longer have the {{ r.name }} role."
+                  data-confirm-title="Remove this role?" data-confirm-text="Remove">Remove</button>
+        </form>
+        {% else %}
+        <form method="post" action="{% role_url 'special_role_assign' person.pk %}">
+          {% csrf_token %}
+          <input type="hidden" name="role" value="{{ r.code }}">
+          <button type="submit" class="btn btn-secondary" {% if not r.limit or r.used >= r.limit %}disabled{% endif %}>Give role</button>
+        </form>
+        {% endif %}
+      {% endif %}
+    </li>
+    {% endfor %}
+  </ul>
+</section>
+{% endif %}
+
 <section class="card mt-6" aria-labelledby="history-heading">
   <h2 id="history-heading" class="text-base font-semibold">Extension history</h2>
   {% if history %}

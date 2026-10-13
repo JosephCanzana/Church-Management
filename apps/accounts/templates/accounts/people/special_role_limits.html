@@ -1,0 +1,46 @@
+
+{% extends "base_app.html" %}
+{% load ui_tags people_tags %}
+
+{% block title %}Special role limits{% endblock %}
+{% block page_title %}Special role limits{% endblock %}
+
+{% block content %}
+<p class="max-w-2xl text-sm text-txt-secondary">
+  Coordinators give these roles to members of their own extension, up to the limit set here.
+  An empty limit means nobody in that extension can be given the role yet.
+</p>
+
+{% if rows %}
+<ul class="mt-4 grid gap-4 lg:grid-cols-2">
+  {% for row in rows %}
+  <li class="card">
+    <form method="post" action="{% role_url 'special_role_limits' %}" novalidate>
+      {% csrf_token %}
+      <input type="hidden" name="extension" value="{{ row.extension.pk }}">
+      <h2 class="text-base font-semibold">{{ row.extension.name|title_case }}</h2>
+      <div class="mt-3 grid gap-4 sm:grid-cols-2">
+        {% for cell in row.cells %}
+        <div>
+          <label for="limit-{{ row.extension.pk }}-{{ cell.role.code }}" class="label">{{ cell.role.name }}</label>
+          <input id="limit-{{ row.extension.pk }}-{{ cell.role.code }}" type="number" min="1" step="1"
+                 name="limit_{{ cell.role.code }}" value="{{ cell.limit|default_if_none:'' }}"
+                 class="input font-mono" inputmode="numeric" placeholder="No limit set">
+          <p class="field-help">{{ cell.used }} in use</p>
+        </div>
+        {% endfor %}
+      </div>
+      <div class="mt-4 flex justify-end">
+        <button type="submit" class="btn btn-primary">Save {{ row.extension.name|title_case }}</button>
+      </div>
+    </form>
+  </li>
+  {% endfor %}
+</ul>
+{% else %}
+<div class="card mt-6 text-center">
+  <p class="font-medium text-txt-primary">No extensions yet</p>
+  <p class="mt-1 text-sm text-txt-secondary">Create an extension first, then set its special role limits here.</p>
+</div>
+{% endif %}
+{% endblock %}

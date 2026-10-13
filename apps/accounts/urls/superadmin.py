@@ -7,6 +7,7 @@ The super-admin's own home page (/superadmin/) stays in dashboards.urls.
 from django.urls import path
 
 from ..views import default_passwords as defaults
+from ..views import special_roles as special
 from ..views import superadmin as views
 from ..views import users as people
 
@@ -41,4 +42,9 @@ urlpatterns = [
     path("users/<int:pk>/deactivate/", people.user_deactivate, name="user_deactivate"),
     path("users/<int:pk>/reset-password/", people.user_reset_password, name="user_reset_password"),
     path("users/<int:pk>/delete/", people.user_delete, name="user_delete"),
+
+    # special member roles: give or take one, and the per-extension limits
+    path("users/<int:pk>/special-roles/assign/", special.special_role_assign, name="special_role_assign"),
+    path("users/<int:pk>/special-roles/remove/", special.special_role_remove, name="special_role_remove"),
+    path("special-roles/", special.special_role_limits, name="special_role_limits"),
 ]

@@ -78,6 +78,8 @@ NAV_ITEMS = [
     NavItem("People", "superadmin:user_list", "users", roles=(SUPER_ADMIN,), group="Manage"),
     NavItem("People", "admin_area:user_list", "users", roles=(ADMIN,), group="Manage"),
     NavItem("People", "coordinator_area:user_list", "users", roles=(COORDINATOR,), group="Manage"),
+    NavItem("Special roles", "superadmin:special_role_limits", "user-group", roles=(SUPER_ADMIN,), group="Manage"),
+    NavItem("Special roles", "admin_area:special_role_limits", "user-group", roles=(ADMIN,), group="Manage"),
     NavItem("Site settings", "bible_superadmin:site_settings", "adjustments-horizontal", roles=(SUPER_ADMIN,), group="Manage"),
     NavItem("Audit log", "audit:log", "shield-check", roles=(SUPER_ADMIN, ADMIN), group="Manage"),
     NavItem("Django admin", "admin:index", "wrench-screwdriver", roles=(SUPER_ADMIN, ADMIN), group="Manage"),

@@ -34,7 +34,10 @@ from ..address import ADDRESS_FIELDS, canonical_country
 from ..decorators import role_required
 from ..forms import UserCreateForm, UserFilterForm, UserForm
 from ..models import Role, Status, User, UserExtensionHistory
-from ..permissions import EDIT, allowed_bulk_actions, can_change_placement, require_can_act
+from ..permissions import (
+    EDIT, allowed_bulk_actions, can_assign_special_roles, can_change_placement, require_can_act,
+)
+from ..services.special_roles import special_role_rows
 from ..services.users import (
     archive_user,
     create_user,
@@ -321,9 +324,19 @@ def _render_detail(request, person, secrets=None):
         UserExtensionHistory.objects.filter(user=person)
         .select_related("extension").order_by("-from_date", "-pk")[:20]
     )
+    # Special roles are for members who can still sign in; the card is hidden otherwise.
+    show_special = (
+        person.role == Role.MEMBER and person.extension_id is not None
+        and person.status != Status.ARCHIVED
+    )
     return render(request, DETAIL_TEMPLATE, {
         "person": person,
         "history": history,
+        "special_roles": special_role_rows(person) if show_special else None,
+        "can_assign_special": (
+            show_special and person.status != Status.SUSPENDED
+            and can_assign_special_roles(request.user, person.extension_id)
+        ),
         "address": _address_text(person),
         "is_self": person.pk == request.user.pk,
         "secrets": secrets,
