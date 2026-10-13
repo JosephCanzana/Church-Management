@@ -1,16 +1,12 @@
 {% comment %}
-topbar.html: right-hand side of the app header, on the frame color. A notification bell that opens a frosted-glass dropdown
-with the latest five notifications (a "View all" link goes to the full page), then the signed-in user as a glass chip linking to
-their profile: the profile photo (or a solid initials badge when there is none), plus name and role from sm up.
-The bell shows a dot when unread_count is above zero. Below sm the dropdown is fixed under the header and spans the
-screen so it never runs off the edge; from sm up it hangs under the bell.
+topbar.html: right-hand side of the app header, on the frame color. A notification bell that opens a frosted-glass dropdown with the latest five notifications (a "View all" link goes to the full page), then a quiet avatar button. The avatar opens a small account menu that holds the name, the role, the profile link and Log out (a POST form with the same confirm dialog as the sidebar), so the name no longer competes with the page title.
+The bell shows a dot when unread_count is above zero. Below sm the notification dropdown is fixed under the header and spans the screen so it never runs off the edge; from sm up it hangs under the bell. The account menu hangs under the avatar at every size.
 The header, the menu button and the page title live in base_app.html, because a block inside an included file never overrides anything.
 The light/dark toggle and log out are in sidebar_utilities.html.
-Variables: user (from the auth context processor), unread_count and recent_notifications (from
-notifications.context_processors.bell).
+Variables: user (from the auth context processor), unread_count and recent_notifications (from notifications.context_processors.bell).
 Usage: {% include 'includes/topbar.html' %}
 {% endcomment %}
-<div class="flex min-w-0 shrink-0 items-center gap-2 sm:gap-3">
+<div class="flex min-w-0 shrink-0 items-center gap-1 sm:gap-2">
   <div class="relative" x-data="{ open: false }" @keydown.escape.window="open = false" @click.outside="open = false">
     <button type="button"
             class="relative inline-flex size-11 shrink-0 items-center justify-center rounded-lg text-txt-secondary transition-colors hover:bg-txt-primary/10 hover:text-txt-primary focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-accent"
@@ -59,17 +55,46 @@ Usage: {% include 'includes/topbar.html' %}
     </div>
   </div>
 
-  <a href="{% url 'accounts:profile' %}"
-     class="flex min-w-0 items-center gap-3 rounded-lg border border-transparent py-1 pl-1 pr-1 transition-colors hover:bg-txt-primary/5 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-accent sm:border-txt-primary/10 sm:bg-surface/40 sm:pr-4 sm:shadow-[inset_0_1px_0_rgb(255_255_255/0.35)] sm:backdrop-blur"
-     aria-label="Your profile">
-    {% if user.profile_image %}
-      <img src="{{ user.profile_image.url }}" alt="" class="size-9 shrink-0 rounded-full object-cover ring-2 ring-surface/60">
-    {% else %}
-      <span class="flex size-9 shrink-0 items-center justify-center rounded-full bg-primary text-sm font-semibold text-on-primary ring-2 ring-surface/60" aria-hidden="true">{{ user.first_name|slice:":1"|upper }}{{ user.last_name|slice:":1"|upper }}</span>
-    {% endif %}
-    <div class="hidden min-w-0 max-w-48 leading-tight sm:block">
-      <p class="truncate text-sm font-medium text-txt-primary">{{ user.first_name }} {{ user.last_name }}</p>
-      <p class="truncate text-sm text-txt-secondary">{{ user.get_role_display }}</p>
+  <div class="relative" x-data="{ open: false }" @keydown.escape.window="open = false" @click.outside="open = false">
+    <button type="button"
+            class="inline-flex size-11 shrink-0 items-center justify-center rounded-lg transition-colors hover:bg-txt-primary/10 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-accent"
+            :class="open && 'bg-txt-primary/10'"
+            aria-label="Account menu, {{ user.first_name }} {{ user.last_name }}"
+            aria-haspopup="true" aria-controls="account-menu" :aria-expanded="open"
+            @click="open = !open">
+      {% if user.profile_image %}
+        <img src="{{ user.profile_image.url }}" alt="" class="size-9 shrink-0 rounded-full object-cover ring-2 ring-surface/70">
+      {% else %}
+        <span class="flex size-9 shrink-0 items-center justify-center rounded-full bg-primary text-sm font-semibold text-on-primary ring-2 ring-surface/70" aria-hidden="true">{{ user.first_name|slice:":1"|upper }}{{ user.last_name|slice:":1"|upper }}</span>
+      {% endif %}
+    </button>
+
+    <div id="account-menu" x-show="open" x-cloak
+         x-transition:enter="transition duration-150 ease-out"
+         x-transition:enter-start="-translate-y-2 scale-95 opacity-0"
+         x-transition:enter-end="translate-y-0 scale-100 opacity-100"
+         x-transition:leave="transition duration-100 ease-in"
+         x-transition:leave-start="opacity-100"
+         x-transition:leave-end="opacity-0"
+         class="absolute right-0 top-full z-40 mt-2 w-64 max-w-[calc(100vw-1.5rem)] origin-top-right overflow-hidden rounded-xl border border-txt-primary/10 bg-shell bg-gradient-to-br from-shell/90 to-shell/60 shadow-[0_24px_60px_-12px_rgb(0_0_0/0.35),0_4px_12px_rgb(0_0_0/0.08),inset_0_1px_0_rgb(255_255_255/0.4)] backdrop-blur-2xl backdrop-saturate-150">
+      <div class="px-4 py-3">
+        <p class="truncate text-base font-medium text-txt-primary">{{ user.first_name }} {{ user.last_name }}</p>
+        <p class="truncate text-sm text-txt-secondary">{{ user.get_role_display }}</p>
+      </div>
+      <a href="{% url 'accounts:profile' %}"
+         class="flex min-h-12 items-center justify-between gap-3 border-t border-txt-primary/10 bg-surface/30 px-4 text-base font-medium text-txt-primary transition-colors hover:bg-txt-primary/5 focus-visible:outline focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-accent">
+        <span>View profile</span>
+        {% include 'includes/icon.html' with name='chevron-right' class='size-4 text-txt-muted' %}
+      </a>
+      <form method="post" action="{% url 'accounts:logout' %}"
+            data-confirm="Are you sure you want to sign out?" data-confirm-title="Sign out">
+        {% csrf_token %}
+        <button type="submit"
+                class="flex min-h-12 w-full items-center justify-between gap-3 border-t border-txt-primary/10 px-4 text-left text-base font-medium text-txt-secondary transition-colors hover:bg-error/10 hover:text-error focus-visible:outline focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-accent">
+          <span>Log out</span>
+          {% include 'includes/icon.html' with name='arrow-right-start-on-rectangle' class='size-4' %}
+        </button>
+      </form>
     </div>
-  </a>
+  </div>
 </div>

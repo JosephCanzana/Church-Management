@@ -3,6 +3,7 @@
   {% for m in messages %}<span data-level="{{ m.level_tag }}">{{ m }}</span>{% endfor %}
 </div>
 
+{# Toasts: frosted glass cards with a tonal Material icon chip. Reads an optional `level` (success | error | warning | info) from each toast; toasts without one fall back to "info". #}
 <div x-data="{
        tones: {
          success: { chip: 'bg-success/15 text-success', d: 'M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm-2 15l-5-5 1.41-1.41L10 14.17l7.59-7.59L19 8l-9 9z' },
@@ -34,7 +35,7 @@
   </template>
 </div>
 
-
+{# Confirm modal: frosted backdrop (blur only, no color), glass panel. #}
 <div x-data x-show="$store.ui.dialog.open" x-cloak
      x-effect="$store.ui.dialog.open && $nextTick(() => $refs.cancel && $refs.cancel.focus())"
      @keydown.escape.window="$store.ui.dialog.open && $store.ui.answer(false)"
@@ -81,7 +82,7 @@
   </div>
 </div>
 
-
+{# Show-once secrets modal (generated passwords). Closes ONLY with its button, so a stray click or Escape cannot lose them. #}
 <div x-data x-show="$store.ui.secrets.open" x-cloak
      x-effect="$store.ui.secrets.open && $nextTick(() => $refs.done && $refs.done.focus())"
      x-transition:enter="transition duration-200 ease-out"
