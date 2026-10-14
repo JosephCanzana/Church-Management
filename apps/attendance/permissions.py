@@ -19,12 +19,16 @@ Permission table (S = special member, C = coordinator, A = admin or super-admin)
   reopen an uploaded sheet             A only
   print or save as PDF                 any sheet the person can open
 
+Page-level checks for the screens (brick 8): `can_use_area` (may this person open the attendance screens at all?)
+and `creatable_extensions` (the extensions they may start a draft for, as a queryset). They answer for the PAGE,
+before any sheet exists; every sheet is still checked through `for_user` and the `can_*` functions.
+
 Functions take `(actor, sheet)` and return a bool; none of them touch the database except the
 two that must ask who holds a seat (`has_attendance_role`, and the coordinator-less upload rule).
 """
 from django.core.exceptions import PermissionDenied
 
-from apps.accounts.models import Role, UserSpecialRole
+from apps.accounts.models import Extension, Role, UserSpecialRole
 
 from .models import Attendance
 
@@ -132,3 +136,45 @@ def require(check, actor, sheet=None):
     """
     if not check(actor, sheet):
         raise PermissionDenied("You cannot do this on this attendance sheet.")
+
+
+# ----------------------------------------------------------------- page-level checks (brick 8)
+def seat_extension_ids(actor):
+    """Ids of the extensions where `actor` holds the attendance special role (empty if they cannot sign in)."""
+    if not _signed_in(actor):
+        return []
+    return list(
+        UserSpecialRole.objects.filter(user=actor, role_id=SPECIAL_ROLE).values_list("extension_id", flat=True)
+    )
+
+
+def can_use_area(actor):
+    """May `actor` open the attendance screens (the sheet list and the create form)?
+
+    Super-admin and admin: always. Coordinator: when they belong to an extension. Anyone else: only with the
+    attendance seat somewhere. This is the page-level gate; each sheet is still checked through `for_user`.
+    """
+    if not _signed_in(actor):
+        return False
+    if actor.role in _ADMINS:
+        return True
+    if actor.role == Role.COORDINATOR:
+        return actor.extension_id is not None
+    return bool(seat_extension_ids(actor))
+
+
+def creatable_extensions(actor):
+    """Extensions `actor` may start a draft sheet for, as a queryset (the create form's choices).
+
+    The QUERYSET form of the `can_create` rule, so the form offers exactly what the service accepts.
+    Admin and super-admin: every extension that is not archived. Coordinator: their own. Special member: the
+    extensions where they hold the seat. Anyone else: none.
+    """
+    if not _signed_in(actor):
+        return Extension.objects.none()
+    live = Extension.objects.filter(archived_at__isnull=True)
+    if actor.role in _ADMINS:
+        return live
+    if actor.role == Role.COORDINATOR:
+        return live.filter(pk=actor.extension_id) if actor.extension_id else Extension.objects.none()
+    return live.filter(pk__in=seat_extension_ids(actor))

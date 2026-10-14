@@ -1,0 +1,289 @@
+<!--
+attendance/sheet_workspace.html
+The draft workspace: take attendance on one draft sheet. Extends base_app.html and fills: title, page_title, content.
+Context (attendance.views._workspace_context): sheet, summary (live), table (summary_table), members (each with
+gender_label, age_label, needs_category, is_visitor), first_timers, form (FirstTimerForm), pending (the
+"same person?" prompt or None), more_open, gender_choices, age_choices, q, search_hint, results, can_review,
+can_upload, upload_blocker, submit_token.
+Everything is a plain POST form and a redirect (no JavaScript needed). Search is a GET (?q=). Targets are 44px
+and text 16px or larger, so it works one-handed on a phone. Links go through role_url (one file, four areas).
+Colors come from tokens only. The only Alpine here scrolls the first-timer section into view after a refused post.
+-->
+{% extends 'base_app.html' %}
+{% load ui_tags people_tags %}
+
+{% block title %}{{ sheet.label }}{% endblock %}
+{% block page_title %}{{ sheet.label }}{% endblock %}
+
+{% block content %}
+{% role_url 'sheet_list' as list_url %}
+{% include 'includes/breadcrumb.html' with parent_label='Attendance' parent_url=list_url current=sheet.label %}
+
+<div class="max-w-3xl space-y-6">
+
+  {# "Same person?" prompt: shown on top because the page is re-rendered (nothing was saved yet). #}
+  {% if pending %}
+  <section id="same-person" class="card space-y-4 border-highlight" role="region" aria-labelledby="same-person-title">
+    <div>
+      <h2 id="same-person-title" class="text-lg font-semibold text-txt-primary">Is {{ pending.name }} already in the church?</h2>
+      <p class="text-base text-txt-secondary">Someone with the same name exists. If it is the same person, mark them present instead of adding a first timer.</p>
+    </div>
+    <ul class="divide-y divide-border rounded-lg border border-border">
+      {% for match in pending.matches %}
+      <li class="flex flex-wrap items-center justify-between gap-3 px-4 py-3">
+        <div class="min-w-0">
+          <p class="truncate text-base font-medium text-txt-primary">{{ match.name }}</p>
+          <p class="text-sm text-txt-secondary">{{ match.home_extension }}{% if match.age_label %} &middot; {{ match.age_label }}{% endif %}{% if match.archived %} &middot; Archived account{% endif %}</p>
+        </div>
+        {% if match.archived %}
+        <span class="text-sm text-txt-secondary">An admin must restore this account first.</span>
+        {% else %}
+        <form method="post" action="{% role_url 'sheet_mark' sheet.pk %}">
+          {% csrf_token %}
+          <input type="hidden" name="user_id" value="{{ match.id }}">
+          <input type="hidden" name="gender" value="{{ pending.gender }}">
+          <input type="hidden" name="age_network" value="{{ pending.age_network }}">
+          <button type="submit" class="btn btn-primary min-h-[44px] text-base">Yes, mark present</button>
+        </form>
+        {% endif %}
+      </li>
+      {% endfor %}
+    </ul>
+    <form method="post" action="{% role_url 'sheet_first_timer_add' sheet.pk %}" class="flex flex-wrap items-center gap-3">
+      {% csrf_token %}
+      {% for name, value in pending.fields %}<input type="hidden" name="{{ name }}" value="{{ value }}">{% endfor %}
+      <input type="hidden" name="confirm_new" value="on">
+      <button type="submit" class="btn btn-secondary min-h-[44px] text-base">No, add as a new first timer</button>
+      <a class="btn btn-ghost min-h-[44px] text-base" href="{% role_url 'sheet_detail' sheet.pk %}">Cancel</a>
+    </form>
+  </section>
+  {% endif %}
+
+  {# Header: facts, the running counts and the two main buttons. #}
+  <section class="card space-y-4" aria-label="Sheet summary">
+    <div class="flex flex-wrap items-start justify-between gap-3">
+      <div>
+        <h2 class="text-xl font-semibold tracking-tight text-txt-primary">{{ sheet.label }}</h2>
+        <p class="text-base text-txt-secondary">{{ sheet.attendance_date|date:"l, j F Y" }} &middot; {{ sheet.extension.name|title_case }}</p>
+        <p class="text-sm text-txt-secondary">Taken by {% if sheet.taken_by %}{{ sheet.taken_by.full_name }}{% else %}not recorded{% endif %}</p>
+      </div>
+      {% include 'attendance/_status_badge.html' with sheet=sheet %}
+    </div>
+
+    <div class="grid grid-cols-3 gap-3 text-center" aria-live="polite">
+      <div class="rounded-lg border border-border p-3">
+        <p class="text-2xl font-semibold tabular-nums text-txt-primary">{{ summary.total_present }}</p>
+        <p class="text-sm text-txt-secondary">Present</p>
+      </div>
+      <div class="rounded-lg border border-border p-3">
+        <p class="text-2xl font-semibold tabular-nums text-txt-primary">{{ summary.members_present }}</p>
+        <p class="text-sm text-txt-secondary">Members</p>
+      </div>
+      <div class="rounded-lg border border-border p-3">
+        <p class="text-2xl font-semibold tabular-nums text-txt-primary">{{ summary.first_timers_count }}</p>
+        <p class="text-sm text-txt-secondary">First timers</p>
+      </div>
+    </div>
+    {% if summary.incomplete %}
+    <p class="rounded-lg border border-warning px-3 py-2 text-base text-txt-primary" role="status">
+      {{ summary.incomplete }} {% if summary.incomplete == 1 %}person needs{% else %}people need{% endif %} a gender and an age network. They are listed first below.
+    </p>
+    {% endif %}
+
+    <div class="flex flex-wrap items-start gap-3">
+      {% if can_review %}<a class="btn btn-secondary min-h-[44px] text-base" href="{% role_url 'sheet_review' sheet.pk %}">Review</a>{% endif %}
+      {% if can_upload %}
+      <div>{% include 'attendance/_upload_form.html' with sheet=sheet submit_token=submit_token upload_blocker=upload_blocker %}</div>
+      {% endif %}
+    </div>
+  </section>
+
+  {# Find and tick people. #}
+  <section id="find" class="card space-y-4" aria-labelledby="find-title">
+    <h2 id="find-title" class="text-lg font-semibold text-txt-primary">Mark someone present</h2>
+    <form method="get" action="{% role_url 'sheet_detail' sheet.pk %}#find" role="search" class="flex gap-2">
+      <label for="people-search" class="sr-only">Search by name</label>
+      <input id="people-search" type="search" name="q" value="{{ q }}" class="input min-w-0 flex-1 text-base"
+             placeholder="Type a name (3 letters or more)" autocomplete="off" autocapitalize="words" enterkeyhint="search">
+      <button type="submit" class="btn btn-primary min-h-[44px] text-base">Search</button>
+    </form>
+    {% if search_hint %}<p class="text-base text-txt-secondary" role="status">{{ search_hint }}</p>{% endif %}
+    {% if results %}
+    <ul class="divide-y divide-border overflow-hidden rounded-lg border border-border">
+      {% for person in results %}
+      <li class="flex flex-wrap items-center justify-between gap-3 px-4 py-3">
+        <div class="min-w-0">
+          <p class="truncate text-base font-medium text-txt-primary">{{ person.name }}</p>
+          <p class="text-sm text-txt-secondary">{{ person.home_extension }}{% if person.visitor %} (visitor){% endif %}{% if person.age_label %} &middot; {{ person.age_label }}{% endif %}</p>
+        </div>
+        {% if person.marked %}
+        <span class="rounded-full border border-success px-3 py-1 text-sm text-success">Marked</span>
+        {% else %}
+        <form method="post" action="{% role_url 'sheet_mark' sheet.pk %}">
+          {% csrf_token %}
+          <input type="hidden" name="user_id" value="{{ person.id }}">
+          <button type="submit" class="btn btn-primary min-h-[44px] text-base" aria-label="Mark {{ person.name }} present">Mark present</button>
+        </form>
+        {% endif %}
+      </li>
+      {% endfor %}
+    </ul>
+    {% endif %}
+  </section>
+
+  {# The ticked list. People without a category come first, with the inline pick. #}
+  <section id="marked" class="card space-y-3 p-0" aria-labelledby="marked-title">
+    <h2 id="marked-title" class="px-5 pt-5 text-lg font-semibold text-txt-primary">Marked present <span class="text-base font-normal text-txt-secondary">({{ members|length }})</span></h2>
+    {% if members %}
+    <ul class="divide-y divide-border border-t border-border">
+      {% for member in members %}
+      <li class="px-5 py-3">
+        <div class="flex items-start justify-between gap-3">
+          <div class="min-w-0">
+            <p class="text-base font-medium text-txt-primary">{{ member.member_name }}{% if member.is_visitor %} <span class="ml-1 rounded-full border border-border-strong px-2 py-0.5 text-sm font-normal text-txt-secondary">Visitor</span>{% endif %}</p>
+            <p class="text-sm text-txt-secondary">
+              {{ member.home_extension_name|default:"-" }}
+              {% if not member.needs_category %}&middot; {{ member.gender_label }}, {{ member.age_label }}{% endif %}
+            </p>
+          </div>
+          <form method="post" action="{% role_url 'sheet_unmark' sheet.pk %}">
+            {% csrf_token %}
+            <input type="hidden" name="member_id" value="{{ member.pk }}">
+            <button type="submit" class="btn btn-ghost min-h-[44px] text-base" aria-label="Take {{ member.member_name }} off the sheet">Remove</button>
+          </form>
+        </div>
+        {% if member.needs_category %}
+        <form method="post" action="{% role_url 'sheet_member_category' sheet.pk %}" class="mt-2 grid gap-2 sm:grid-cols-[1fr_1fr_auto]">
+          {% csrf_token %}
+          <input type="hidden" name="member_id" value="{{ member.pk }}">
+          <p class="text-sm font-medium text-warning sm:col-span-3">Needs a gender and an age network</p>
+          <select name="gender" class="input text-base" aria-label="Gender of {{ member.member_name }}">
+            <option value="">Gender</option>
+            {% for value, label in gender_choices %}<option value="{{ value }}"{% if member.gender == value %} selected{% endif %}>{{ label }}</option>{% endfor %}
+          </select>
+          <select name="age_network" class="input text-base" aria-label="Age network of {{ member.member_name }}">
+            <option value="">Age network</option>
+            {% for value, label in age_choices %}<option value="{{ value }}"{% if member.age_network == value %} selected{% endif %}>{{ label }}</option>{% endfor %}
+          </select>
+          <button type="submit" class="btn btn-secondary min-h-[44px] text-base">Save</button>
+        </form>
+        {% endif %}
+      </li>
+      {% endfor %}
+    </ul>
+    {% else %}
+    <p class="px-5 pb-5 text-base text-txt-secondary">Nobody is marked yet. Search for a name above.</p>
+    {% endif %}
+  </section>
+
+  {# First timers: quick form, the "more" fold, and the list. #}
+  <section id="first-timers" class="card space-y-4" aria-labelledby="first-timers-title"
+           {% if form.is_bound %}x-data x-init="$nextTick(() => $el.scrollIntoView({ block: 'start' }))"{% endif %}>
+    <h2 id="first-timers-title" class="text-lg font-semibold text-txt-primary">Add a first timer</h2>
+    <form method="post" action="{% role_url 'sheet_first_timer_add' sheet.pk %}" class="space-y-4" novalidate>
+      {% csrf_token %}
+      {% if form.non_field_errors %}
+      <div role="alert" class="rounded-lg border border-border p-3">
+        {% for error in form.non_field_errors %}<p class="field-error">{{ error }}</p>{% endfor %}
+      </div>
+      {% endif %}
+
+      <div class="grid gap-4 sm:grid-cols-2">
+        <div>
+          <label class="label" for="{{ form.first_name.id_for_label }}">{{ form.first_name.label }}</label>
+          {{ form.first_name }}
+          {% for error in form.first_name.errors %}<p class="field-error">{{ error }}</p>{% endfor %}
+        </div>
+        <div>
+          <label class="label" for="{{ form.last_name.id_for_label }}">{{ form.last_name.label }}</label>
+          {{ form.last_name }}
+          {% for error in form.last_name.errors %}<p class="field-error">{{ error }}</p>{% endfor %}
+        </div>
+      </div>
+
+      <fieldset>
+        <legend class="label">Gender</legend>
+        <div class="grid grid-cols-2 gap-2">
+          {% for value, label in gender_choices %}
+          <label class="block">
+            <input type="radio" name="gender" value="{{ value }}" class="peer sr-only"{% if form.gender.value == value %} checked{% endif %}>
+            <span class="flex min-h-[44px] cursor-pointer items-center justify-center rounded-lg border border-border-strong px-3 text-base text-txt-primary peer-checked:border-accent peer-checked:bg-accent peer-checked:text-on-accent peer-focus-visible:outline peer-focus-visible:outline-2 peer-focus-visible:outline-offset-2 peer-focus-visible:outline-accent">{{ label }}</span>
+          </label>
+          {% endfor %}
+        </div>
+        {% for error in form.gender.errors %}<p class="field-error">{{ error }}</p>{% endfor %}
+      </fieldset>
+
+      <fieldset>
+        <legend class="label">Age network</legend>
+        <div class="grid grid-cols-2 gap-2 sm:grid-cols-4">
+          {% for value, label in age_choices %}
+          <label class="block">
+            <input type="radio" name="age_network" value="{{ value }}" class="peer sr-only"{% if form.age_network.value == value %} checked{% endif %}>
+            <span class="flex min-h-[44px] cursor-pointer items-center justify-center rounded-lg border border-border-strong px-3 text-center text-base text-txt-primary peer-checked:border-accent peer-checked:bg-accent peer-checked:text-on-accent peer-focus-visible:outline peer-focus-visible:outline-2 peer-focus-visible:outline-offset-2 peer-focus-visible:outline-accent">{{ label }}</span>
+          </label>
+          {% endfor %}
+        </div>
+        <p class="field-help">A birth date, if you add one below, sets this for you.</p>
+        {% for error in form.age_network.errors %}<p class="field-error">{{ error }}</p>{% endfor %}
+      </fieldset>
+
+      <details class="rounded-lg border border-border px-4 py-2"{% if more_open %} open{% endif %}>
+        <summary class="flex min-h-[44px] cursor-pointer items-center text-base font-medium text-txt-primary">More details (optional)</summary>
+        <div class="grid gap-4 pb-3 pt-2 sm:grid-cols-2">
+          <div>
+            <label class="label" for="{{ form.middle_name.id_for_label }}">{{ form.middle_name.label }}</label>
+            {{ form.middle_name }}
+            {% for error in form.middle_name.errors %}<p class="field-error">{{ error }}</p>{% endfor %}
+          </div>
+          <div>
+            <label class="label" for="{{ form.suffix.id_for_label }}">{{ form.suffix.label }}</label>
+            {{ form.suffix }}
+            {% for error in form.suffix.errors %}<p class="field-error">{{ error }}</p>{% endfor %}
+          </div>
+          <div>
+            <label class="label" for="{{ form.birth_date.id_for_label }}">{{ form.birth_date.label }}</label>
+            {{ form.birth_date }}
+            {% for error in form.birth_date.errors %}<p class="field-error">{{ error }}</p>{% endfor %}
+          </div>
+          <div>
+            <label class="label" for="{{ form.phone_number.id_for_label }}">{{ form.phone_number.label }}</label>
+            {{ form.phone_number }}
+            {% for error in form.phone_number.errors %}<p class="field-error">{{ error }}</p>{% endfor %}
+          </div>
+        </div>
+      </details>
+
+      <button type="submit" class="btn btn-primary min-h-[44px] text-base">
+        {% include 'includes/icon.html' with name='user-plus' class='size-5' %}
+        Add first timer
+      </button>
+    </form>
+
+    {% if first_timers %}
+    <ul class="divide-y divide-border overflow-hidden rounded-lg border border-border">
+      {% for visitor in first_timers %}
+      <li class="flex items-center justify-between gap-3 px-4 py-3">
+        <div class="min-w-0">
+          <p class="truncate text-base font-medium text-txt-primary">{{ visitor.full_name }}</p>
+          <p class="text-sm text-txt-secondary">{{ visitor.gender_label }}, {{ visitor.age_label }}</p>
+        </div>
+        <form method="post" action="{% role_url 'sheet_first_timer_remove' sheet.pk %}"
+              data-confirm="This first timer and the details you typed will be removed from the sheet."
+              data-confirm-title="Remove this first timer?" data-confirm-text="Remove" data-confirm-danger>
+          {% csrf_token %}
+          <input type="hidden" name="first_timer_id" value="{{ visitor.pk }}">
+          <button type="submit" class="btn btn-ghost min-h-[44px] text-base" aria-label="Remove {{ visitor.full_name }}">Remove</button>
+        </form>
+      </li>
+      {% endfor %}
+    </ul>
+    {% endif %}
+  </section>
+
+  <details class="card">
+    <summary class="flex min-h-[44px] cursor-pointer items-center text-lg font-semibold text-txt-primary">Breakdown by gender and age</summary>
+    <div class="pt-2">{% include 'attendance/_summary_table.html' with table=table %}</div>
+  </details>
+</div>
+{% endblock %}

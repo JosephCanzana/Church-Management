@@ -7,7 +7,7 @@ the services refuse them anyway. The views are shared with the other roles (see 
 There is no default-passwords screen either: the Default passwords button on the list POSTs to
 `default_password_show`, which displays the global member password read-only.
 """
-from django.urls import path
+from django.urls import include, path
 
 from ..views import special_roles as special
 from ..views import users as people
@@ -27,4 +27,7 @@ urlpatterns = [
     path("users/<int:pk>/reset-password/", people.user_reset_password, name="user_reset_password"),
     path("users/<int:pk>/special-roles/assign/", special.special_role_assign, name="special_role_assign"),
     path("users/<int:pk>/special-roles/remove/", special.special_role_remove, name="special_role_remove"),
+    # Attendance sheets: the routes are written once in attendance/area_urls.py. A string include, so accounts
+    # imports nothing from attendance (dependency rule); the names land in this namespace.
+    path("attendance/", include("apps.attendance.area_urls")),
 ]
