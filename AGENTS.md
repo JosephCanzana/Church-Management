@@ -25,13 +25,16 @@ buddies, prayer requests, events, resources, notifications and audit logging.
     switches for every version (`/superadmin/site-settings/`, see Bible), and the verse of the day.
   - Dashboards: one page per role (super-admin, admin, coordinator, member) with the verse of the day, continue
     reading, quick links and, for leaders, counts and charts (see Dashboards).
+  - Attendance (bricks 1 to 9 of the plan): gender and age networks, model changes, permissions and scoping, draft
+    services, summary, upload, reopen, the sheet screens for every role and the A4 print page (see Attendance).
 - **Not built yet:**
   - Forgot/reset password (the "Forgot password?" link on the login page is a placeholder, `href="#"`) and
     brute-force login throttling.
   - The `faith` listener that turns a chapter read into a streak, MBBTAG. The dashboards show "Coming soon"
     cards for the Bible streak, goals and events until those apps have views.
-  - Linking an attendance first timer to a new account (`attendance_first_timer.converted_user`, then showing it in the
-    member's attendance history), and the attendance and tithes screens that check the special roles.
+  - Attendance bricks 10 to 14: first timer to member conversion (`attendance_first_timer.converted_user`, then the
+    member's history), visitor auto-transfer, the account changes (reset sets "not activated", easier login), the POS58
+    welcome slip and "My attendance" (personal history for every role). The tithes screens.
   - Beyond the list above, services, views and forms are mostly not built yet: features are being added on top of
     the models, one app at a time.
 
@@ -398,7 +401,7 @@ with. Only create a new app if the answer is "none".
   stored as a hash plus an encrypted copy (`DefaultPassword.password_encrypted`, key `DEFAULT_PASSWORD_KEY`).
 
 ## Attendance
-Being built brick by brick (plan: `docs/attendance.md` once exported). Done so far: gender and age networks, model changes, permissions and scoping, draft services, summary calculation, upload, reopen.
+Being built brick by brick (plan: `docs/attendance.md` once exported). Done so far: gender and age networks, model changes, permissions and scoping, draft services, summary calculation, upload, reopen, the screens and the A4 print page.
 - **Models** (`attendance/models.py`): `Attendance` (one sheet per extension, date and label; `taken_by`, `uploaded_by`,
   frozen `summary` JSON that is NULL while a draft; `is_locked` is true when uploaded), `AttendanceMember` (a tick, with a
   SNAPSHOT of name, gender, age network and home extension taken at tick time; gender and age network may be blank until the
@@ -475,9 +478,45 @@ Being built brick by brick (plan: `docs/attendance.md` once exported). Done so f
   item (`type="admin_alert"`, important) carries only `data={"action": ...}`, the entity type and id, and `audit_log_id`. It
   runs inside `log_action`'s transaction. `notifications` never imports a feature app. Every seeded rule alerts this way, not
   only `attendance.reopen`. The bell list does not render this type yet (open item).
-- **Privacy:** no names, birth dates, phone numbers or passwords in `audit_log`; individual ticks are not audited.
+- **Screens** (`attendance/views.py`, `forms.py`, `templates/attendance/`): thin views over the services, one set shared by four
+  places. The routes are written ONCE in `attendance/area_urls.py` (no `app_name`) and mounted by a STRING include
+  (`include("apps.attendance.area_urls")`, so `accounts` imports nothing from `attendance`) in `accounts/urls/superadmin.py`
+  (`/superadmin/attendance/`), `admin_area.py` (`/admin/attendance/`) and `coordinator_area.py` (`/coordinator/attendance/`),
+  and once more by `attendance/urls.py` at the member root (`/attendance/`, namespace `attendance`, for attendance special
+  members). Routes: `sheets/` (list), `sheets/new/`, `sheets/<pk>/` (the draft workspace, or the review once uploaded),
+  `review/`, `print/`, and POST-only `mark/`, `unmark/`, `category/`, `first-timers/add/`, `first-timers/remove/`, `upload/`,
+  `reopen/`. Templates and redirects follow the namespace of the request (`request.resolver_match.namespace`, and
+  `{% role_url %}` in templates), never a hardcoded one. Every view goes through `attendance_screen`: `role_required`, then
+  `AREA_ROLES` (each namespace belongs to ONE role: a coordinator typing an admin URL is sent home), then
+  `permissions.can_use_area`, and it is `never_cache`. Every sheet is opened with `_open_sheet`, which starts from
+  `Attendance.objects.for_user(request.user)`; a sheet that is missing OR out of reach gives the same "no longer exists"
+  message. POST actions use the `sheet_action` decorator: it loads the sheet, runs ONE service, and turns a `ServiceError` or
+  `PermissionDenied` into an error toast and a redirect back. `AREA_ROLES` must stay in step with `church_management/urls.py`
+  and the role url modules.
+- **A4 print page** (brick 9; `sheet_print` in `views.py`, `templates/attendance/print.html`, route `sheets/<pk>/print/`):
+  a read-only GET that changes nothing and logs nothing. Allowed through `can_print` (the same rule as `can_view`: a special
+  member prints drafts only). The page is STANDALONE, it does not extend `base_app.html`: black text on white whatever the
+  person's light or dark mode, inline CSS, no external fonts, no Tailwind, no `{% include 'includes/logo.html' %}` (that logo
+  is a CSS mask whose class lives in `input.css`, so the page uses a plain `<img src="{% static 'images/black-logo.svg' %}">`).
+  Layout copies the paper sheet: header (logo, church and extension name, municipality and province, "Attendance sheet", date,
+  service label, "Taken by", and "Uploaded by" with the upload date or a plain "DRAFT, not uploaded" line), ONE numbered grid
+  (members by name, then first timers by name) with Name, Belongs to, Men and Women by Adult, YA, Youth, C, and an FT column, a
+  tick in the cell of the person's stored gender and age network (a first timer gets their gender and age tick AND the FT tick),
+  then the summary table from `summary_table`, "Total attendees" (`summary.total_present`), the age-network legend and the
+  printed date and time in Manila. "Belongs to" shows the home extension only for a visitor (home extension different from the
+  sheet's, the same rule as the review) and is blank for everyone else, admins included. The view builds `rows` (`_print_rows`:
+  `number`, `name`, `belongs`, `first_timer`, `needs_category`, `cells`, eight booleans, men then women, in age-network order);
+  only names, home extension, gender and age network are read, so a birth date, phone number or address cannot reach the page.
+  An uploaded sheet prints its FROZEN numbers (`summary_for`); a draft counts live and a member still missing a category is
+  marked "(no category yet)" with no tick. CSS: `@page { size: A4; margin: 12mm }`, `thead { display: table-header-group }`
+  so the header repeats on page 2, `tr { break-inside: avoid }`, the summary block never splits, and NO page numbers (CSS page
+  counters are unreliable across browsers). The toolbar and the grey desk are screen only. "Save as PDF" is the browser's print
+  destination; there is no server-side PDF library (it would add system packages to the Docker image) and no direct ESC/POS
+  printing. The review page has a "Print or save as PDF" button (`can_print` in its context) that opens the page in a new tab.
+- **Privacy:** no names, birth dates, phone numbers or passwords in `audit_log`; individual ticks are not audited. The print
+  page and the people search show no birth dates, phone numbers or addresses.
 - **Tests:** `attendance/tests/` (a package, so there is no `tests.py` beside it): `test_age`, `test_models`,
-  `test_permissions`, `test_reopen`, `test_services`, `test_summary`, `test_upload`. The admin-alert receiver is tested in
+  `test_permissions`, `test_print`, `test_reopen`, `test_services`, `test_summary`, `test_upload`. The admin-alert receiver is tested in
   `notifications/tests.py`. The gender field is tested in
   `accounts/tests/test_gender.py` and `mark_attended` in `accounts/tests/test_presence.py` (tests live with the code they check). In tests, never create two sheets with the same extension, date and label,
   and set `archived_at` together with `status="archived"` (a database constraint ties them).
@@ -839,6 +878,11 @@ still in use), `archive_inactive_users`, `auto_transfer_extension`,
   the auth backend reads `app_user` on every request.
 - The URL namespace `admin` is Django's built-in admin. The Admin role's screens use `admin_area`, so reverse names such
   as `admin_area:user_list`, never `admin:user_list`.
+- The attendance routes exist only where `include("apps.attendance.area_urls")` is added. If `superadmin.py`, `admin_area.py`
+  or `coordinator_area.py` lacks it, `{% role_url 'sheet_list' %}` and every attendance link fail for that role. A new
+  attendance route goes in `attendance/area_urls.py` once, never in a role url module.
+- `attendance/print.html` is standalone on purpose. Do not make it extend `base_app.html` or reuse `includes/logo.html`: the app
+  shell's tokens, dark mode and the logo mask would put colours and an empty logo on paper. Rebuilding Tailwind does not affect it.
 - The people templates are shared by three roles. Link through `{% role_url %}` and gate buttons with
   `{% person_actions %}`; a hardcoded `superadmin:` URL works for the super-admin and raises `NoReverseMatch` or sends an
   admin or coordinator to the wrong area.

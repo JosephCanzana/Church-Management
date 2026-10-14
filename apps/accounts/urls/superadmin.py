@@ -4,7 +4,7 @@ Included from the project urls with:  path("superadmin/", include("apps.accounts
 The `superadmin` namespace lets templates use {% url 'superadmin:extension_list' %}.
 The super-admin's own home page (/superadmin/) stays in dashboards.urls.
 """
-from django.urls import path
+from django.urls import include, path
 
 from ..views import default_passwords as defaults
 from ..views import special_roles as special
@@ -47,4 +47,7 @@ urlpatterns = [
     path("users/<int:pk>/special-roles/assign/", special.special_role_assign, name="special_role_assign"),
     path("users/<int:pk>/special-roles/remove/", special.special_role_remove, name="special_role_remove"),
     path("special-roles/", special.special_role_limits, name="special_role_limits"),
+
+    # Attendance sheets: written once in attendance/area_urls.py (string include: accounts imports nothing from attendance).
+    path("attendance/", include("apps.attendance.area_urls")),
 ]

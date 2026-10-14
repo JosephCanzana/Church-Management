@@ -15,6 +15,8 @@ urlpatterns = [
     path("sheets/new/", views.sheet_create, name="sheet_create"),
     path("sheets/<int:pk>/", views.sheet_detail, name="sheet_detail"),
     path("sheets/<int:pk>/review/", views.sheet_review, name="sheet_review"),
+    # Standalone A4 page for the browser's print dialog (brick 9); a GET, changes nothing.
+    path("sheets/<int:pk>/print/", views.sheet_print, name="sheet_print"),
     # POST-only actions on a draft (each redirects back to the workspace).
     path("sheets/<int:pk>/mark/", views.sheet_mark, name="sheet_mark"),
     path("sheets/<int:pk>/unmark/", views.sheet_unmark, name="sheet_unmark"),

@@ -13,7 +13,7 @@ Three guards, all required (hiding a link is not access control):
 Someone out of reach of a sheet sees "no longer exists", exactly like a deleted one.
 
 Views stay thin: validate the form, call a service, show a toast. Business rules live in `services.py`.
-Built screen by screen: list, create, the draft workspace, the read-only review and reopen.
+Built screen by screen: list, create, the draft workspace, the read-only review, reopen and the A4 print page.
 
 The workspace uses plain POST forms and a redirect (no JavaScript needed): search is a GET (`?q=`), every
 tap (mark, remove, category, first timer, upload) is a POST handled by a thin view that calls ONE service.
@@ -49,6 +49,7 @@ FORM_TEMPLATE = "attendance/sheet_form.html"
 DETAIL_TEMPLATE = "attendance/sheet_detail.html"
 WORKSPACE_TEMPLATE = "attendance/sheet_workspace.html"
 REVIEW_TEMPLATE = "attendance/sheet_review.html"
+PRINT_TEMPLATE = "attendance/print.html"
 
 #: Code -> label, for showing a stored gender or age network as words.
 GENDER_LABELS = dict(Gender.choices)
@@ -417,11 +418,79 @@ def sheet_review(request, pk):
         "can_edit": permissions.can_edit_draft(request.user, sheet),
         "can_upload": can_upload,
         "can_reopen": permissions.can_reopen(request.user, sheet),
+        "can_print": permissions.can_print(request.user, sheet),
         "upload_blocker": (
             "Some people still need a gender and an age network." if summary.incomplete
             else "Mark at least one person before uploading." if summary.total_present == 0 else ""
         ),
         "submit_token": new_submission_token() if (can_upload or permissions.can_reopen(request.user, sheet)) else "",
+    })
+
+
+# ------------------------------------------------------------------ print
+#: Short column heads of the paper sheet, by age network code (the full words are in the legend).
+PRINT_HEADS = {"adult": "Adult", "young_adult": "YA", "youth": "Youth", "children": "C"}
+
+
+def _print_rows(sheet):
+    """The numbered lines of the printed grid: members by name, then first timers by name.
+
+    Each line is a dict with `name`, `belongs` (the home extension, only for a visitor, else blank),
+    `first_timer`, `needs_category` and `cells`: eight booleans, men then women, each in age-network order,
+    so the template only draws a tick where a cell is true. Only names, home extension, gender and age
+    network are read: never a birth date, phone number or address.
+    """
+    genders = (Gender.MALE.value, Gender.FEMALE.value)
+    rows = []
+    members = AttendanceMember.objects.filter(attendance=sheet).order_by("member_name", "pk")
+    for row in members:
+        _decorate_member(row, sheet)
+        rows.append({
+            "name": row.member_name,
+            "belongs": row.home_extension_name,
+            "first_timer": False,
+            "needs_category": row.needs_category,
+            "gender": row.gender,
+            "network": row.age_network,
+        })
+    first_timers = AttendanceFirstTimer.objects.filter(attendance=sheet).order_by("last_name", "first_name", "pk")
+    for row in first_timers:
+        rows.append({
+            "name": row.full_name, "belongs": "", "first_timer": True, "needs_category": False,
+            "gender": row.gender, "network": row.age_network,
+        })
+    for number, line in enumerate(rows, start=1):
+        line["number"] = number
+        line["cells"] = [
+            line["gender"] == gender and line["network"] == network
+            for gender in genders for network in AgeNetwork.values
+        ]
+    return rows
+
+
+@attendance_screen
+@require_http_methods(["GET"])
+def sheet_print(request, pk):
+    """The standalone A4 page for the browser's print dialog ("Save as PDF" is a print destination).
+
+    Opens for anyone who may open the sheet (`can_print`, same rule as `can_view`): a special member
+    gets drafts only. A draft prints with a plain "DRAFT, not uploaded" line; an uploaded sheet prints
+    its FROZEN numbers (`summary_for`). Read-only: it changes nothing and logs nothing.
+    """
+    sheet = _open_sheet(request, pk)
+    if sheet is None:
+        return _gone(request)
+    if not permissions.can_print(request.user, sheet):
+        messages.error(request, "You cannot print this sheet.")
+        return _back(request, sheet)
+    summary = summary_for(sheet)
+    return render(request, PRINT_TEMPLATE, {
+        "sheet": sheet,
+        "summary": summary,
+        "table": summary_table(summary.summary),
+        "rows": _print_rows(sheet),
+        "heads": [(code, PRINT_HEADS.get(code, code)) for code in AgeNetwork.values],
+        "back_url": _sheet_url(request, sheet, "sheet_review" if permissions.can_review(request.user, sheet) else "sheet_detail"),
     })
 
 

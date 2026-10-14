@@ -3,7 +3,7 @@ attendance/sheet_review.html
 Read-only review of a sheet (draft or uploaded): header, summary table, the names, the first timers.
 Extends base_app.html and fills: title, page_title, content.
 Context (attendance.views.sheet_review): sheet, summary, table, members, first_timers, needs_category,
-can_edit, can_upload, can_reopen, upload_blocker, submit_token.
+can_edit, can_upload, can_reopen, can_print, upload_blocker, submit_token.
 The content is the same as the print page will show (brick 9): names, where each person belongs, gender and age
 network only. No birth dates, phone numbers or addresses. An uploaded sheet shows its FROZEN numbers.
 -->
@@ -57,6 +57,8 @@ network only. No birth dates, phone numbers or addresses. An uploaded sheet show
     {% endif %}
     <div class="flex flex-wrap items-start gap-3">
       {% if can_edit %}<a class="btn btn-secondary min-h-[44px] text-base" href="{% role_url 'sheet_detail' sheet.pk %}">Back to editing</a>{% endif %}
+      {# Opens the standalone A4 page in a new tab; "Save as PDF" is the browser's print destination. #}
+      {% if can_print %}<a class="btn btn-secondary min-h-[44px] text-base" href="{% role_url 'sheet_print' sheet.pk %}" target="_blank" rel="noopener">Print or save as PDF</a>{% endif %}
       {% if can_upload %}
       <div>{% include 'attendance/_upload_form.html' with sheet=sheet submit_token=submit_token upload_blocker=upload_blocker %}</div>
       {% endif %}
