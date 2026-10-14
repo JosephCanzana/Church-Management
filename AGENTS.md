@@ -186,8 +186,8 @@ with. Only create a new app if the answer is "none".
   Hiding a link in a template is not access control.
 - Coordinator-scoped data must be fetched through the `for_user(user)`
   queryset helper, not with ad hoc `.filter(extension=...)` calls in views. For people this is
-  `User.objects.for_user(actor)` (see People screens for admin and coordinator); attendance and tithes get their own
-  `for_user` when their screens are built.
+  `User.objects.for_user(actor)` (see People screens for admin and coordinator); for attendance it is
+  `Attendance.objects.for_user(actor)` (see Attendance); tithes get their own when their screens are built.
 - Use `{% url 'admin:index' %}` to link to Django admin, never a hardcoded
   path.
 
@@ -395,7 +395,7 @@ with. Only create a new app if the answer is "none".
   stored as a hash plus an encrypted copy (`DefaultPassword.password_encrypted`, key `DEFAULT_PASSWORD_KEY`).
 
 ## Attendance
-Being built brick by brick (plan: `docs/attendance.md` once exported). Done so far: gender and age networks, model changes.
+Being built brick by brick (plan: `docs/attendance.md` once exported). Done so far: gender and age networks, model changes, permissions and scoping.
 - **Models** (`attendance/models.py`): `Attendance` (one sheet per extension, date and label; `taken_by`, `uploaded_by`,
   frozen `summary` JSON that is NULL while a draft; `is_locked` is true when uploaded), `AttendanceMember` (a tick, with a
   SNAPSHOT of name, gender, age network and home extension taken at tick time; gender and age network may be blank until the
@@ -406,6 +406,13 @@ Being built brick by brick (plan: `docs/attendance.md` once exported). Done so f
   the date). A 29 February birthday counts on 1 March in a common year. Always computed as of the SHEET date.
 - **Dependencies:** `Gender` lives in `accounts/models.py` and attendance imports it; `AgeNetwork` lives in attendance.
   `accounts` never imports `attendance`.
+- **Who may do what** (`attendance/permissions.py`, the only place that decides): `Attendance.objects.for_user(actor)`
+  (super-admin and admin all sheets; coordinator their extension's; an attendance special member the DRAFTS of the extension
+  where they hold the seat; anyone else, or anyone who cannot sign in, nothing) and `can_view`, `can_create`,
+  `can_edit_draft`, `can_review`, `can_upload`, `can_reopen`, `can_print` (+ `has_attendance_role`, `require`). "Own extension"
+  means the SHEET's extension. Views start from `for_user`; services call `require(can_..., actor, sheet)` again.
+  Upload is the coordinator of that extension on a draft; an admin or super-admin may upload only while the extension has no
+  coordinator (open item in the plan, default taken). Reopen is admin and super-admin only, on an uploaded sheet.
 - **Privacy:** no names, birth dates, phone numbers or passwords in `audit_log`; individual ticks are not audited.
 - **Tests:** `attendance/tests/` (a package, so there is no `tests.py` beside it).
 
@@ -579,7 +586,8 @@ Being built brick by brick (plan: `docs/attendance.md` once exported). Done so f
   extension. Only the super-admin sees super-admin rows. Amounts are shown in pesos (`CURRENCY` in `services.py`).
 - **Scoping:** the only code that narrows data to a coordinator's extension is `_scope_people`, `_scope_attendance`
   and `_scope_tithes` in `services.py`. `User.objects.for_user(user)` now exists for people, so `_scope_people` can use it;
-  attendance and tithes still need their own helper. Nothing else changes.
+  `_scope_attendance(user)` already returns `Attendance.objects.for_user(user)` limited to UPLOADED sheets (a reopened
+  sheet drops out until it is uploaded again); tithes still need their own helper.
 - **Privacy:** tithe amounts appear only on leader dashboards and are never written to `audit_log` or
   `notification.data`. The dashboard writes nothing except today's `daily_verse` reference row.
 - **Charts:** server-rendered with Tailwind (no JavaScript, no library); colors are tokens only (`bg-accent`,

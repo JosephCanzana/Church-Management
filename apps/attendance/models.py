@@ -12,11 +12,34 @@ from django.conf import settings
 from django.db import models
 
 from apps.accounts.contact import clean_phone
-from apps.accounts.models import Gender
+from apps.accounts.models import Gender, Role, UserSpecialRole
 from apps.core.models import ArchivableModel, archived_matches_status
 from apps.core.text import clean_suffix, clean_text, person_name
 
 from .age import AgeNetwork
+
+
+class AttendanceQuerySet(models.QuerySet):
+    """Queries on sheets, narrowed by who is asking."""
+
+    def for_user(self, actor):
+        """The sheets `actor` may open. The ONE place sheets are narrowed by who is asking.
+
+        Views and services start from this, never from an ad hoc `.filter(extension=...)`.
+          super-admin, admin -> every sheet
+          coordinator        -> the sheets of their own extension
+          attendance special member -> DRAFT sheets of the extension(s) where they hold the role
+          anyone else, or someone who cannot sign in -> nothing
+        Mirrors `attendance.permissions.can_view`; a test keeps the two in step.
+        """
+        if actor is None or not getattr(actor, "is_authenticated", False) or not actor.is_active:
+            return self.none()
+        if actor.role in (Role.SUPER_ADMIN, Role.ADMIN):
+            return self.all()
+        if actor.role == Role.COORDINATOR:
+            return self.filter(extension_id=actor.extension_id) if actor.extension_id else self.none()
+        seats = UserSpecialRole.objects.filter(user=actor, role_id="attendance").values("extension_id")
+        return self.filter(status=Attendance.Status.DRAFT, extension_id__in=seats)
 
 
 class Attendance(ArchivableModel):
@@ -58,6 +81,8 @@ class Attendance(ArchivableModel):
     )
     created_at = models.DateTimeField(auto_now_add=True)
     uploaded_at = models.DateTimeField(null=True, blank=True)
+
+    objects = AttendanceQuerySet.as_manager()
 
     class Meta:
         db_table = "attendance"
