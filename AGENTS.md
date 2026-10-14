@@ -31,8 +31,7 @@ buddies, prayer requests, events, resources, notifications and audit logging.
   - The `faith` listener that turns a chapter read into a streak, MBBTAG. The dashboards show "Coming soon"
     cards for the Bible streak, goals and events until those apps have views.
   - Linking an attendance first timer to a new account (`attendance_first_timer.converted_user`, then showing it in the
-    member's attendance history), the attendance and tithes screens that check the special roles, and the admin alert
-    when a special role is given.
+    member's attendance history), and the attendance and tithes screens that check the special roles.
   - Beyond the list above, services, views and forms are mostly not built yet: features are being added on top of
     the models, one app at a time.
 
@@ -126,7 +125,7 @@ moving or reorganizing app code.
 | `tithes` | `tithes_offering`, `tithe_entry` | Entries, live totals, denomination count, finalize, reopen; members see only their own entries |
 | `buddy` | `user_buddy`, `buddy_request`, `buddy_note` | Request/accept (transactional one-partner check), notes/nudges, end partnership, view partner goals |
 | `prayer` | `prayer_request`, `prayer_reply` | Send, inbox (coordinator scope, anonymous masking), reply, done, delete |
-| `notifications` | `notification`, `notification_preference`, `notification_rule` | `notify()`, bell + list, preferences, admin-alert listener, `cleanup_notifications` |
+| `notifications` | `notification`, `notification_preference`, `notification_rule` | `notify()`, bell + list, preferences, the admin-alert receiver (`notifications/listeners.py`, applies `notification_rule` to `action_logged`), `cleanup_notifications` |
 
 Before adding a model, put it in the app whose data it shares a lifecycle
 with. Only create a new app if the answer is "none".
@@ -399,7 +398,7 @@ with. Only create a new app if the answer is "none".
   stored as a hash plus an encrypted copy (`DefaultPassword.password_encrypted`, key `DEFAULT_PASSWORD_KEY`).
 
 ## Attendance
-Being built brick by brick (plan: `docs/attendance.md` once exported). Done so far: gender and age networks, model changes, permissions and scoping, draft services, summary calculation, upload.
+Being built brick by brick (plan: `docs/attendance.md` once exported). Done so far: gender and age networks, model changes, permissions and scoping, draft services, summary calculation, upload, reopen.
 - **Models** (`attendance/models.py`): `Attendance` (one sheet per extension, date and label; `taken_by`, `uploaded_by`,
   frozen `summary` JSON that is NULL while a draft; `is_locked` is true when uploaded), `AttendanceMember` (a tick, with a
   SNAPSHOT of name, gender, age network and home extension taken at tick time; gender and age network may be blank until the
@@ -461,9 +460,25 @@ Being built brick by brick (plan: `docs/attendance.md` once exported). Done so f
   `attendance.upload` with the three counts only. Any refusal rolls the token back too, so the same form can be sent again
   once the problem is fixed. `last_attended_at` is set to the sheet date capped at TODAY in Manila, so a sheet dated in the
   future by mistake cannot give anyone a future attendance date. The view puts `new_submission_token()` in the form.
+- **Reopen** (`reopen_sheet(actor, sheet_id, *, token, request=None)` in `attendance/services.py`, returns a `ReopenResult` with
+  `sheet` and `duplicate`): admin or super-admin only (`can_reopen`), uploaded sheets only. ONE transaction, in this order:
+  (1) consume the form's one-time token (a replay returns `duplicate=True`); (2) lock the sheet row and require the uploaded
+  status (a draft or archived sheet is a `ServiceError`); (3) `require(can_reopen, ...)`; (4) set the status back to draft and
+  clear `members_present`, `first_timers_count`, `total_present`, `summary`, `uploaded_by` and `uploaded_at`; (5) log
+  `attendance.reopen` with the old counts in `before` (counts only, no free-text reason). A refusal rolls the token back too.
+  `last_attended_at` is NOT rolled back; the next upload only moves it forward. A reopened sheet leaves the dashboards (they
+  count uploaded sheets only) until it is uploaded again. This is the ONLY way to edit an uploaded sheet: reopen, change it with
+  the draft services, then the coordinator uploads again. The view puts `new_submission_token()` in the form.
+- **Admin alerts** (`notifications/listeners.py`, `notify_admin_alert`, connected to `audit.signals.action_logged`): looks up the
+  ENABLED `notification_rule` for the logged action; the recipients are the people whose role is in `notify_roles` and who can
+  still sign in, except the person who did the action and anyone who turned off in-app alerts of type `admin_alert`. The bell
+  item (`type="admin_alert"`, important) carries only `data={"action": ...}`, the entity type and id, and `audit_log_id`. It
+  runs inside `log_action`'s transaction. `notifications` never imports a feature app. Every seeded rule alerts this way, not
+  only `attendance.reopen`. The bell list does not render this type yet (open item).
 - **Privacy:** no names, birth dates, phone numbers or passwords in `audit_log`; individual ticks are not audited.
 - **Tests:** `attendance/tests/` (a package, so there is no `tests.py` beside it): `test_age`, `test_models`,
-  `test_permissions`, `test_services`, `test_summary`, `test_upload`. The gender field is tested in
+  `test_permissions`, `test_reopen`, `test_services`, `test_summary`, `test_upload`. The admin-alert receiver is tested in
+  `notifications/tests.py`. The gender field is tested in
   `accounts/tests/test_gender.py` and `mark_attended` in `accounts/tests/test_presence.py` (tests live with the code they check). In tests, never create two sheets with the same extension, date and label,
   and set `archived_at` together with `status="archived"` (a database constraint ties them).
 

@@ -33,7 +33,8 @@ from apps.core.text import clean_suffix, clean_text, title_case
 from .age import AgeNetwork, age_network_for
 from .models import Attendance, AttendanceFirstTimer, AttendanceMember
 from .permissions import (
-    can_create, can_edit_draft, can_set_taken_by, can_upload, can_view, has_attendance_role, require,
+    can_create, can_edit_draft, can_reopen, can_set_taken_by, can_upload, can_view, has_attendance_role,
+    require,
 )
 from .summary import build_summary, incomplete_rows
 
@@ -474,3 +475,72 @@ def upload_sheet(actor, sheet_id, *, token, request=None):
             },
         )
     return UploadResult(sheet=locked)
+
+
+# ------------------------------------------------------------------- the reopen
+@dataclass
+class ReopenResult:
+    """What `reopen_sheet` did.
+
+    `sheet` is the sheet as it is now. `duplicate` is True when this very form submission was already
+    processed (a double tap, two tabs): nothing was done a second time and nothing is wrong.
+    """
+
+    sheet: Attendance = None
+    duplicate: bool = False
+
+
+def reopen_sheet(actor, sheet_id, *, token, request=None):
+    """Send an uploaded sheet back to draft so it can be corrected. Returns a `ReopenResult`.
+
+    This is the ONLY way to edit an uploaded sheet: reopen, change it with the draft services above,
+    and let the coordinator upload it again. Only an admin or super-admin may (`can_reopen`).
+    Everything runs in ONE transaction, in this order, so a failure leaves the sheet untouched:
+      1. consume the form's one-time `token` (a replay returns `duplicate=True` and does nothing);
+      2. lock the sheet row and check it is uploaded (a draft or archived sheet is refused);
+      3. set the status back to draft and clear the frozen counts, `summary`, `uploaded_by`
+         and `uploaded_at`;
+      4. log `attendance.reopen` (counts only, no reason text), which the `notifications` listener
+         turns into an alert for the admins through the `notification_rule` row.
+    A person's `last_attended_at` is NOT rolled back: the next upload only moves it forward.
+    Until it is uploaded again the sheet is left out of the dashboards, which count uploaded sheets only.
+    """
+    with transaction.atomic():
+        if not consume_submission_token(token):
+            return ReopenResult(sheet=Attendance.objects.filter(pk=sheet_id).first(), duplicate=True)
+        locked = Attendance.objects.select_for_update().filter(pk=sheet_id).first()
+        if locked is None:
+            raise ServiceError("This sheet no longer exists.")
+        require(can_view, actor, locked)
+        if locked.status != Attendance.Status.UPLOADED:
+            raise ServiceError(
+                "This sheet is archived." if locked.status == Attendance.Status.ARCHIVED
+                else "This sheet is still a draft, so there is nothing to reopen."
+            )
+        require(can_reopen, actor, locked)
+
+        # Remember what was frozen, so the audit row shows what the reopen took away (counts only).
+        frozen = {
+            "members_present": locked.members_present,
+            "first_timers_count": locked.first_timers_count,
+            "total_present": locked.total_present,
+        }
+        locked.status = Attendance.Status.DRAFT
+        locked.members_present = None
+        locked.first_timers_count = None
+        locked.total_present = None
+        locked.summary = None
+        locked.uploaded_by = None
+        locked.uploaded_at = None
+        locked.save(update_fields=[
+            "status", "members_present", "first_timers_count", "total_present", "summary",
+            "uploaded_by", "uploaded_at",
+        ])
+
+        log_action(
+            "attendance.reopen", actor=actor, request=request,
+            entity_type="attendance", entity_id=locked.pk, entity_label=str(locked),
+            extension_id=locked.extension_id,
+            before=frozen, after={"status": Attendance.Status.DRAFT},
+        )
+    return ReopenResult(sheet=locked)
