@@ -7,7 +7,7 @@ attendance, tithes and offering, faith goals and Bible streaks, accountability
 buddies, prayer requests, events, resources, notifications and audit logging.
 
 **Status:** all 14 apps and 45 models exist, with migrations and seed data.
-`core.test_schema` verifies them.
+`check` and `makemigrations --check --dry-run` verify them (there is no `core.test_schema` in this repo).
 
 - **Built:**
   - Base templates, design tokens, light/dark toggle, the public landing page (a default for every block until
@@ -168,7 +168,7 @@ with. Only create a new app if the answer is "none".
 - Four join tables use a surrogate `id` plus a unique constraint instead of a
   composite primary key (Django limitation).
 - A table added in Django first (`bible_verse`, `bible_esv_cache`) must also be added to `docs/schema.sql`,
-  and the table count in `core.test_schema` updated. A column added to an existing table (for example the contact
+  A column added to an existing table (for example the contact
   fields on `app_user`) is added there too.
 
 ## Roles and routing
@@ -370,6 +370,9 @@ with. Only create a new app if the answer is "none".
   (stored as digits; `+639...` becomes `09...`). Suffix: `core.text.clean_suffix` / `suffix_case` (stored `jr`, shown
   `Jr.`). The duplicate-name check includes the suffix and only runs when a name, the suffix or the birth date changes.
   Phone and address values are NEVER written to `audit_log`: `update_user` logs only `contact_fields_changed` (field names).
+  `app_user.gender` (`accounts.models.Gender`: male, female; blank = not given) is handled the same way (`PRIVATE_FIELDS` in
+  `services/users.py`): optional, set by leaders on the people create and edit screens only (not on the member's own
+  profile in v1), saved without re-running the duplicate-name check, never written to `audit_log`.
 - **Special roles** (`services/special_roles.py`, `views/special_roles.py`): `tithes_offering` and `attendance`. The
   super-admin and admins (any extension) and a coordinator (their own) give or take them on a member's detail page. Only a
   member who can sign in (not archived, not suspended) can hold one. `assign_special_role` locks the extension row, then
@@ -390,6 +393,21 @@ with. Only create a new app if the answer is "none".
   `coordinator_area:default_password_show` (`reveal_default_password`), which shows the global member password read-only in
   the show-once dialog and writes the audit row `default_password.view` (who looked, never the password). Each default is
   stored as a hash plus an encrypted copy (`DefaultPassword.password_encrypted`, key `DEFAULT_PASSWORD_KEY`).
+
+## Attendance
+Being built brick by brick (plan: `docs/attendance.md` once exported). Done so far: gender and age networks, model changes.
+- **Models** (`attendance/models.py`): `Attendance` (one sheet per extension, date and label; `taken_by`, `uploaded_by`,
+  frozen `summary` JSON that is NULL while a draft; `is_locked` is true when uploaded), `AttendanceMember` (a tick, with a
+  SNAPSHOT of name, gender, age network and home extension taken at tick time; gender and age network may be blank until the
+  taker fills them in), `AttendanceFirstTimer` (first, middle, last name, suffix, required gender and age network, optional
+  phone and birth date; names stored lowercase and cleaned in `save()`, shown with `full_name`).
+- **Age networks** (`attendance/age.py`): `AgeNetwork` (adult 36+, young adult 25 to 35, youth 13 to 24, children 0 to 12),
+  `age_on(birth_date, on_date)` and `age_network_for(birth_date, on_date)` (None without a birth date or when it is after
+  the date). A 29 February birthday counts on 1 March in a common year. Always computed as of the SHEET date.
+- **Dependencies:** `Gender` lives in `accounts/models.py` and attendance imports it; `AgeNetwork` lives in attendance.
+  `accounts` never imports `attendance`.
+- **Privacy:** no names, birth dates, phone numbers or passwords in `audit_log`; individual ticks are not audited.
+- **Tests:** `attendance/tests/` (a package, so there is no `tests.py` beside it).
 
 ## Bible
 - **Where:** `apps/bible/`: `models.py`, `books.py` (the 66 books, OSIS ids), `osis.py` (file reader),
@@ -752,7 +770,7 @@ still in use), `archive_inactive_users`, `auto_transfer_extension`,
   admin or coordinator to the wrong area.
 
 ## Working rules for agents
-- Use Docker commands; run `check` and `core.test_schema` after any model change.
+- Use Docker commands; run `check` and `makemigrations --check --dry-run` after any model change.
 - Never edit an applied migration; add a new one.
 - Do not commit `.env`, `venv/`, `theme/tailwindcss`, media uploads or db dumps.
 - Keep `.env.example` in sync with settings.
