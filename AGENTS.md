@@ -122,7 +122,7 @@ moving or reorganizing app code.
 | `faith` | `goal`, `goal_checkin`, `user_daily_activity`, `user_streak` | Goals, check-ins, consistency, heatmap, streak rules, `complete_ended_goals` |
 | `events` | `event` | Event CRUD, change/cancel notices, `send_event_reminders` |
 | `resources` | `monthly_theme`, `monthly_resource`, `weekly_powerpoint`, `general_resource` | Monthly theme + files, weekly PPT (admin/coordinator only), general resources |
-| `attendance` | `attendance`, `attendance_member`, `attendance_first_timer` | Sheets, first timers, upload (freeze counts, update `last_attended_at`), reopen (admin) |
+| `attendance` | `attendance`, `attendance_member`, `attendance_first_timer` | Sheets, draft services (ticks, first timers, search), summary, upload (freeze counts, update `last_attended_at`), reopen (admin) |
 | `tithes` | `tithes_offering`, `tithe_entry` | Entries, live totals, denomination count, finalize, reopen; members see only their own entries |
 | `buddy` | `user_buddy`, `buddy_request`, `buddy_note` | Request/accept (transactional one-partner check), notes/nudges, end partnership, view partner goals |
 | `prayer` | `prayer_request`, `prayer_reply` | Send, inbox (coordinator scope, anonymous masking), reply, done, delete |
@@ -368,7 +368,7 @@ with. Only create a new app if the answer is "none".
   `address.ADDRESS_FIELDS` lists the parts. Rules: `check_address` (the Philippine rules, same as extensions) plus "a partly
   filled address needs a country" (`services.users.check_contact`, and in `UserForm`). Phone: `accounts/contact.py`
   (stored as digits; `+639...` becomes `09...`). Suffix: `core.text.clean_suffix` / `suffix_case` (stored `jr`, shown
-  `Jr.`). The duplicate-name check includes the suffix and only runs when a name, the suffix or the birth date changes.
+  `Jr.`). The duplicate-name check (`find_duplicate_people` in `services/users.py`, also used by attendance) includes the suffix and only runs when a name, the suffix or the birth date changes.
   Phone and address values are NEVER written to `audit_log`: `update_user` logs only `contact_fields_changed` (field names).
   `app_user.gender` (`accounts.models.Gender`: male, female; blank = not given) is handled the same way (`PRIVATE_FIELDS` in
   `services/users.py`): optional, set by leaders on the people create and edit screens only (not on the member's own
@@ -395,7 +395,7 @@ with. Only create a new app if the answer is "none".
   stored as a hash plus an encrypted copy (`DefaultPassword.password_encrypted`, key `DEFAULT_PASSWORD_KEY`).
 
 ## Attendance
-Being built brick by brick (plan: `docs/attendance.md` once exported). Done so far: gender and age networks, model changes, permissions and scoping.
+Being built brick by brick (plan: `docs/attendance.md` once exported). Done so far: gender and age networks, model changes, permissions and scoping, draft services, summary calculation.
 - **Models** (`attendance/models.py`): `Attendance` (one sheet per extension, date and label; `taken_by`, `uploaded_by`,
   frozen `summary` JSON that is NULL while a draft; `is_locked` is true when uploaded), `AttendanceMember` (a tick, with a
   SNAPSHOT of name, gender, age network and home extension taken at tick time; gender and age network may be blank until the
@@ -413,8 +413,44 @@ Being built brick by brick (plan: `docs/attendance.md` once exported). Done so f
   means the SHEET's extension. Views start from `for_user`; services call `require(can_..., actor, sheet)` again.
   Upload is the coordinator of that extension on a draft; an admin or super-admin may upload only while the extension has no
   coordinator (open item in the plan, default taken). Reopen is admin and super-admin only, on an uploaded sheet.
+- **Draft services** (`attendance/services.py`): `create_sheet`, `set_taken_by`, `search_people`, `find_possible_matches`,
+  `mark_present`, `unmark_present`, `set_member_category`, `add_first_timer`, `update_first_timer`, `remove_first_timer`.
+  Every action on a sheet's rows runs in `transaction.atomic()`, locks the sheet row (`select_for_update`), re-checks permission
+  on the LOCKED row and refuses with a `ServiceError` unless the sheet is a draft (the upload takes the same lock, so a late tick
+  from a slow device is refused). Details:
+  - `create_sheet` locks the extension row and refuses a repeat of extension, date and label (ignoring capitals, archived
+    sheets included); `created_by` and `taken_by` are the actor; logs `attendance.create` (date and label only).
+    `request` is an optional keyword for the audit row.
+  - `set_taken_by`: coordinator of the extension or an admin, on a draft (`can_set_taken_by`); the person must be that
+    extension's coordinator or an attendance special member who can sign in. Not audited.
+  - `search_people` is a DELIBERATE exception to `for_user` (a visitor belongs to another extension): it searches everyone who
+    can sign in, needs the right to edit the draft, asks for 3+ characters (fewer returns `[]`), returns at most 20 people and
+    only `id`, `name`, `home_extension` ("-" for an admin or super-admin) and `age_network`. Never birth date, phone or address.
+  - `mark_present` returns `(row, created)`. The row snapshots name, home extension, gender and age network (the age network as
+    of the SHEET date). The person's own gender and birth date win; what the taker supplies only fills blanks and is stored on
+    the row, never on the user. A row with a missing category is saved blank and flagged on the screen; the upload refuses blanks.
+    A second tick of the same person changes nothing.
+  - `add_first_timer` returns an `AddFirstTimerResult` (`first_timer` or `matches`, `needs_confirmation`). When people with the
+    same name exist and `confirm_new` is false, nothing is saved and the matches come back for the "same person?" prompt. A birth
+    date, when given, DECIDES the age network. The same first timer twice on one sheet is refused unless birth dates differ.
+    Matching an earlier first timer (conversion) is brick 10.
+  - Ticks, first timers and `taken_by` changes are working data and are NOT audited.
+- **Duplicate-name rule** (`accounts.services.users.find_duplicate_people`, one rule for user create and edit and for the
+  attendance "same person?" prompt; `find_duplicate_person` returns its first result). Same first name, last name and suffix;
+  archived people count; a match is dropped only when both sides have a birth date and they differ. `middle_name=None` means
+  any middle name (used by attendance).
+- **Summary** (`attendance/summary.py`): `build_summary(sheet)` counts the STORED rows only (never current birth dates) with two
+  grouped queries and returns a `SheetSummary` (`summary` JSON for `Attendance.summary`, `members_present`,
+  `first_timers_count`, `total_present`, `incomplete`). It serves the live preview on a draft and the value frozen at upload, so
+  they cannot disagree. `summary_for(sheet)` returns the frozen numbers for an uploaded sheet and counts live otherwise (draft or
+  reopened); screens and the print page call it. `incomplete_rows(sheet)` lists member rows missing a gender or age network
+  (the upload refuses while any exist). `summary_table(summary)` gives the display rows (Men and Women by the four age networks,
+  for first timers and for members, with totals) for the screen and the print page. A member row without a category counts in
+  `members_present` but in no cell, so a frozen summary always adds up.
 - **Privacy:** no names, birth dates, phone numbers or passwords in `audit_log`; individual ticks are not audited.
-- **Tests:** `attendance/tests/` (a package, so there is no `tests.py` beside it).
+- **Tests:** `attendance/tests/` (a package, so there is no `tests.py` beside it): `test_age`, `test_models`,
+  `test_permissions`, `test_services`, `test_summary`. In tests, never create two sheets with the same extension, date and label,
+  and set `archived_at` together with `status="archived"` (a database constraint ties them).
 
 ## Bible
 - **Where:** `apps/bible/`: `models.py`, `books.py` (the 66 books, OSIS ids), `osis.py` (file reader),
