@@ -12,6 +12,7 @@ Who is who:
 Permission table (S = special member, C = coordinator, A = admin or super-admin):
   create a draft                       S own extension | C own extension | A any
   mark members, add first timers       draft only, same people as above
+  choose who took the attendance       C own extension, draft | A any draft | S no
   read-only review                     S drafts | C own extension | A any
   save and upload                      C own extension, draft | A only while the extension has no coordinator
   open an uploaded sheet               C read-only | A read-only | S no
@@ -81,6 +82,14 @@ def can_create(actor, extension_id):
 def can_edit_draft(actor, sheet):
     """May `actor` mark people, add or change first timers and set categories on this sheet?"""
     return sheet.status == Attendance.Status.DRAFT and can_view(actor, sheet)
+
+
+def can_set_taken_by(actor, sheet):
+    """May `actor` change who took the attendance on this draft?
+
+    The coordinator of the sheet's extension, or an admin or super-admin. Never a special member.
+    """
+    return can_edit_draft(actor, sheet) and actor.role != Role.MEMBER
 
 
 def can_review(actor, sheet):

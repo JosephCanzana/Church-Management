@@ -214,24 +214,44 @@ def check_contact(data, existing=None):
         raise ServiceError(next(iter(problems.values())))
 
 
-def find_duplicate_person(first_name, middle_name, last_name, birth_date=None, *, suffix="", exclude_pk=None):
-    """Someone with the same name and suffix, or None. Archived people count.
+def find_duplicate_people(
+    first_name, middle_name, last_name, birth_date=None, *, suffix="", exclude_pk=None, limit=None,
+):
+    """People with the same name and suffix, oldest account first. Archived people count.
 
-    Two real people can share a name, so a match is ignored only when BOTH have
-    a birth date and the dates differ. `__iexact` also catches rows saved
-    before names were stored in lowercase.
+    The ONE duplicate-name rule: `find_duplicate_person` (user create and edit) and the
+    attendance "same person?" prompt both use it. Two real people can share a name, so a
+    match is ignored only when BOTH have a birth date and the dates differ. `__iexact` also
+    catches rows saved before names were stored in lowercase. `middle_name=None` means "any
+    middle name" (a first timer on an attendance sheet rarely gives one); "" means none.
+    Callers pass names already cleaned with `normalize_details` / `clean_text`.
     """
-    people = User.objects.filter(
-        first_name__iexact=first_name, middle_name__iexact=middle_name, last_name__iexact=last_name,
-        suffix__iexact=suffix,
+    people = User.objects.select_related("extension").filter(
+        first_name__iexact=first_name, last_name__iexact=last_name, suffix__iexact=suffix,
     )
+    if middle_name is not None:
+        people = people.filter(middle_name__iexact=middle_name)
     if exclude_pk is not None:
         people = people.exclude(pk=exclude_pk)
+    found = []
     for other in people.order_by("pk"):
         if birth_date and other.birth_date and birth_date != other.birth_date:
             continue
-        return other
-    return None
+        found.append(other)
+        if limit is not None and len(found) >= limit:
+            break
+    return found
+
+
+def find_duplicate_person(first_name, middle_name, last_name, birth_date=None, *, suffix="", exclude_pk=None):
+    """Someone with the same name and suffix, or None. Archived people count.
+
+    The first result of `find_duplicate_people`, which holds the rule.
+    """
+    found = find_duplicate_people(
+        first_name, middle_name, last_name, birth_date, suffix=suffix, exclude_pk=exclude_pk, limit=1,
+    )
+    return found[0] if found else None
 
 
 def duplicate_message(data, *, exclude_pk=None):
