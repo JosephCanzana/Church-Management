@@ -231,6 +231,10 @@ with. Only create a new app if the answer is "none".
   automatic archive with `archive_reason='inactive'`. Restore and unsuspend go back to `active` when
   `must_change_password` is false, otherwise to `not_activated`. Deactivate = back to `not_activated` with
   `must_change_password=True`.
+- **Last attended:** `app_user.last_attended_at` (what the inactivity job reads) is written only through
+  `services/presence.mark_attended(user_ids, on_date)`: one UPDATE that moves people with no date, or an earlier one, to
+  `on_date` and never moves anyone back. The attendance upload calls it (`accounts` never imports `attendance`, so it takes
+  plain ids and a date). It does not touch `updated_at`: attending is activity, not an edit. A reopen does not roll it back.
 - **Default passwords:** kept by the super-admin (the global ones) and by each admin, one per role beneath them
   (`DefaultPassword.owner` + `applies_to_role`); a coordinator keeps none. Stored as a hash plus an encrypted copy so the
   owner can see it again. Which one a person gets depends on who creates or resets them; the rules are under People
@@ -395,7 +399,7 @@ with. Only create a new app if the answer is "none".
   stored as a hash plus an encrypted copy (`DefaultPassword.password_encrypted`, key `DEFAULT_PASSWORD_KEY`).
 
 ## Attendance
-Being built brick by brick (plan: `docs/attendance.md` once exported). Done so far: gender and age networks, model changes, permissions and scoping, draft services, summary calculation.
+Being built brick by brick (plan: `docs/attendance.md` once exported). Done so far: gender and age networks, model changes, permissions and scoping, draft services, summary calculation, upload.
 - **Models** (`attendance/models.py`): `Attendance` (one sheet per extension, date and label; `taken_by`, `uploaded_by`,
   frozen `summary` JSON that is NULL while a draft; `is_locked` is true when uploaded), `AttendanceMember` (a tick, with a
   SNAPSHOT of name, gender, age network and home extension taken at tick time; gender and age network may be blank until the
@@ -447,9 +451,20 @@ Being built brick by brick (plan: `docs/attendance.md` once exported). Done so f
   (the upload refuses while any exist). `summary_table(summary)` gives the display rows (Men and Women by the four age networks,
   for first timers and for members, with totals) for the screen and the print page. A member row without a category counts in
   `members_present` but in no cell, so a frozen summary always adds up.
+- **Upload** (`upload_sheet(actor, sheet_id, *, token, request=None)` in `attendance/services.py`, returns an `UploadResult`
+  with `sheet` and `duplicate`): runs in ONE transaction, in this order: (1) consume the form's one-time token (a replay
+  returns `duplicate=True` and does nothing, so a double tap is quiet); (2) lock the sheet row and require a draft
+  (`_check_draft`, so an uploaded sheet is refused even with a fresh token) and `can_upload`; (3) refuse while
+  `incomplete_rows` is not empty (the message says how many) or nobody is marked (a sheet of only first timers is fine);
+  (4) `build_summary`; (5) write `members_present`, `first_timers_count`, `total_present`, `summary`, `uploaded_by`,
+  `uploaded_at` and the uploaded status; (6) `accounts.services.presence.mark_attended` for the ticked people; (7) log
+  `attendance.upload` with the three counts only. Any refusal rolls the token back too, so the same form can be sent again
+  once the problem is fixed. `last_attended_at` is set to the sheet date capped at TODAY in Manila, so a sheet dated in the
+  future by mistake cannot give anyone a future attendance date. The view puts `new_submission_token()` in the form.
 - **Privacy:** no names, birth dates, phone numbers or passwords in `audit_log`; individual ticks are not audited.
 - **Tests:** `attendance/tests/` (a package, so there is no `tests.py` beside it): `test_age`, `test_models`,
-  `test_permissions`, `test_services`, `test_summary`. In tests, never create two sheets with the same extension, date and label,
+  `test_permissions`, `test_services`, `test_summary`, `test_upload`. The gender field is tested in
+  `accounts/tests/test_gender.py` and `mark_attended` in `accounts/tests/test_presence.py` (tests live with the code they check). In tests, never create two sheets with the same extension, date and label,
   and set `archived_at` together with `status="archived"` (a database constraint ties them).
 
 ## Bible

@@ -24,16 +24,18 @@ from django.db.models import Q
 from django.utils import timezone
 
 from apps.accounts.models import Extension, Gender, Role, Status, User
+from apps.accounts.services.presence import mark_attended
 from apps.accounts.services.users import check_contact, find_duplicate_people, normalize_details
 from apps.audit.services import log_action
-from apps.core.services import ServiceError
+from apps.core.services import ServiceError, consume_submission_token
 from apps.core.text import clean_suffix, clean_text, title_case
 
 from .age import AgeNetwork, age_network_for
 from .models import Attendance, AttendanceFirstTimer, AttendanceMember
 from .permissions import (
-    can_create, can_edit_draft, can_set_taken_by, can_view, has_attendance_role, require,
+    can_create, can_edit_draft, can_set_taken_by, can_upload, can_view, has_attendance_role, require,
 )
+from .summary import build_summary, incomplete_rows
 
 DEFAULT_LABEL = "Sunday Service"
 LABEL_MAX_LENGTH = 100
@@ -392,3 +394,83 @@ def remove_first_timer(actor, sheet, first_timer_id):
         locked = _lock_draft(actor, sheet)
         removed, _ = AttendanceFirstTimer.objects.filter(attendance=locked, pk=first_timer_id).delete()
     return bool(removed)
+
+
+# ------------------------------------------------------------------ the upload
+@dataclass
+class UploadResult:
+    """What `upload_sheet` did.
+
+    `sheet` is the sheet as it is now. `duplicate` is True when this very form submission was already
+    processed (a double tap, two tabs): nothing was done a second time and nothing is wrong.
+    """
+
+    sheet: Attendance = None
+    duplicate: bool = False
+
+
+def upload_sheet(actor, sheet_id, *, token, request=None):
+    """Save a reviewed draft as the locked record, with its numbers frozen. Returns an `UploadResult`.
+
+    Only the coordinator of the sheet's extension may (`can_upload`). Everything runs in ONE
+    transaction, in this order, so a failure leaves the sheet untouched:
+      1. consume the form's one-time `token` (a replay returns `duplicate=True` and does nothing);
+      2. lock the sheet row and check it is still a draft (an uploaded sheet is refused, so a
+         second device cannot upload it again with a fresh token);
+      3. refuse while any ticked member still lacks a gender or an age network, or nobody is marked;
+      4. build the summary from the stored rows (the same function the draft preview uses);
+      5. write the three totals, `summary`, `uploaded_by`, `uploaded_at` and the uploaded status;
+      6. update `last_attended_at` of the ticked people, forward only;
+      7. log `attendance.upload` with counts only (no names).
+    A refusal rolls the token back too, so the same form can be sent again once the problem is fixed.
+    """
+    with transaction.atomic():
+        if not consume_submission_token(token):
+            return UploadResult(sheet=Attendance.objects.filter(pk=sheet_id).first(), duplicate=True)
+        locked = Attendance.objects.select_for_update().filter(pk=sheet_id).first()
+        if locked is None:
+            raise ServiceError("This sheet no longer exists.")
+        _check_draft(actor, locked)
+        require(can_upload, actor, locked)
+
+        missing = len(incomplete_rows(locked))
+        if missing:
+            raise ServiceError(
+                f"{missing} {'person still needs' if missing == 1 else 'people still need'} "
+                "a gender and an age network. Fill them in before uploading."
+            )
+        snapshot = build_summary(locked)
+        if snapshot.total_present == 0:
+            raise ServiceError("Nobody is marked present yet. Mark at least one person before uploading.")
+
+        locked.members_present = snapshot.members_present
+        locked.first_timers_count = snapshot.first_timers_count
+        locked.total_present = snapshot.total_present
+        locked.summary = snapshot.summary
+        locked.uploaded_by = actor
+        locked.uploaded_at = timezone.now()
+        locked.status = Attendance.Status.UPLOADED
+        locked.save(update_fields=[
+            "members_present", "first_timers_count", "total_present", "summary",
+            "uploaded_by", "uploaded_at", "status",
+        ])
+
+        # Forward only (see accounts.services.presence). Capped at today in Manila so a sheet dated
+        # in the future by mistake can never make someone look present in the future.
+        attended_on = min(locked.attendance_date, timezone.localdate())
+        mark_attended(
+            AttendanceMember.objects.filter(attendance=locked, user__isnull=False).values_list("user_id", flat=True),
+            attended_on,
+        )
+
+        log_action(
+            "attendance.upload", actor=actor, request=request,
+            entity_type="attendance", entity_id=locked.pk, entity_label=str(locked),
+            extension_id=locked.extension_id,
+            after={
+                "members_present": snapshot.members_present,
+                "first_timers_count": snapshot.first_timers_count,
+                "total_present": snapshot.total_present,
+            },
+        )
+    return UploadResult(sheet=locked)
