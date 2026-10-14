@@ -126,6 +126,7 @@
         {% else %}No extension{% endif %}
       </dd>
       <dt class="text-txt-secondary">Birth date</dt><dd>{{ person.birth_date|date:"j F Y"|default:"Not set" }}</dd>
+      <dt class="text-txt-secondary">Gender</dt><dd>{{ person.get_gender_display|default:"Not set" }}</dd>
       <dt class="text-txt-secondary">Email</dt>
       <dd>{% if person.email %}{{ person.email }}{% else %}Not verified{% endif %}</dd>
     </dl>

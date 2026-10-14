@@ -46,7 +46,10 @@ ROLES_WITH_EXTENSION = (Role.COORDINATOR, Role.MEMBER)
 IDENTITY_FIELDS = ("first_name", "middle_name", "last_name", "suffix", "birth_date")
 # Optional contact details. Never written to audit_log (only the field NAMES that changed).
 CONTACT_FIELDS = ("phone_number", *ADDRESS_FIELDS)
-USER_DETAIL_FIELDS = (*IDENTITY_FIELDS, *CONTACT_FIELDS)
+# Saved with the other details, but NOT part of who a person is (changing it never re-runs the
+# duplicate-name check) and never written to audit_log: only the field name is logged.
+PRIVATE_FIELDS = (*CONTACT_FIELDS, "gender")
+USER_DETAIL_FIELDS = (*IDENTITY_FIELDS, *PRIVATE_FIELDS)
 MAX_BULK = 100
 MIN_PASSWORD_LENGTH = 8
 # No 0/O, 1/l/I: generated passwords get read aloud and typed by hand.
@@ -410,6 +413,7 @@ def create_user(actor, request, data, *, token):
             last_name=data["last_name"],
             suffix=data.get("suffix", ""),
             birth_date=data.get("birth_date"),
+            gender=data.get("gender", ""),
             phone_number=data.get("phone_number", ""),
             **{name: data.get(name, "") for name in ADDRESS_FIELDS},
             role=role,
@@ -552,11 +556,11 @@ def update_user(actor, request, ref, data):
                 )
 
         if details_changed:
-            shown = [n for n in details_changed if n not in CONTACT_FIELDS]
+            shown = [n for n in details_changed if n not in PRIVATE_FIELDS]
             after = {n: getattr(person, n) for n in shown}
-            contact = [n for n in details_changed if n in CONTACT_FIELDS]
+            contact = [n for n in details_changed if n in PRIVATE_FIELDS]
             if contact:
-                after["contact_fields_changed"] = contact     # names only, never the phone or address
+                after["contact_fields_changed"] = contact     # names only, never the phone, address or gender
             _log_person(
                 "account.update", actor, request, person,
                 before={n: before[n] for n in shown}, after=after,
