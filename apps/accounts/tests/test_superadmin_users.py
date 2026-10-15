@@ -112,6 +112,7 @@ class CreateUserTests(TestCase):
             self.create(password="short")
         self.assertFalse(User.objects.filter(first_name="Ana").exists())
 
+
     def test_the_default_password_is_used_when_one_exists(self):
         DefaultPassword.objects.create(
             extension=None, applies_to_role="member", password_hash=make_password("default-pass-1"),
@@ -119,6 +120,20 @@ class CreateUserTests(TestCase):
         result = self.create()
         self.assertEqual(result.password.kind, "default")
         self.assertTrue(fresh(result.user).check_password("default-pass-1"))
+
+    def test_admin_account_inherits_the_current_global_admin_password(self):
+        DefaultPassword.objects.create(
+            owner=self.admin, applies_to_role=Role.ADMIN,
+            password_hash=make_password("older-global-pass1"),
+        )
+        newer_superadmin = make_super_admin(first_name="Newer")
+        DefaultPassword.objects.create(
+            owner=newer_superadmin, applies_to_role=Role.ADMIN,
+            password_hash=make_password("current-global-pass1"),
+        )
+        result = self.create(role=Role.ADMIN, extension=None)
+        self.assertEqual(result.password.kind, "default")
+        self.assertTrue(fresh(result.user).check_password("current-global-pass1"))
 
     def test_skip_activation_makes_a_usable_test_account(self):
         person = fresh(self.create(activated=True).user)
@@ -174,6 +189,18 @@ class CreateUserTests(TestCase):
 
 
 # ----------------------------------------------------------------- update
+class CoordinatorDefaultPasswordTests(TestCase):
+    def test_coordinator_can_view_the_global_member_password(self):
+        super_admin = make_super_admin()
+        extension = Extension.objects.create(name="Cabanatuan")
+        coordinator = make_person(extension, role=Role.COORDINATOR)
+        default = DefaultPassword(owner=super_admin, applies_to_role=Role.MEMBER)
+        default.set_plain("Global@pass1")
+        default.save()
+
+        self.assertEqual(svc.reveal_default_password(coordinator, None), "Global@pass1")
+
+
 class UpdateUserTests(TestCase):
     def setUp(self):
         self.admin = make_super_admin()
@@ -376,6 +403,23 @@ class StatusChangeTests(TestCase):
         self.assertTrue(person.must_change_password)
         logged = json.dumps(list(AuditLog.objects.values("before", "after")), default=str)
         self.assertNotIn(result.password.value, logged)
+
+    def test_resetting_an_admin_uses_the_current_global_admin_password(self):
+        DefaultPassword.objects.create(
+            owner=self.admin, applies_to_role=Role.ADMIN,
+            password_hash=make_password("older-global-pass1"),
+        )
+        newer_superadmin = make_super_admin(first_name="Newer")
+        DefaultPassword.objects.create(
+            owner=newer_superadmin, applies_to_role=Role.ADMIN,
+            password_hash=make_password("current-global-pass1"),
+        )
+        admin_account = make_person(None, role=Role.ADMIN, first_name="Managed")
+        result = svc.reset_password(
+            self.admin, None, admin_account, token=new_submission_token(),
+        )
+        self.assertEqual(result.password.kind, "default")
+        self.assertTrue(fresh(admin_account).check_password("current-global-pass1"))
 
     def test_reset_with_a_replayed_token_does_nothing(self):
         token = new_submission_token()

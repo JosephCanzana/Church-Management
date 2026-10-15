@@ -104,7 +104,7 @@ def default_password_row(actor, role):
     if actor.role == Role.SUPER_ADMIN:
         if role not in default_password_roles(actor):
             return None
-        return DefaultPassword.objects.filter(owner=actor, applies_to_role=role).first()
+        return global_default_row(role)
     if actor.role == Role.ADMIN:
         if role not in default_password_roles(actor):
             return None

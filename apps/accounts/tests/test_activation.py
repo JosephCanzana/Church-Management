@@ -14,7 +14,7 @@ from apps.accounts.services.activation import activate_account, user_needs_activ
 from apps.accounts.tests.test_accounts import PASSWORD, make_user
 from apps.audit.models import AuditLog
 
-NEW_PASSWORD = "N3w-passw0rd-Test"
+NEW_PASSWORD = "N3w@passw0rdTest"
 
 
 class ActivationPageTests(TestCase):
@@ -117,6 +117,13 @@ class ActivationPageTests(TestCase):
         self.assertEqual(response.status_code, 200)
         self.assert_unchanged(user)
 
+    def test_symbols_outside_the_activation_pattern_are_rejected(self):
+        user = self.login_not_activated()
+        for password in ("N3w-passw0rdTest", "N3w_passw0rdTest"):
+            response = self.post(new_password=password)
+            self.assertEqual(response.status_code, 200)
+            self.assert_unchanged(user)
+
     def test_all_numeric_password_is_rejected(self):
         user = self.login_not_activated()
         response = self.post(new_password="2468013579")
@@ -132,7 +139,7 @@ class ActivationPageTests(TestCase):
     def test_second_submit_changes_nothing(self):
         user = self.login_not_activated()
         self.post()
-        response = self.post(new_password="An0ther-passw0rd-Test")
+        response = self.post(new_password="An0ther@passw0rdTest")
         self.assertRedirects(response, self.member_home, fetch_redirect_response=False)
         user.refresh_from_db()
         self.assertTrue(user.check_password(NEW_PASSWORD))

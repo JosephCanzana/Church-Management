@@ -246,6 +246,8 @@ with. Only create a new app if the answer is "none".
   (`update_session_auth_hash`) and logs `account.activated` (flag logged as `needs_activation`). It is idempotent, and
   suspended or archived accounts are left alone. `ActivationRequiredMiddleware` (`accounts/middleware.py`, after
   `MessageMiddleware`) redirects everything except `accounts:activate` and `accounts:logout` while activation is pending.
+  The activation form requires at least 8 characters, lowercase and uppercase letters, a digit, and one of `@$!%*?&`;
+  spaces and other symbols are rejected.
   Tests that log a user in must create them activated (`status="active"`, `must_change_password=False`), or the
   middleware redirects every request.
 - **Profile:** `/accounts/profile/` (every role; `login_required`, `never_cache`). Services in `accounts/services/profile.py`,
@@ -389,7 +391,8 @@ with. Only create a new app if the answer is "none".
   coordinator, member; admin: coordinator, member); a coordinator keeps none. The password a person gets depends on WHO
   creates or resets them (`services.users.default_password_row`): the super-admin their own (the global default); an admin
   their own, else the global one (`global_default_row`: the most recently changed row of an active super-admin); a
-  coordinator the global MEMBER one only. No default means a generated password. Only the super-admin and admin may type a
+  coordinator the global MEMBER one only. A new or reset admin account uses the global ADMIN password. No default means a
+  generated password. Only the super-admin and admin may type a
   password or skip activation (`can_type_password`); a coordinator's new members always get the global member password
   and must change it at first sign-in. Screen: `views/default_passwords.py` with
   `accounts/people/default_passwords.html` (super-admin and admin; an admin with none of their own for a role sees that the

@@ -130,7 +130,10 @@ reset are not built yet; the link on the login page is a placeholder. People wit
 temporary or never-set password are sent to `/accounts/activate/` after logging in, and
 `ActivationRequiredMiddleware` keeps them there (only that page and logout stay open) until
 they set their own password. Activating turns `not_activated` into `active` and clears
-`must_change_password`.
+`must_change_password`. Activation passwords need at least 8 characters, lowercase and
+uppercase letters, a digit, and one of `@$!%*?&`; spaces and other symbols are rejected.
+When the super-admin creates or resets an admin account, its temporary password comes from
+the current global admin password when one is configured.
 
 After login each role lands on its own temporary page (served by the `dashboards` app,
 which only says which role it is) until the real dashboards exist. Opening another

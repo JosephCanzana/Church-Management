@@ -7,6 +7,7 @@ from django.core.exceptions import ValidationError
 
 SPECIALS = "@$!%*?&_"
 STRONG_PASSWORD_RE = re.compile(r"(?=.*[a-z])(?=.*[A-Z])(?=.*\d)(?=.*[@$!%*?&_])[A-Za-z\d@$!%*?&_]{8,}")
+ACTIVATION_PASSWORD_RE = re.compile(r"^(?=.*[a-z])(?=.*[A-Z])(?=.*\d)(?=.*[@$!%_*?&])[A-Za-z\d@$!%*?&_]{8,}$")
 STRONG_PASSWORD_MESSAGE = (
     "Use at least 8 characters with a lowercase letter, an uppercase letter, "
     f"a number and a special character ({SPECIALS}). No spaces or other symbols."
@@ -18,6 +19,15 @@ def validate_strong_password(value):
     # fullmatch, not match + `$`: `$` would let a trailing newline through.
     if not STRONG_PASSWORD_RE.fullmatch(value or ""):
         raise ValidationError(STRONG_PASSWORD_MESSAGE)
+
+
+def validate_activation_password(value):
+    """Raise ValidationError unless `value` matches the activation password rule."""
+    if not ACTIVATION_PASSWORD_RE.fullmatch(value or ""):
+        raise ValidationError(
+            "Use at least 8 characters with a lowercase letter, an uppercase letter, "
+            "a number and one of @$!%*?&_. No spaces or other symbols."
+        )
 
 
 def generate_strong_password(length=12):

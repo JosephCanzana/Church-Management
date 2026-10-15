@@ -23,7 +23,7 @@ from .address import ADDRESS_FIELDS, COUNTRIES, HIERARCHY, PHILIPPINES, canonica
 from .contact import PHONE_MESSAGE, clean_phone, is_valid_phone
 from .models import Extension, Gender, Role, Status, User
 from .permissions import assignable_roles, can_type_password
-from .validators import validate_strong_password, STRONG_PASSWORD_MESSAGE
+from .validators import validate_activation_password, validate_strong_password, STRONG_PASSWORD_MESSAGE
 
 # One message for every login failure, so the page never reveals whether the
 # account exists, the password was wrong, or the account is archived.
@@ -633,6 +633,7 @@ class ActivationForm(forms.Form):
         value = self.cleaned_data["new_password"]
         if self.user.check_password(value):
             raise ValidationError("Choose a password different from your temporary one.")
+        validate_activation_password(value)
         validate_password(value, self.user)  # raises ValidationError with every problem
         return value
 
