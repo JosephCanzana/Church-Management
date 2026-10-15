@@ -23,6 +23,8 @@ urlpatterns = [
     path("sheets/<int:pk>/category/", views.sheet_member_category, name="sheet_member_category"),
     path("sheets/<int:pk>/first-timers/add/", views.sheet_first_timer_add, name="sheet_first_timer_add"),
     path("sheets/<int:pk>/first-timers/remove/", views.sheet_first_timer_remove, name="sheet_first_timer_remove"),
+    # Brick 10: a first timer becomes a member (shows the new password once).
+    path("sheets/<int:pk>/first-timers/convert/", views.sheet_first_timer_convert, name="sheet_first_timer_convert"),
     path("sheets/<int:pk>/upload/", views.sheet_upload, name="sheet_upload"),
     path("sheets/<int:pk>/reopen/", views.sheet_reopen, name="sheet_reopen"),
 ]

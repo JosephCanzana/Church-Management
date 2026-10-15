@@ -17,6 +17,7 @@ Permission table (S = special member, C = coordinator, A = admin or super-admin)
   save and upload                      C own extension, draft | A only while the extension has no coordinator
   open an uploaded sheet               C read-only | A read-only | S no
   reopen an uploaded sheet             A only
+  convert a first timer to a member    C own extension | A any (draft or uploaded sheet) | S no
   print or save as PDF                 any sheet the person can open
 
 Page-level checks for the screens (brick 8): `can_use_area` (may this person open the attendance screens at all?)
@@ -121,6 +122,20 @@ def can_upload(actor, sheet):
 def can_reopen(actor, sheet):
     """May `actor` send an uploaded sheet back to draft? Admin or super-admin only."""
     return _signed_in(actor) and actor.role in _ADMINS and sheet.status == Attendance.Status.UPLOADED
+
+
+def can_convert(actor, sheet):
+    """May `actor` turn a first timer of this sheet into a member account (brick 10)?
+
+    The coordinator of the sheet's extension, or an admin or super-admin, on a draft or an uploaded
+    sheet. Never a special member, and never an archived sheet. Conversion creates an account, so it
+    is a people action as much as an attendance one.
+    """
+    return (
+        can_view(actor, sheet)
+        and actor.role != Role.MEMBER
+        and sheet.status in (Attendance.Status.DRAFT, Attendance.Status.UPLOADED)
+    )
 
 
 def can_print(actor, sheet):

@@ -23,6 +23,7 @@ back to the sheet, which then shows the truth (a locked sheet opens on the revie
 from functools import wraps
 
 from django.contrib import messages
+from django.contrib.auth.decorators import login_required
 from django.core.exceptions import PermissionDenied
 from django.core.paginator import Paginator
 from django.db.models import Count
@@ -41,6 +42,10 @@ from .age import AgeNetwork
 from .forms import FirstTimerForm, SheetCreateForm, SheetFilterForm
 from .models import Attendance, AttendanceFirstTimer, AttendanceMember
 from .summary import incomplete_rows, summary_for, summary_table
+
+CONVERT_RESULT_TEMPLATE = "attendance/convert_result.html"
+MINE_TEMPLATE = "attendance/mine.html"
+MINE_PAGE_SIZE = 25
 
 PAGE_SIZE = 25
 
@@ -355,6 +360,9 @@ def _workspace_context(request, sheet, form=None, pending=None):
         "can_upload": can_upload,
         "upload_blocker": blocker,
         "submit_token": new_submission_token() if can_upload else "",
+        # Brick 10: the convert buttons (see attendance/_convert_button.html and _previous_visits.html).
+        "can_convert": permissions.can_convert(request.user, sheet),
+        "convert_token": new_submission_token() if permissions.can_convert(request.user, sheet) else "",
     }
     context.update(_search_context(request, sheet, members))
     return context
@@ -424,6 +432,9 @@ def sheet_review(request, pk):
             else "Mark at least one person before uploading." if summary.total_present == 0 else ""
         ),
         "submit_token": new_submission_token() if (can_upload or permissions.can_reopen(request.user, sheet)) else "",
+        # Brick 10: the convert buttons on the first-timer lines.
+        "can_convert": permissions.can_convert(request.user, sheet),
+        "convert_token": new_submission_token() if permissions.can_convert(request.user, sheet) else "",
     })
 
 
@@ -582,6 +593,7 @@ def sheet_first_timer_add(request, pk):
                 pending = {
                     "name": f"{data['first_name']} {data['last_name']}".strip(),
                     "matches": result.matches,
+                    "previous_visits": result.previous_visits,
                     "gender": data["gender"],
                     "age_network": data["age_network"],
                     # Posted back by "no, a new person", so nothing the taker typed is lost.
@@ -589,6 +601,8 @@ def sheet_first_timer_add(request, pk):
                 }
             else:
                 messages.success(request, f"First timer added: {result.first_timer.full_name}.")
+                if result.previous_visits:  # only after "no, a new person": still worth a nudge
+                    messages.info(request, "This name visited before. Convert them to a member to keep their history.")
                 return _back(request, sheet, "#first-timers")
     return _render_workspace(request, sheet, form=form, pending=pending)
 
@@ -624,3 +638,59 @@ def sheet_reopen(request, sheet):
         messages.info(request, "This sheet was already reopened.")
     else:
         messages.success(request, "Sheet reopened. Correct it, then the coordinator uploads it again.")
+
+
+# ------------------------------------------------- first timer to member (brick 10)
+@sheet_action("#first-timers")
+def sheet_first_timer_convert(request, sheet):
+    """Turn a first timer into a member account (coordinator or admin; see `services.convert_first_timer`).
+
+    The first timer may be on THIS sheet or an EARLIER one (from the "visited before" prompt); the service
+    checks permission on the first timer's own sheet. The new password is shown ONCE, so this view renders
+    a page with the show-once dialog instead of redirecting (like the people screens that show a password).
+    A one-time token makes a double tap convert once. With `mark_here` (the prompt for an earlier visit) the
+    new member is also ticked present on this draft, with the gender and age network typed for this visit.
+    """
+    result = services.convert_first_timer(
+        request.user, _to_int(request.POST.get("first_timer_id")),
+        token=request.POST.get("submit_token", ""), request=request,
+    )
+    if result.duplicate:
+        messages.warning(request, "That form was already used. Reload the page and try again.")
+        return None
+    member = result.user
+    if request.POST.get("mark_here") and sheet.status == Attendance.Status.DRAFT:
+        try:
+            services.mark_present(
+                request.user, sheet, member,
+                gender=request.POST.get("gender") or None, age_network=request.POST.get("age_network") or None,
+            )
+        except (ServiceError, PermissionDenied) as exc:
+            messages.warning(request, f"The account was created, but they were not ticked present: {exc}")
+    secrets = {
+        "title": "New member created",
+        "message": "Give them this password now. It is shown only once.",
+        "headers": ["Name", "Account ID", "Password"],
+        "rows": [[member.full_name, member.account_id, result.password.display]],
+    }
+    return render(request, CONVERT_RESULT_TEMPLATE, {
+        "sheet": sheet, "member": member, "secrets": secrets, "sheet_url": _sheet_url(request, sheet),
+    })
+
+
+# ------------------------------------------------------- my attendance (brick 14)
+@login_required
+@never_cache
+@require_http_methods(["GET"])
+def my_attendance(request):
+    """The signed-in person's own attendance history: every role, no sheet access needed.
+
+    Mounted ONLY at the member root (`attendance:mine`), never under a role area, so it never mixes with
+    sheet management and skips `attendance_screen` on purpose (that guard is about sheets). It reads
+    `request.user` and nothing else: no id comes from the URL, the query string or a form, so nobody can
+    open someone else's history. Anonymous visitors go to sign in; archived or suspended people cannot
+    sign in at all. Uploaded sheets only (`services.member_attendance_history`).
+    """
+    entries = services.member_attendance_history(request.user)
+    page = Paginator(entries, MINE_PAGE_SIZE).get_page(request.GET.get("page"))
+    return render(request, MINE_TEMPLATE, {"page": page, "total": len(entries), "querystring": ""})

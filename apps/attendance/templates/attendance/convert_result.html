@@ -1,0 +1,21 @@
+<!--
+attendance/convert_result.html
+Shown right after a first timer was converted into a member (attendance.views.sheet_first_timer_convert).
+Renders the show-once password dialog from the `secrets` context value (ui.js opens it from "secrets-data"
+and removes the element), so the password exists only in this response. The page is never cached
+(`attendance_screen`). Extends base_app.html and fills: title, page_title, content.
+Context: sheet, member, secrets, sheet_url.
+-->
+{% extends 'base_app.html' %}
+
+{% block title %}New member{% endblock %}
+{% block page_title %}New member{% endblock %}
+
+{% block content %}
+<div class="card max-w-xl">
+  <p class="text-base text-txt-primary">{{ member.full_name }} is now a member. Their first visit stays in their history.</p>
+  <p class="mt-1 text-sm text-txt-secondary">They must change their password the first time they sign in.</p>
+  <a class="btn btn-primary mt-4" href="{{ sheet_url }}">Back to the sheet</a>
+</div>
+{{ secrets|json_script:"secrets-data" }}
+{% endblock %}

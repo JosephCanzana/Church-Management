@@ -74,6 +74,8 @@ NAV_ITEMS = [
     NavItem("Attendance", "admin_area:sheet_list", "clipboard-document-check", roles=(ADMIN,)),
     NavItem("Attendance", "coordinator_area:sheet_list", "clipboard-document-check", roles=(COORDINATOR,)),
     NavItem("Attendance", "attendance:sheet_list", "clipboard-document-check", roles=(MEMBER,)),
+    # Personal history (brick 14): every role, member-root URL, separate from the sheet screens above.
+    NavItem("My attendance", "attendance:mine", "calendar-days"),
     NavItem("Tithes", "tithes:list", "banknotes"),
     NavItem("Resources", "resources:list", "folder-open"),
     NavItem("Settings", "theming:settings", "cog-6-tooth"),
