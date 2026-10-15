@@ -132,3 +132,24 @@ class BibleChapterRead(models.Model):
                 name="uq_bible_chapter_read",
             ),
         ]
+        
+class BibleBookmark(models.Model):
+    """Where a person is currently reading: one row per person, kept on the account.
+
+    Moved forward when they press Next (or "I'm done") and set by hand with the
+    Bookmark button. Not tied to a version: the version is a per-device cookie.
+    """
+
+    user = models.OneToOneField(settings.AUTH_USER_MODEL, on_delete=models.CASCADE, related_name="bible_bookmark")
+    book = models.CharField(max_length=10)  # OSIS id
+    chapter = models.PositiveSmallIntegerField()
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        db_table = "bible_bookmark"
+        constraints = [
+            models.CheckConstraint(condition=Q(chapter__gte=1), name="bible_bookmark_positive_chapter"),
+        ]
+
+    def __str__(self):
+        return f"{self.user_id} at {self.book} {self.chapter}"

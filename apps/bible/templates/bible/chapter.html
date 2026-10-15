@@ -2,9 +2,9 @@
 Extends base_app.html and fills: page_title, content.
 Context: version, statuses, book (Book), chapter (int), text (ChapterText or None),
 locked_reason (str, set when the version is locked), missing (bool, local text not imported),
-already_read (bool), previous / following (dict with book, chapter, url, or None).
-There is no separate Mark as read button: the Next button posts to bible:mark_read with next set to the following chapter's url,
-so moving on counts as reading. The mark_read view must redirect to a safe "next" when one is sent. -->
+already_read (bool), previous / following (dict with book, chapter, url, or None), bookmarked (bool).
+Next posts to bible:finish (after=next), which counts the chapter as read, moves the bookmark and redirects to the following chapter.
+"I'm done for now" posts to the same url without after. The Bookmark button posts to bible:bookmark. -->
 {% extends "base_app.html" %}
 {% block title %}{{ book.name }} {{ chapter }}{% endblock %}
 {% block page_title %}{{ book.name }} {{ chapter }}{% endblock %}
@@ -41,6 +41,14 @@ so moving on counts as reading. The mark_read view must redirect to a safe "next
           {% if already_read %}
             <span class="inline-flex items-center gap-1.5 rounded-md bg-success/15 px-2.5 py-1 text-sm font-medium text-success">{% include "includes/icon.html" with name="check" class="size-4" %}Read today</span>
           {% endif %}
+          {% if bookmarked %}
+            <span class="inline-flex items-center gap-1.5 rounded-md bg-accent/15 px-2.5 py-1 text-sm font-medium text-accent">{% include "includes/icon.html" with name="bookmark" class="size-4" %}Bookmarked</span>
+          {% elif not locked_reason and not missing %}
+            <form method="post" action="{% url 'bible:bookmark' book.osis_id chapter %}">
+              {% csrf_token %}
+              <button type="submit" class="btn btn-secondary min-h-11 text-sm">Bookmark</button>
+            </form>
+          {% endif %}
           <span class="rounded-md bg-txt-primary/10 px-2.5 py-1 text-sm font-medium text-txt-secondary">{{ version.label }}</span>
         </div>
       </header>
@@ -53,8 +61,12 @@ so moving on counts as reading. The mark_read view must redirect to a safe "next
     </article>
   {% endif %}
 
-  {% if not locked_reason and not missing and not already_read and following %}
-    <p class="text-center text-sm text-txt-secondary">Going to the next chapter marks this one as read.</p>
+  {% if not locked_reason and not missing and following %}
+    <form method="post" action="{% url 'bible:finish' book.osis_id chapter %}" class="text-center">
+      {% csrf_token %}
+      <button type="submit" class="btn btn-secondary min-h-11">I'm done for now</button>
+    </form>
+    {% if not already_read %}<p class="text-center text-sm text-txt-secondary">Going to the next chapter counts this one as read.</p>{% endif %}
   {% endif %}
 
   <nav class="grid grid-cols-2 gap-3" aria-label="Chapter navigation">
@@ -65,17 +77,16 @@ so moving on counts as reading. The mark_read view must redirect to a safe "next
     </div>
     <div>
       {% if following %}
-        {% if locked_reason or missing or already_read %}
+        {% if locked_reason or missing %}
           <a href="{{ following.url }}" class="btn btn-primary min-h-12 w-full justify-end"><span class="truncate">{{ following.book.name }} {{ following.chapter }}</span>{% include "includes/icon.html" with name="chevron-right" class="size-4 shrink-0" %}</a>
         {% else %}
-          <form method="post" action="{% url 'bible:mark_read' book.osis_id chapter %}">
+          <form method="post" action="{% url 'bible:finish' book.osis_id chapter %}">
             {% csrf_token %}
-            <input type="hidden" name="next" value="{{ following.url }}">
-            <button type="submit" class="btn btn-primary min-h-12 w-full justify-end"><span class="truncate">{{ following.book.name }} {{ following.chapter }}</span>{% include "includes/icon.html" with name="chevron-right" class="size-4 shrink-0" %}</button>
+            <button type="submit" name="after" value="next" class="btn btn-primary min-h-12 w-full justify-end"><span class="truncate">{{ following.book.name }} {{ following.chapter }}</span>{% include "includes/icon.html" with name="chevron-right" class="size-4 shrink-0" %}</button>
           </form>
         {% endif %}
-      {% elif not locked_reason and not missing and not already_read %}
-        <form method="post" action="{% url 'bible:mark_read' book.osis_id chapter %}">
+      {% elif not locked_reason and not missing %}
+        <form method="post" action="{% url 'bible:finish' book.osis_id chapter %}">
           {% csrf_token %}
           <button type="submit" class="btn btn-primary min-h-12 w-full justify-end"><span>Finish</span>{% include "includes/icon.html" with name="check" class="size-4 shrink-0" %}</button>
         </form>

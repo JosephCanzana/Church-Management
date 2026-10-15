@@ -77,6 +77,7 @@ def chapter_view(request, book, chapter):
         "locked_reason": "",
         "missing": False,
         "already_read": services.chapter_read_today(request.user, book.osis_id, chapter),
+        "bookmarked": _is_bookmarked(request.user, book.osis_id, chapter),
     }
     previous, following = neighbor_chapters(book.osis_id, chapter)
     context["previous"] = _chapter_link(previous)
@@ -101,6 +102,10 @@ def _chapter_link(target):
         "url": reverse("bible:chapter", args=[osis_id, number]),
     }
 
+def _is_bookmarked(user, osis_id, chapter):
+    """True when the person's bookmark sits on this chapter."""
+    bookmark = services.get_bookmark(user)
+    return bool(bookmark and bookmark.book == osis_id and bookmark.chapter == chapter)
 
 @role_required(*ALL_ROLES)
 @require_POST
@@ -124,22 +129,39 @@ def set_version_view(request):
     )
     return response
 
-
 @role_required(*ALL_ROLES)
 @require_POST
-def mark_read_view(request, book, chapter):
-    """Record that this person read the chapter today."""
+def finish_chapter_view(request, book, chapter):
+    """Count the chapter as read and move the bookmark on; "Next" and "I'm done" both post here.
+
+    ``after=next`` goes straight to the following chapter. The target is worked
+    out here, never taken from the form, so there is no redirect to validate.
+    """
     book = _book_or_404(book)
     if not 1 <= chapter <= book.chapters:
         raise Http404("Unknown chapter")
     version = _current_version(request)
     try:
-        _, created = services.record_chapter_read(request.user, version.code, book.osis_id, chapter)
+        _, _, following = services.finish_chapter(request.user, version.code, book.osis_id, chapter)
     except BibleError as error:
         messages.error(request, str(error))
+        return redirect("bible:chapter", book=book.osis_id, chapter=chapter)
+    if request.POST.get("after") == "next" and following:
+        return redirect("bible:chapter", book=following[0], chapter=following[1])
+    if following is None:
+        messages.success(request, "You have finished the whole Bible. Well done!")
     else:
-        if created:
-            messages.success(request, f"{book.name} {chapter} marked as read.")
-        else:
-            messages.info(request, f"{book.name} {chapter} is already marked as read today.")
+        messages.info(request, f"Saved. Your bookmark is at {get_book(following[0]).name} {following[1]}.")
+    return redirect("bible:chapter", book=book.osis_id, chapter=chapter)
+
+
+@role_required(*ALL_ROLES)
+@require_POST
+def bookmark_view(request, book, chapter):
+    """Put the bookmark on this chapter without counting it as read."""
+    book = _book_or_404(book)
+    if not 1 <= chapter <= book.chapters:
+        raise Http404("Unknown chapter")
+    services.save_bookmark(request.user, book.osis_id, chapter)
+    messages.success(request, f"Bookmarked {book.name} {chapter}.")
     return redirect("bible:chapter", book=book.osis_id, chapter=chapter)

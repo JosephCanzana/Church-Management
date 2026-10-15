@@ -10,5 +10,6 @@ urlpatterns = [
     path("version/", views.set_version_view, name="set_version"),
     path("<str:book>/", views.book_view, name="book"),
     path("<str:book>/<int:chapter>/", views.chapter_view, name="chapter"),
-    path("<str:book>/<int:chapter>/read/", views.mark_read_view, name="mark_read"),
+        path("<str:book>/<int:chapter>/finish/", views.finish_chapter_view, name="finish"),
+    path("<str:book>/<int:chapter>/bookmark/", views.bookmark_view, name="bookmark"),
 ]

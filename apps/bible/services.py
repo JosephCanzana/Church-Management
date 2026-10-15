@@ -10,9 +10,9 @@ from django.db import transaction
 from django.utils import timezone
 
 from . import esv, switches
-from .books import BOOKS_BY_ID
+from .books import BOOKS_BY_ID, neighbor_chapters
 from .errors import BibleError, TextNotImported, VersionLocked  # noqa: F401 (re-exported for callers)
-from .models import BibleChapterRead, BibleVerse
+from .models import BibleChapterRead, BibleVerse, BibleBookmark
 from .signals import chapter_read
 from .versions import DEFAULT_VERSION, SOURCE_ESV, VERSIONS, VERSIONS_BY_CODE
 
@@ -147,3 +147,29 @@ def record_chapter_read(user, version_code, osis_id, chapter):
         if created:
             chapter_read.send(sender=BibleChapterRead, entry=entry)
     return entry, created
+
+def get_bookmark(user):
+    """The person's bookmark (BibleBookmark) or None when they have none yet."""
+    return BibleBookmark.objects.filter(user=user).first()
+
+
+def save_bookmark(user, osis_id, chapter):
+    """Point the person's single bookmark at a chapter; raise BibleError for a bad reference."""
+    validate_reference(osis_id, chapter)
+    bookmark, _ = BibleBookmark.objects.update_or_create(
+        user=user, defaults={"book": osis_id, "chapter": chapter},
+    )
+    return bookmark
+
+
+def finish_chapter(user, version_code, osis_id, chapter):
+    """Next / "I'm done": count the chapter as read and move the bookmark on.
+
+    Returns (entry, created, following) where ``following`` is (osis_id, chapter)
+    or None on Revelation 22. On the last chapter the bookmark stays where it is.
+    """
+    with transaction.atomic():
+        entry, created = record_chapter_read(user, version_code, osis_id, chapter)
+        _, following = neighbor_chapters(osis_id, chapter)
+        save_bookmark(user, *(following or (osis_id, chapter)))
+    return entry, created, following

@@ -5,9 +5,9 @@ from unittest import mock
 from django.test import SimpleTestCase, TestCase, override_settings
 
 from apps.bible.books import neighbor_chapters
-from apps.bible.models import BibleChapterRead
+from apps.bible.models import BibleChapterRead, BibleBookmark
 from apps.bible.services import (
-    BibleError, TextNotImported, VersionLocked, get_chapter, record_chapter_read, version_statuses,
+    BibleError, TextNotImported, VersionLocked, get_chapter, record_chapter_read, version_statuses, get_bookmark, finish_chapter
 )
 from apps.bible.signals import chapter_read
 
@@ -123,3 +123,32 @@ class RecordChapterReadTests(TestCase):
         # ESV cache while ESV is locked.
         _, created = record_chapter_read(self.user, "ESV", "Gen", 1)
         self.assertTrue(created)
+
+class FinishChapterTests(TestCase):
+    """Next counts the chapter as read and moves the bookmark."""
+
+    def setUp(self):
+        self.user = make_user()
+
+    def test_counts_read_and_moves_bookmark(self):
+        _, created, following = finish_chapter(self.user, "KJV", "Gen", 1)
+        self.assertTrue(created)
+        self.assertEqual(following, ("Gen", 2))
+        bookmark = get_bookmark(self.user)
+        self.assertEqual((bookmark.book, bookmark.chapter), ("Gen", 2))
+
+    def test_crosses_books_and_keeps_one_row(self):
+        finish_chapter(self.user, "KJV", "Gen", 50)
+        self.assertEqual((get_bookmark(self.user).book, get_bookmark(self.user).chapter), ("Exod", 1))
+        self.assertEqual(BibleBookmark.objects.filter(user=self.user).count(), 1)
+
+    def test_last_chapter_keeps_bookmark(self):
+        _, _, following = finish_chapter(self.user, "KJV", "Rev", 22)
+        self.assertIsNone(following)
+        self.assertEqual(get_bookmark(self.user).chapter, 22)
+
+    def test_repeat_does_not_count_twice_but_still_moves(self):
+        finish_chapter(self.user, "KJV", "Gen", 1)
+        _, created, _ = finish_chapter(self.user, "KJV", "Gen", 1)
+        self.assertFalse(created)
+        self.assertEqual(BibleChapterRead.objects.count(), 1)
