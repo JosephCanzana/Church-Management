@@ -732,9 +732,10 @@ def _reset_password(actor, request, ref, typed=""):
             raise ServiceError("Restore this person before resetting their password.")
         _refuse_self(actor, person, "reset the password of")
         info = _set_initial_password(actor, person, typed)
+        person.status = Status.NOT_ACTIVATED
         person.must_change_password = True
         # Changing the hash also signs the person out of every open session.
-        person.save(update_fields=["password", "must_change_password", "updated_at"])
+        person.save(update_fields=["password", "status", "must_change_password", "updated_at"])
         _log_person("account.password_reset", actor, request, person,
                     after={"needs_activation": True, "how_set": info.kind})
     return person, info
@@ -797,6 +798,50 @@ def _clear_special_roles(person):
 
     removed, _ = UserSpecialRole.objects.filter(user=person).delete()
     return removed
+
+
+def auto_transfer_visitor(actor, request, person_id, target_extension_id, on_date):
+    """Move an active member after attendance has confirmed repeated visits to a new extension.
+
+    The attendance service decides whether the visit threshold has been reached. This accounts-owned
+    operation rechecks the member and extension under locks, moves the open history row, clears
+    extension-specific roles, and records the automatic transfer without importing attendance.
+    """
+    if not getattr(actor, "is_authenticated", False) or not actor.is_active:
+        raise PermissionDenied("A signed-in leader must upload attendance before an automatic transfer.")
+    if actor.role not in (Role.SUPER_ADMIN, Role.ADMIN) and not (
+            actor.role == Role.COORDINATOR and actor.extension_id == target_extension_id):
+        raise PermissionDenied("You cannot record an automatic transfer for this extension.")
+
+    with transaction.atomic():
+        current_extension_id = User.objects.filter(pk=person_id).values_list("extension_id", flat=True).first()
+        if current_extension_id is None:
+            return False
+        extensions = _lock_extensions([current_extension_id, target_extension_id])
+        target = extensions.get(target_extension_id)
+        person = User.objects.select_for_update().filter(pk=person_id).first()
+        if person is None or person.extension_id != current_extension_id:
+            return False
+        if target is None or target.is_archived or person.extension_id == target.pk:
+            return False
+        if person.role != Role.MEMBER or person.status != Status.ACTIVE:
+            return False
+
+        old_extension_id = person.extension_id
+        cleared = _clear_special_roles(person)
+        person.extension = target
+        person.save(update_fields=["extension", "updated_at"])
+        UserExtensionHistory.objects.filter(user=person, to_date__isnull=True).update(to_date=on_date)
+        UserExtensionHistory.objects.create(
+            user=person, extension=target, from_date=on_date,
+            reason=UserExtensionHistory.Reason.AUTO_TRANSFER,
+        )
+        _log_person(
+            "account.extension_auto_transfer", actor, request, person,
+            before={"extension_id": old_extension_id},
+            after={"extension_id": target.pk, "special_roles_cleared": cleared},
+        )
+    return True
 
 
 def move_person(actor, request, person_ref, target_ref, *, confirmed=False, expected_from=None):

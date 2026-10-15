@@ -106,7 +106,10 @@ class ConvertTests(TestCase):
         self.assertIsNone(self.ft.converted_user_id)
 
     def test_someone_with_the_same_name_is_refused_and_nothing_is_created(self):
-        person(Role.MEMBER, self.b, first="ana", last="lopez")
+        person(
+            Role.MEMBER, self.b, first="ana", last="lopez",
+            birth_date=date(2008, 3, 4),
+        )
         before = User.objects.count()
         with self.assertRaises(ServiceError):
             self.convert()
@@ -128,6 +131,18 @@ class ConvertTests(TestCase):
         with self.assertRaises(ServiceError):
             services.remove_first_timer(self.coord, self.sheet, self.ft.pk)
         self.assertTrue(AttendanceFirstTimer.objects.filter(pk=self.ft.pk).exists())
+
+    def test_conversion_response_renders_the_uncached_welcome_slip(self):
+        self.client.force_login(self.coord)
+        response = self.client.post(
+            reverse("coordinator_area:sheet_first_timer_convert", args=[self.sheet.pk]),
+            {"first_timer_id": self.ft.pk, "submit_token": new_submission_token()},
+        )
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.context["welcome_slip"]["account_id"], response.context["member"].account_id)
+        self.assertContains(response, "Print 58 mm welcome slip")
+        self.assertContains(response, "@page { size: 58mm auto")
+        self.assertEqual(response["Cache-Control"], "max-age=0, no-cache, no-store, must-revalidate, private")
 
     # --- visited before ---------------------------------------------------
     def test_a_second_visit_prompts_instead_of_saving(self):

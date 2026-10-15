@@ -1,11 +1,8 @@
 <!--
 attendance/_convert_button.html
-The "Make a member" button for ONE first-timer line. Include it inside the first-timer list of
-sheet_workspace.html and sheet_review.html:
-    {% if can_convert and not ft.converted_user_id %}{% include 'attendance/_convert_button.html' with ft=ft %}{% endif %}
-    {% if ft.converted_user_id %}<span class="text-sm text-txt-secondary">Member</span>{% endif %}
-Needs in the context: sheet, convert_token (from _workspace_context / sheet_review). POSTs to
-sheet_first_timer_convert; the confirm dialog is ui.js's data-confirm. The one-time token stops a double tap.
+The "Make a member" button for one first-timer line. The workspace and review templates include it only
+for an unconverted first timer when the current user may convert. Needs: sheet, ft, convert_token.
+POSTs to sheet_first_timer_convert; the confirm dialog is ui.js's data-confirm. The one-time token stops a double tap.
 -->
 {% load people_tags %}
 <form method="post" action="{% role_url 'sheet_first_timer_convert' sheet.pk %}">

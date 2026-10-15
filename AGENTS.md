@@ -25,17 +25,14 @@ buddies, prayer requests, events, resources, notifications and audit logging.
     switches for every version (`/superadmin/site-settings/`, see Bible), and the verse of the day.
   - Dashboards: one page per role (super-admin, admin, coordinator, member) with the verse of the day, continue
     reading, quick links and, for leaders, counts and charts (see Dashboards).
-  - Attendance (bricks 1 to 10 of the plan, plus the "My attendance" page of brick 14): gender and age networks, model
-    changes, permissions and scoping, draft services, summary, upload, reopen, the sheet screens for every role, the A4
-    print page, first timer to member conversion and the personal history (see Attendance).
+  - Attendance (bricks 1 to 14): gender and age networks, model changes, permissions and scoping, draft services,
+    summary, upload, reopen, the sheet screens for every role, A4 print page, first timer conversion, repeat-visitor
+    auto-transfer, reset-to-activation, 58 mm welcome slip and personal history (see Attendance).
 - **Not built yet:**
-  - Forgot/reset password (the "Forgot password?" link on the login page is a placeholder, `href="#"`) and
-    brute-force login throttling.
+  - Brute-force login throttling.
   - The `faith` listener that turns a chapter read into a streak, MBBTAG. The dashboards show "Coming soon"
     cards for the Bible streak, goals and events until those apps have views.
-  - Attendance bricks 11 to 13: visitor auto-transfer, the account changes (reset sets "not activated", easier login)
-    and the POS58 welcome slip. Brick 14 has its page, service and tests; check it against the plan's "Done when" line.
-    The tithes screens.
+  - The tithes screens.
   - Beyond the list above, services, views and forms are mostly not built yet: features are being added on top of
     the models, one app at a time.
 
@@ -402,7 +399,13 @@ with. Only create a new app if the answer is "none".
   stored as a hash plus an encrypted copy (`DefaultPassword.password_encrypted`, key `DEFAULT_PASSWORD_KEY`).
 
 ## Attendance
-Being built brick by brick (plan: `docs/attendance.md` once exported). Done so far: gender and age networks, model changes, permissions and scoping, draft services, summary calculation, upload, reopen, the screens, the A4 print page, first timer to member conversion (brick 10) and the "My attendance" page (brick 14).
+Bricks 1 to 14 are implemented. In addition to the sheet workflow, first-timer conversion and "My attendance":
+- **Repeat visitors (brick 11):** after three distinct uploaded sheets at an extension, an active member whose home extension differs is transferred there. A draft or a single visit never changes their extension. The transfer is performed by `accounts.services.users.auto_transfer_visitor`, updates `user_extension_history` with reason `auto_transfer`, clears extension-specific roles, and logs extension ids only.
+- **Account reset (brick 12):** a reset sets `status=not_activated` and `must_change_password=True`; the account id remains the sign-in identifier and activation is required on the next login. The password hash change ends existing sessions.
+- **Welcome slip (brick 13):** first-timer conversion offers a browser-printable 58 mm receipt. It is rendered only in the uncached one-time response; a generated password can be printed, while default/typed credentials require the leader to hand over the password separately. No printer driver or server-side PDF dependency is used.
+- **My attendance (brick 14):** own uploaded-sheet history only, newest first, with no user id accepted from the request. The first-visit row appears once its sheet is uploaded.
+
+The source plan `docs/attendance.md` is not present in this checkout; the defaults above are the implemented acceptance assumptions.
 - **Models** (`attendance/models.py`): `Attendance` (one sheet per extension, date and label; `taken_by`, `uploaded_by`,
   frozen `summary` JSON that is NULL while a draft; `is_locked` is true when uploaded), `AttendanceMember` (a tick, with a
   SNAPSHOT of name, gender, age network and home extension taken at tick time; gender and age network may be blank until the

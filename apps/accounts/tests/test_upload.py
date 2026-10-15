@@ -6,7 +6,9 @@ from django.core.exceptions import PermissionDenied
 from django.test import TestCase
 from django.utils import timezone
 
-from apps.accounts.models import Extension, Gender, Role, SpecialRole, Status, User, UserSpecialRole
+from apps.accounts.models import (
+    Extension, Gender, Role, SpecialRole, Status, User, UserExtensionHistory, UserSpecialRole,
+)
 from apps.attendance import services
 from apps.attendance.age import AgeNetwork
 from apps.attendance.models import Attendance
@@ -97,6 +99,34 @@ class UploadTests(TestCase):
         self.upload()
         self.sheet.refresh_from_db()
         self.assertEqual(self.sheet.members_present, 3)
+
+    def test_repeat_visitor_moves_after_the_third_uploaded_visit(self):
+        seat = SpecialRole.objects.get(code="attendance")
+        UserSpecialRole.objects.create(user=self.visitor, role=seat, extension=self.b)
+        for visit_number in range(2):
+            earlier = services.create_sheet(
+                self.coord, self.a, date(2026, 6, 7) - timedelta(days=visit_number * 7),
+                f"Earlier Service {visit_number}",
+            )
+            services.mark_present(self.coord, earlier, self.visitor)
+            services.upload_sheet(self.coord, earlier.pk, token=new_submission_token())
+
+        self.upload()
+
+        self.visitor.refresh_from_db()
+        self.assertEqual(self.visitor.extension_id, self.a.pk)
+        history = UserExtensionHistory.objects.filter(user=self.visitor).latest("pk")
+        self.assertEqual(history.reason, UserExtensionHistory.Reason.AUTO_TRANSFER)
+        self.assertEqual(history.extension_id, self.a.pk)
+        self.assertFalse(UserSpecialRole.objects.filter(user=self.visitor).exists())
+
+    def test_one_uploaded_visit_does_not_move_a_visitor(self):
+        self.upload()
+        self.visitor.refresh_from_db()
+        self.assertEqual(self.visitor.extension_id, self.b.pk)
+        self.assertFalse(UserExtensionHistory.objects.filter(
+            user=self.visitor, reason=UserExtensionHistory.Reason.AUTO_TRANSFER,
+        ).exists())
 
     # --- who may upload ---------------------------------------------------
     def test_only_the_coordinator_of_that_extension_may_upload(self):

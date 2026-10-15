@@ -194,6 +194,18 @@ class CategoryTests(WorkspaceTestCase):
 
 
 class FirstTimerTests(WorkspaceTestCase):
+    def test_authorized_leaders_can_create_a_member_from_the_workspace_and_review(self):
+        services.add_first_timer(
+            self.coord, self.draft_a, "newbie", "person", Gender.FEMALE, AgeNetwork.YOUTH,
+        )
+
+        workspace = self.get(self.coord, "sheet_detail", self.draft_a.pk)
+        self.assertContains(workspace, "Make a member")
+
+        self.mark_uploaded(self.draft_a)
+        review = self.get(self.coord, "sheet_review", self.draft_a.pk)
+        self.assertContains(review, "Make a member")
+
     def test_a_first_timer_is_added_in_one_post(self):
         response = self.post(self.coord, "sheet_first_timer_add", self.draft_a, self.first_timer_post())
         self.assertEqual(response.status_code, 302)

@@ -268,13 +268,22 @@ Colors come from tokens only. The only Alpine here scrolls the first-timer secti
           <p class="truncate text-base font-medium text-txt-primary">{{ visitor.full_name }}</p>
           <p class="text-sm text-txt-secondary">{{ visitor.gender_label }}, {{ visitor.age_label }}</p>
         </div>
-        <form method="post" action="{% role_url 'sheet_first_timer_remove' sheet.pk %}"
-              data-confirm="This first timer and the details you typed will be removed from the sheet."
-              data-confirm-title="Remove this first timer?" data-confirm-text="Remove" data-confirm-danger>
-          {% csrf_token %}
-          <input type="hidden" name="first_timer_id" value="{{ visitor.pk }}">
-          <button type="submit" class="btn btn-ghost min-h-[44px] text-base" aria-label="Remove {{ visitor.full_name }}">Remove</button>
-        </form>
+        <div class="flex flex-wrap items-center justify-end gap-2">
+          {% if can_convert and not visitor.converted_user_id %}
+          {% include 'attendance/_convert_button.html' with ft=visitor %}
+          {% elif visitor.converted_user_id %}
+          <span class="text-sm text-txt-secondary">Member</span>
+          {% endif %}
+          {% if not visitor.converted_user_id %}
+          <form method="post" action="{% role_url 'sheet_first_timer_remove' sheet.pk %}"
+                data-confirm="This first timer and the details you typed will be removed from the sheet."
+                data-confirm-title="Remove this first timer?" data-confirm-text="Remove" data-confirm-danger>
+            {% csrf_token %}
+            <input type="hidden" name="first_timer_id" value="{{ visitor.pk }}">
+            <button type="submit" class="btn btn-ghost min-h-[44px] text-base" aria-label="Remove {{ visitor.full_name }}">Remove</button>
+          </form>
+          {% endif %}
+        </div>
       </li>
       {% endfor %}
     </ul>

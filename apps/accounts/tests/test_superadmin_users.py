@@ -372,6 +372,7 @@ class StatusChangeTests(TestCase):
         person = fresh(self.person)
         self.assertTrue(person.check_password(result.password.value))
         self.assertFalse(person.check_password(PASSWORD))
+        self.assertEqual(person.status, Status.NOT_ACTIVATED)
         self.assertTrue(person.must_change_password)
         logged = json.dumps(list(AuditLog.objects.values("before", "after")), default=str)
         self.assertNotIn(result.password.value, logged)

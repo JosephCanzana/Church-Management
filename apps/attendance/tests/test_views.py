@@ -70,6 +70,7 @@ class ScreenTestCase(TestCase):
         """Make a sheet look uploaded without going through the upload service (this file tests screens)."""
         Attendance.objects.filter(pk=sheet.pk).update(
             status=Attendance.Status.UPLOADED, members_present=2, first_timers_count=1, total_present=3,
+            summary={"first_timers": {"female": {"adult": 1}}, "members": {"male": {"adult": 2}}},
         )
         sheet.refresh_from_db()
         return sheet
@@ -248,5 +249,9 @@ class DetailTests(ScreenTestCase):
         uploaded = self.mark_uploaded(
             services.create_sheet(self.coord_b, self.b, date(2026, 6, 7), "Sunday Service"))
         response = self.get(self.admin, "sheet_detail", uploaded.pk)
-        self.assertEqual(response.status_code, 200)
-        self.assertEqual(response.context["summary"].total_present, 3)
+        self.assertRedirects(
+            response, self.url(self.admin, "sheet_review", uploaded.pk), fetch_redirect_response=False,
+        )
+        review = self.get(self.admin, "sheet_review", uploaded.pk)
+        self.assertEqual(review.status_code, 200)
+        self.assertEqual(review.context["summary"].total_present, 3)

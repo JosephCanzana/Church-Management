@@ -118,6 +118,7 @@ network only. No birth dates, phone numbers or addresses. An uploaded sheet show
             <th scope="col" class="px-2 py-2 font-medium">Name</th>
             <th scope="col" class="px-2 py-2 font-medium">Gender</th>
             <th scope="col" class="px-5 py-2 font-medium">Age network</th>
+            <th scope="col" class="px-5 py-2 font-medium">Account</th>
           </tr>
         </thead>
         <tbody class="divide-y divide-border">
@@ -127,6 +128,13 @@ network only. No birth dates, phone numbers or addresses. An uploaded sheet show
             <td class="px-2 py-2 text-txt-primary">{{ visitor.full_name }}</td>
             <td class="px-2 py-2 text-txt-secondary">{{ visitor.gender_label }}</td>
             <td class="px-5 py-2 text-txt-secondary">{{ visitor.age_label }}</td>
+            <td class="px-5 py-2">
+              {% if visitor.converted_user_id %}
+              <span class="text-sm text-txt-secondary">Member</span>
+              {% elif can_convert %}
+              {% include 'attendance/_convert_button.html' with ft=visitor %}
+              {% endif %}
+            </td>
           </tr>
           {% endfor %}
         </tbody>

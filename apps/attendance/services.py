@@ -29,7 +29,7 @@ from django.utils import timezone
 from apps.accounts.models import Extension, Gender, Role, Status, User
 from apps.accounts.services.presence import mark_attended
 from apps.accounts.services.users import (
-    PasswordInfo, check_contact, create_user, find_duplicate_people, normalize_details,
+    PasswordInfo, auto_transfer_visitor, check_contact, create_user, find_duplicate_people, normalize_details,
 )
 from apps.audit.services import log_action
 from apps.core.services import ServiceError, consume_submission_token
@@ -48,6 +48,7 @@ LABEL_MAX_LENGTH = 100
 SEARCH_MIN_LENGTH = 3
 SEARCH_MAX_RESULTS = 20
 MATCH_LIMIT = 10
+AUTO_TRANSFER_VISITS = 3
 #: Shown as "belongs to" for an admin or super-admin, who have no home extension.
 NO_EXTENSION_LABEL = "-"
 #: Fields of a first timer a taker can change (`update_first_timer`).
@@ -590,8 +591,9 @@ def upload_sheet(actor, sheet_id, *, token, request=None):
       3. refuse while any ticked member still lacks a gender or an age network, or nobody is marked;
       4. build the summary from the stored rows (the same function the draft preview uses);
       5. write the three totals, `summary`, `uploaded_by`, `uploaded_at` and the uploaded status;
-      6. update `last_attended_at` of the ticked people, forward only;
-      7. log `attendance.upload` with counts only (no names).
+            6. update `last_attended_at` of the ticked people, forward only;
+            7. transfer active members after their third uploaded visit to this extension;
+            8. log `attendance.upload` with counts only (no names).
     A refusal rolls the token back too, so the same form can be sent again once the problem is fixed.
     """
     with transaction.atomic():
@@ -633,6 +635,8 @@ def upload_sheet(actor, sheet_id, *, token, request=None):
             attended_on,
         )
 
+        _auto_transfer_repeat_visitors(actor, locked, attended_on, request)
+
         log_action(
             "attendance.upload", actor=actor, request=request,
             entity_type="attendance", entity_id=locked.pk, entity_label=str(locked),
@@ -644,6 +648,33 @@ def upload_sheet(actor, sheet_id, *, token, request=None):
             },
         )
     return UploadResult(sheet=locked)
+
+
+def _auto_transfer_repeat_visitors(actor, sheet, on_date, request):
+    """Move active members after three distinct uploaded visits to this extension.
+
+    A single visit never changes someone's home extension. Counts use the extension snapshot saved
+    when they were marked, so visits made before a prior move cannot trigger another transfer.
+    """
+    candidates = AttendanceMember.objects.filter(
+        attendance=sheet, user__isnull=False,
+    ).exclude(home_extension_id=sheet.extension_id).values_list("user_id", "home_extension_id")
+    for person_id, home_extension_id in candidates:
+        if home_extension_id is None:
+            continue
+        person = User.objects.filter(
+            pk=person_id, role=Role.MEMBER, status=Status.ACTIVE, extension_id=home_extension_id,
+        ).only("pk").first()
+        if person is None:
+            continue
+        visits = AttendanceMember.objects.filter(
+            user_id=person_id,
+            home_extension_id=home_extension_id,
+            attendance__extension_id=sheet.extension_id,
+            attendance__status=Attendance.Status.UPLOADED,
+        ).values("attendance_id").distinct().count()
+        if visits >= AUTO_TRANSFER_VISITS:
+            auto_transfer_visitor(actor, request, person_id, sheet.extension_id, on_date)
 
 
 # ------------------------------------------------------------------- the reopen

@@ -458,7 +458,7 @@ def _print_rows(sheet):
         _decorate_member(row, sheet)
         rows.append({
             "name": row.member_name,
-            "belongs": row.home_extension_name,
+            "belongs": row.home_extension_name if row.home_extension_id != sheet.extension_id else "",
             "first_timer": False,
             "needs_category": row.needs_category,
             "gender": row.gender,
@@ -673,8 +673,14 @@ def sheet_first_timer_convert(request, sheet):
         "headers": ["Name", "Account ID", "Password"],
         "rows": [[member.full_name, member.account_id, result.password.display]],
     }
+    welcome_slip = {
+        "name": member.full_name,
+        "account_id": member.account_id,
+        "password": result.password.value if result.password.kind == "generated" else "Ask your leader for the password.",
+    }
     return render(request, CONVERT_RESULT_TEMPLATE, {
-        "sheet": sheet, "member": member, "secrets": secrets, "sheet_url": _sheet_url(request, sheet),
+        "sheet": sheet, "member": member, "secrets": secrets, "welcome_slip": welcome_slip,
+        "sheet_url": _sheet_url(request, sheet),
     })
 
 
