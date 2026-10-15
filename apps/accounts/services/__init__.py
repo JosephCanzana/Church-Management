@@ -121,8 +121,8 @@ EXTENSION_FIELDS = (
 )
 
 
-#: Every field must be filled in except the building number.
-REQUIRED_EXTENSION_FIELDS = tuple(f for f in EXTENSION_FIELDS if f != "building_number")
+#: Every field must be filled in except street and building number.
+REQUIRED_EXTENSION_FIELDS = tuple(f for f in EXTENSION_FIELDS if f not in {"street", "building_number"})
 
 _FIELD_LABELS = {
     "name": "extension name", "country": "country", "province": "province",
@@ -138,7 +138,7 @@ def clean_extension_data(data, existing=None):
     browser's JavaScript is bypassed:
       - text is trimmed, single-spaced and lowercase (the postal code keeps
         its case);
-      - every field except the building number is required;
+    - every field except street and building number is required;
       - for the Philippines the province, municipality, barangay and postal
         code must match `accounts.address` (`existing` lets an old, unlisted
         value stay until it is changed).

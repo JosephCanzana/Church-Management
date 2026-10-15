@@ -67,9 +67,9 @@ class CleanExtensionDataTests(SimpleTestCase):
         self.assertEqual(clean["country"], "philippines")
         self.assertEqual(clean["postal_code"], "3101")
 
-    def test_building_number_is_the_only_optional_field(self):
-        clean_extension_data({**GOOD, "building_number": ""})
-        for field in ("name", "country", "province", "municipality", "barangay", "postal_code", "street"):
+    def test_street_and_building_number_are_optional(self):
+        clean_extension_data({**GOOD, "street": "", "building_number": ""})
+        for field in ("name", "country", "province", "municipality", "barangay", "postal_code"):
             with self.assertRaises(ServiceError, msg=field):
                 clean_extension_data({**GOOD, field: ""})
 
@@ -95,10 +95,10 @@ class ExtensionServiceTests(TestCase):
         with self.assertRaises(ServiceError):
             self.make("CABANATUAN")
 
-    def test_form_rejects_blank_required_fields(self):
+    def test_form_allows_blank_street_but_rejects_other_required_fields(self):
         form = ExtensionForm({**GOOD, "street": "", "barangay": ""})
         self.assertFalse(form.is_valid())
-        self.assertIn("street", form.errors)
+        self.assertNotIn("street", form.errors)
         self.assertIn("barangay", form.errors)
 
     def test_form_accepts_a_complete_listed_address(self):

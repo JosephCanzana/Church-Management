@@ -83,7 +83,7 @@ own required-field check runs before that, so the question only appears for a co
       {% for error in form.postal_code.errors %}<p class="field-error">{{ error }}</p>{% endfor %}
     </div>
     <div>
-      <label for="{{ form.street.id_for_label }}" class="label">{{ form.street.label }} <span class="text-error" aria-hidden="true">*</span></label>
+      <label for="{{ form.street.id_for_label }}" class="label">{{ form.street.label }} <span class="font-normal text-txt-secondary" aria-hidden="true">(optional)</span></label>
       {{ form.street }}
       {% for error in form.street.errors %}<p class="field-error">{{ error }}</p>{% endfor %}
     </div>

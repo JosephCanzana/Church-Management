@@ -87,7 +87,7 @@ PERSON_ACTIONS = (
 _ACTOR_RULES = {
     Role.SUPER_ADMIN: ((Role.SUPER_ADMIN, Role.ADMIN, Role.COORDINATOR, Role.MEMBER), set(PERSON_ACTIONS)),
     Role.ADMIN: ((Role.COORDINATOR, Role.MEMBER), set(PERSON_ACTIONS) - {DELETE}),
-    Role.COORDINATOR: ((Role.MEMBER,), {VIEW, EDIT, RESET_PASSWORD, ARCHIVE, RESTORE}),
+    Role.COORDINATOR: ((Role.MEMBER,), {VIEW, EDIT, RESET_PASSWORD, }),
 }
 
 #: Roles that may open the people screens at all.

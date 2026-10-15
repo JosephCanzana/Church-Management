@@ -64,7 +64,7 @@ class ExtensionForm(forms.ModelForm):
 
     - Fields run from the widest area to the smallest: country, province,
       municipality, barangay, postal code, street, building number.
-    - Every field is required except the building number.
+    - Every field is required except street and building number.
     - Input is cleaned to lowercase with single spaces (`core.text.clean_text`);
       the form shows saved values back in title case.
     - For the Philippines the province, municipality and barangay must come
@@ -79,7 +79,7 @@ class ExtensionForm(forms.ModelForm):
         "postal_code", "street", "building_number",
     ]
     #: The only field that may stay empty.
-    OPTIONAL_FIELDS = {"building_number"}
+    OPTIONAL_FIELDS = {"street", "building_number"}
     #: Fields shown back in title case when an extension is edited.
     TITLE_FIELDS = ("name", "province", "municipality", "barangay", "street", "building_number")
 

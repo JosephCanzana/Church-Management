@@ -272,7 +272,7 @@ with. Only create a new app if the answer is "none".
   migrated, so every comparison ignores case (`name__iexact`, `clean_text`) and `update_extension` treats a case-only difference
   as no change. Acronyms and roman numerals shown in capitals are listed in `core/text.py`.
 - **Extension required fields and address rules live in the service too:** `clean_extension_data` (`accounts/services/__init__.py`)
-  requires everything except `building_number` and, for the Philippines, checks province > municipality > barangay and a
+  requires everything except `street` and `building_number` and, for the Philippines, checks province > municipality > barangay and a
   4-digit postal code against `static/data/ph_address.json` through `accounts/address.py`. The form uses the same function.
   The JSON ({province: {municipality: [barangay]}}, from PSGC, NCR districts merged into Metro Manila) is also what the
   browser loads for the cascading dropdowns, so the two can never disagree. Other countries are free text.

@@ -142,7 +142,7 @@ The super-admin also manages extensions at `/superadmin/extensions/` (create, ed
 On the extension list, click anywhere on a row to open it, right-click a row (or use its three-dot button) for Open / Edit / Archive
 (Restore / Delete for archived ones), and tick rows to archive or delete several at once; rows that do not qualify are skipped and
 explained. Search, status and sort live in the Filters dialog. The new/edit form is ordered country > province > municipality >
-barangay > postal code > street > building number; everything except the building number is required. For the Philippines the
+barangay > postal code > street > building number; everything except street and the building number is required. For the Philippines the
 province, municipality and barangay are dropdowns that follow each other, filled from `static/data/ph_address.json` (PSGC data;
 the server checks the same file). Extension text is stored in lowercase and shown in title case.
 
