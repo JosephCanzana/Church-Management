@@ -252,6 +252,18 @@ class ExtensionViewTests(TestCase):
         self.assertEqual(len(names(self.client.get(url, {"status": "all"}))), 3)
         self.assertEqual(names(self.client.get(url, {"sort": "-name"})), ["Gapan", "Cabanatuan"])
 
+    def test_live_search_returns_only_filtered_results_fragment(self):
+        Extension.objects.create(name="Gapan")
+        response = self.client.get(
+            reverse("superadmin:extension_list"), {"q": "caba"},
+            HTTP_X_REQUESTED_WITH="XMLHttpRequest",
+        )
+        self.assertEqual(response.status_code, 200)
+        self.assertContains(response, 'id="extension-results"')
+        self.assertContains(response, "Cabanatuan")
+        self.assertNotContains(response, "Gapan")
+        self.assertNotContains(response, "<!DOCTYPE html>")
+
     def test_a_bad_sort_value_falls_back_to_the_default(self):
         response = self.client.get(reverse("superadmin:extension_list"), {"sort": "password"})
         self.assertEqual(response.status_code, 200)

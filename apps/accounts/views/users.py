@@ -61,6 +61,7 @@ SECRETS_MESSAGE = (
 )
 
 LIST_TEMPLATE = "accounts/people/user_list.html"
+LIST_RESULTS_TEMPLATE = "accounts/people/_user_list_results.html"
 FORM_TEMPLATE = "accounts/people/user_form.html"
 DETAIL_TEMPLATE = "accounts/people/user_detail.html"
 
@@ -252,6 +253,8 @@ def user_list(request):
     """People with search, filters, sorting, paging, bulk selection and a right-click menu."""
     context = _list_context(request.GET, request.user)
     context["submit_token"] = new_submission_token()
+    if request.headers.get("X-Requested-With") == "XMLHttpRequest":
+        return render(request, LIST_RESULTS_TEMPLATE, context)
     return render(request, LIST_TEMPLATE, context)
 
 

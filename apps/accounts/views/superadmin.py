@@ -108,7 +108,7 @@ def extension_list(request):
 
     params = request.GET.copy()
     params.pop("page", None)
-    return render(request, "accounts/superadmin/extension_list.html", {
+    context = {
         "form": form,
         "page": page,
         "total": paginator.count,
@@ -118,7 +118,13 @@ def extension_list(request):
         "active_filters": sum([bool(q), status != "active", sort != "name"]),
         # Sent back with a bulk action so the person returns to the same view.
         "current_query": _list_query(request.GET),
-    })
+    }
+    template = (
+        "accounts/superadmin/_extension_list_results.html"
+        if request.headers.get("X-Requested-With") == "XMLHttpRequest"
+        else "accounts/superadmin/extension_list.html"
+    )
+    return render(request, template, context)
 
 
 # ----------------------------------------------------------- create / edit

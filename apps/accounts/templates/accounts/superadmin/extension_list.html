@@ -22,21 +22,20 @@ The Alpine component extensionList is defined in extra_js at the bottom of this 
 <div x-data="extensionList()" @contextmenu.window="onWindowContextMenu($event)">
 
   <div class="flex flex-wrap items-center justify-between gap-3">
-    <p class="text-sm text-txt-secondary">
-      {{ total }} extension{{ total|pluralize }}{% if status == "archived" %} in the archive{% endif %}
-    </p>
+    <form method="get" action="{% url 'superadmin:extension_list' %}" role="search"
+          class="w-full min-w-0 sm:max-w-md" data-live-search-form>
+      <label for="{{ form.q.id_for_label }}" class="sr-only">{{ form.q.label }}</label>
+      {{ form.q }}
+    </form>
     <div class="flex flex-wrap items-center gap-2">
-      {% if active_filters %}
-      <a href="{% url 'superadmin:extension_list' %}" class="btn btn-ghost">Clear filters</a>
-      {% endif %}
+      <a href="{% url 'superadmin:extension_list' %}" class="btn btn-ghost" data-clear-filters
+         {% if not active_filters %}hidden{% endif %}>Clear filters</a>
       <button type="button" class="btn btn-secondary" @click="$store.ui.openModal('filters')"
               aria-haspopup="dialog">
         {% include 'includes/icon.html' with name='funnel' class='size-4' %}
         Filters
-        {% if active_filters %}
-        <span class="rounded-full bg-primary px-2 py-0.5 text-xs font-medium text-on-primary"
-              aria-label="{{ active_filters }} active">{{ active_filters }}</span>
-        {% endif %}
+        <span data-filter-count class="rounded-full bg-primary px-2 py-0.5 text-xs font-medium text-on-primary"
+              aria-label="{{ active_filters }} active" {% if not active_filters %}hidden{% endif %}>{{ active_filters }}</span>
       </button>
       <a href="{% url 'superadmin:extension_create' %}" class="btn btn-primary">
         {% include 'includes/icon.html' with name='plus' class='size-4' %}
@@ -45,98 +44,7 @@ The Alpine component extensionList is defined in extra_js at the bottom of this 
     </div>
   </div>
 
-  {# Bulk bar: appears when something is ticked. The checkboxes belong to this form through form="bulk-form". #}
-  <form id="bulk-form" method="post" action="{% url 'superadmin:extension_bulk' %}"
-        x-show="selected.length" x-cloak style="display:none" x-transition
-        class="sticky top-16 z-20 mt-4 flex flex-wrap items-center justify-between gap-3 rounded-xl border border-border-strong bg-surface-alt px-4 py-3">
-    {% csrf_token %}
-    <input type="hidden" name="qs" value="{{ current_query }}">
-    <p class="text-sm font-medium text-txt-primary" aria-live="polite">
-      <span x-text="selected.length"></span> selected
-    </p>
-    <div class="flex flex-wrap items-center gap-2">
-      <button type="button" class="btn btn-ghost" @click="selected = []">Clear</button>
-      <button type="submit" name="action" value="archive" class="btn btn-secondary"
-              :disabled="activeCount === 0"
-              :data-confirm="`Archive ${activeCount} selected extension${activeCount === 1 ? '' : 's'}? Any that still have people will be skipped.`"
-              data-confirm-title="Archive selected extensions?" data-confirm-text="Archive">
-        {% include 'includes/icon.html' with name='archive-box' class='size-4' %}
-        Archive<span x-show="activeCount" x-text="` (${activeCount})`"></span>
-      </button>
-      <button type="submit" name="action" value="delete" class="btn btn-danger"
-              :disabled="archivedCount === 0"
-              :data-confirm="`Permanently delete ${archivedCount} archived extension${archivedCount === 1 ? '' : 's'}? This cannot be undone. Any that are still in use will be skipped.`"
-              data-confirm-title="Delete selected extensions?" data-confirm-text="Delete permanently" data-confirm-danger>
-        {% include 'includes/icon.html' with name='trash' class='size-4' %}
-        Delete<span x-show="archivedCount" x-text="` (${archivedCount})`"></span>
-      </button>
-    </div>
-  </form>
-
-  {% if page.object_list %}
-  <div class="mt-4 flex items-center gap-3 px-1">
-    <label class="inline-flex cursor-pointer items-center gap-2 text-sm text-txt-secondary">
-      <input type="checkbox" class="size-5 rounded border-border-strong accent-[var(--color-accent)]"
-             :checked="allSelected" @change="toggleAll($event.target.checked)">
-      Select all on this page
-    </label>
-  </div>
-
-  <ul class="card mt-2 divide-y divide-border overflow-hidden p-0">
-    {% for ext in page.object_list %}
-    <li class="relative flex flex-wrap items-center gap-x-4 gap-y-2 px-5 py-4 transition-colors hover:bg-surface-alt"
-        :class="selected.includes('{{ ext.pk }}') && 'bg-surface-alt'"
-        data-row data-id="{{ ext.pk }}" data-name="{{ ext.name|title_case }}"
-        data-archived="{% if ext.archived_at %}1{% endif %}"
-        data-detail-url="{% url 'superadmin:extension_detail' ext.pk %}"
-        data-edit-url="{% url 'superadmin:extension_edit' ext.pk %}"
-        data-archive-url="{% url 'superadmin:extension_archive' ext.pk %}"
-        data-restore-url="{% url 'superadmin:extension_restore' ext.pk %}"
-        data-delete-url="{% url 'superadmin:extension_delete' ext.pk %}"
-        @contextmenu.prevent="openMenu($event, $el)">
-      <input type="checkbox" form="bulk-form" name="ids" value="{{ ext.pk }}" x-model="selected"
-             class="relative z-10 size-5 shrink-0 rounded border-border-strong accent-[var(--color-accent)]"
-             aria-label="Select {{ ext.name|title_case }}">
-      <div class="min-w-0 flex-1 basis-56">
-        {# The link stretches over the whole row (the after: layer), so a click anywhere opens the extension. #}
-        <a href="{% url 'superadmin:extension_detail' ext.pk %}"
-           class="font-medium text-txt-primary after:absolute after:inset-0 after:content-[''] hover:underline focus-visible:outline-2 focus-visible:outline-accent">{{ ext.name|title_case }}</a>
-        {% if ext.archived_at %}
-        <span class="ml-2 rounded-full border border-border bg-surface-alt px-2 py-0.5 text-xs text-txt-secondary">Archived</span>
-        {% endif %}
-        <p class="mt-0.5 truncate text-sm text-txt-secondary">
-          {% if ext.barangay %}{{ ext.barangay|title_case }}, {% endif %}{{ ext.municipality|title_case }}
-        </p>
-      </div>
-      <p class="basis-48 text-sm text-txt-secondary">
-        {% if ext.coordinator %}
-          Coordinator: <span class="text-txt-primary">{{ ext.coordinator.full_name }}</span>
-        {% else %}
-          No coordinator
-        {% endif %}
-      </p>
-      <p class="w-24 text-sm text-txt-secondary">{{ ext.member_count }} {% if ext.member_count == 1 %}person{% else %}people{% endif %}</p>
-      <button type="button" class="btn btn-ghost relative z-10 -mr-2 px-2"
-              @click.stop="openMenu($event, $el.closest('[data-row]'), true)"
-              aria-haspopup="menu" aria-label="Actions for {{ ext.name|title_case }}">
-        {% include 'includes/icon.html' with name='ellipsis-vertical' class='size-5' %}
-      </button>
-    </li>
-    {% endfor %}
-  </ul>
-  {% include 'includes/pagination.html' with page=page querystring=querystring %}
-  {% else %}
-  <div class="card mt-6 text-center">
-    <p class="font-medium text-txt-primary">No extensions found</p>
-    <p class="mt-1 text-sm text-txt-secondary">
-      {% if form.q.value or status != "active" %}
-        Try a different search or filter.
-      {% else %}
-        Create the first extension so you can add coordinators and members to it.
-      {% endif %}
-    </p>
-  </div>
-  {% endif %}
+  {% include 'accounts/superadmin/_extension_list_results.html' %}
 
   {# Right-click / three-dot menu. Its buttons fill the hidden form below and ask before anything destructive. #}
   <div x-show="menu.open" x-cloak style="display:none" role="menu" aria-label="Extension actions"
@@ -169,11 +77,7 @@ The Alpine component extensionList is defined in extra_js at the bottom of this 
 </div>
 
 {% modal "filters" title="Filter extensions" %}
-<form method="get" role="search" class="grid gap-4">
-  <div>
-    <label for="{{ form.q.id_for_label }}" class="label">{{ form.q.label }}</label>
-    {{ form.q }}
-  </div>
+<form method="get" class="grid gap-4">
   <div class="grid gap-4 sm:grid-cols-2">
     <div>
       <label for="{{ form.status.id_for_label }}" class="label">Show</label>
@@ -205,6 +109,52 @@ document.addEventListener('alpine:init', () => {
     get archivedCount() { return this.rows.filter(r => r.dataset.archived && this.selected.includes(r.dataset.id)).length; },
     get activeCount() { return this.rows.filter(r => !r.dataset.archived && this.selected.includes(r.dataset.id)).length; },
     toggleAll(on) { this.selected = on ? this.rows.map(r => r.dataset.id) : []; },
+    init() {
+      const form = document.querySelector('[data-live-search-form]');
+      const input = form?.querySelector('[name="q"]');
+      let timer;
+      input?.addEventListener('input', () => {
+        clearTimeout(timer);
+        timer = setTimeout(() => this.refreshResults(form), 300);
+      });
+    },
+    async refreshResults(form) {
+      this.controller?.abort();
+      const controller = new AbortController();
+      this.controller = controller;
+      const url = new URL(form.action || window.location.href, window.location.href);
+      const params = new URLSearchParams(window.location.search);
+      const term = new FormData(form).get('q')?.toString().trim();
+      if (term) params.set('q', term);
+      else params.delete('q');
+      params.delete('page');
+      url.search = params;
+      try {
+        const response = await fetch(url, {
+          headers: { 'X-Requested-With': 'XMLHttpRequest' },
+          credentials: 'same-origin', signal: controller.signal,
+        });
+        if (!response.ok) throw new Error(`Search failed: ${response.status}`);
+        const doc = new DOMParser().parseFromString(await response.text(), 'text/html');
+        const replacement = doc.querySelector('#extension-results');
+        const current = this.$root.querySelector('#extension-results');
+        if (!replacement || !current || controller !== this.controller) return;
+        this.selected = [];
+        this.closeMenu();
+        Alpine.destroyTree(current);
+        current.replaceWith(replacement);
+        Alpine.initTree(replacement);
+        const count = replacement.dataset.activeFilters;
+        const badge = this.$root.querySelector('[data-filter-count]');
+        badge.textContent = count;
+        badge.hidden = count === '0';
+        badge.setAttribute('aria-label', `${count} active`);
+        this.$root.querySelector('[data-clear-filters]').hidden = count === '0';
+        window.history.replaceState({}, '', url);
+      } catch (error) {
+        if (error.name !== 'AbortError') console.error(error);
+      }
+    },
 
     // Open the menu at the pointer (right-click) or under the three-dot button.
     openMenu(event, row, fromButton = false) {

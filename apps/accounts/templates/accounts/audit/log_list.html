@@ -122,24 +122,26 @@
   {% if page.has_other_pages %}{% include 'includes/pagination.html' with page=page querystring=querystring %}{% endif %}
 
   {# Right-hand detail panel: opened by the row buttons, filled by fetch. #}
-  <div x-show="open" x-cloak x-transition.opacity.duration.150ms class="fixed inset-0 z-50">
-    <div class="absolute inset-0 bg-txt-primary/40" @click="close()" aria-hidden="true"></div>
+  <template x-teleport="body">
+  <div x-show="open" x-cloak style="display:none" x-transition.opacity.duration.150ms class="fixed inset-0 z-[60]">
+    <div class="fixed inset-0 bg-txt-primary/20 backdrop-blur-xs" @click="close()" aria-hidden="true"></div>
     <aside role="dialog" aria-modal="true" aria-labelledby="audit-panel-title"
-           class="absolute inset-y-0 right-0 flex w-full max-w-md flex-col border-l border-shell-border bg-shell shadow-[0_0_40px_-8px_rgba(0,0,0,0.35)]">
-      <div class="flex items-center justify-between gap-3 border-b border-shell-border px-5 py-3">
+           class="fixed inset-y-0 right-0 z-50 flex h-dvh w-full max-w-md flex-col border-l border-shell-border bg-shell shadow-[0_0_40px_-8px_rgba(0,0,0,0.35)]">
+      <div class="flex shrink-0 items-center justify-between gap-3 border-b border-shell-border px-5 py-3">
         <h2 id="audit-panel-title" class="text-lg font-semibold text-txt-primary">Audit entry</h2>
         <button type="button" x-ref="close" @click="close()" aria-label="Close details"
                 class="inline-flex size-11 items-center justify-center rounded-full text-txt-secondary hover:bg-txt-primary/5 hover:text-txt-primary focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-accent">
           {% include 'includes/icon.html' with name='x-mark' class='size-6' %}
         </button>
       </div>
-      <div class="flex-1 overflow-y-auto px-5 py-5" aria-live="polite">
+      <div class="min-h-0 flex-1 overflow-y-auto px-5 pb-10 pt-5" aria-live="polite">
         <p x-show="loading" class="text-base text-txt-secondary">Loading details…</p>
         <p x-show="failed" x-cloak class="text-base text-error">These details did not load. Close the panel and try again.</p>
         <div x-html="html"></div>
       </div>
     </aside>
   </div>
+</template>
 
   {% modal "filters" title="Filter audit log" %}
   <form method="get" class="space-y-4">

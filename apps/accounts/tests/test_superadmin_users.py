@@ -483,6 +483,16 @@ class UserViewTests(TestCase):
         self.assertEqual(self.names(self.client.get(self.url, {"q": "ana reyes"})), ["Ana"])
         self.assertEqual(self.names(self.client.get(self.url, {"q": self.ben.account_id})), ["Ben"])
 
+    def test_live_search_returns_only_filtered_results_fragment(self):
+        response = self.client.get(
+            self.url, {"q": "ana"}, HTTP_X_REQUESTED_WITH="XMLHttpRequest",
+        )
+        self.assertEqual(response.status_code, 200)
+        self.assertContains(response, 'id="people-results"')
+        self.assertContains(response, "Ana Reyes")
+        self.assertNotContains(response, "Ben Santos")
+        self.assertNotContains(response, "<!DOCTYPE html>")
+
     def test_filters_by_role_extension_and_status(self):
         self.assertEqual(self.names(self.client.get(self.url, {"role": "coordinator"})), ["Ben"])
         self.assertEqual(self.names(self.client.get(self.url, {"extension": self.ext.pk})), ["Ana"])

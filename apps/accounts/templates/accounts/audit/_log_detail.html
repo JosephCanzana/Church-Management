@@ -4,6 +4,7 @@ Variables: row (with action_group, action_label), changes (list of field/before/
 Values are autoescaped; log_action() already removed password, token and secret keys.
 {% endcomment %}
 {% load ui_tags %}
+<div class="pb-10">
 <dl class="space-y-4 text-base">
   <div>
     <dt class="text-sm text-txt-secondary">What happened</dt>
@@ -21,7 +22,7 @@ Values are autoescaped; log_action() already removed password, token and secret 
     <dd class="text-sm text-txt-secondary">Source: {{ source_label }}</dd>
   </div>
   <div>
-    <dt class="text-sm text-txt-secondary">Result</dt>
+    <dt class="text-sm text-txt-secondary">Result!</dt>
     <dd>
       {% if row.status == 'failed' %}
       <span class="inline-flex items-center gap-1.5 font-medium text-error">{% include 'includes/icon.html' with name='x-circle' class='size-5' %}Failed</span>
@@ -77,3 +78,4 @@ Values are autoescaped; log_action() already removed password, token and secret 
 {% else %}
 <p class="mt-2 text-base text-txt-secondary">No field details were recorded for this action.</p>
 {% endif %}
+</div>

@@ -9,18 +9,19 @@
 <div x-data="peopleList()" @contextmenu.window="onWindowContextMenu($event)">
 
   <div class="flex flex-wrap items-center justify-between gap-3">
-    <p class="text-sm text-txt-secondary">{{ total }} {% if total == 1 %}person{% else %}people{% endif %}</p>
+    <form method="get" action="{% role_url 'user_list' %}" role="search"
+          class="w-full min-w-0 sm:max-w-md" data-live-search-form>
+      <label for="{{ form.q.id_for_label }}" class="sr-only">{{ form.q.label }}</label>
+      {{ form.q }}
+    </form>
     <div class="flex flex-wrap items-center gap-2">
-      {% if active_filters %}
-      <a href="{% role_url 'user_list' %}" class="btn btn-ghost">Clear filters</a>
-      {% endif %}
+      <a href="{% role_url 'user_list' %}" class="btn btn-ghost" data-clear-filters
+         {% if not active_filters %}hidden{% endif %}>Clear filters</a>
       <button type="button" class="btn btn-secondary" @click="$store.ui.openModal('filters')" aria-haspopup="dialog">
         {% include 'includes/icon.html' with name='funnel' class='size-4' %}
         Filters
-        {% if active_filters %}
-        <span class="rounded-full bg-primary px-2 py-0.5 text-xs font-medium text-on-primary"
-              aria-label="{{ active_filters }} active">{{ active_filters }}</span>
-        {% endif %}
+        <span data-filter-count class="rounded-full bg-primary px-2 py-0.5 text-xs font-medium text-on-primary"
+              aria-label="{{ active_filters }} active" {% if not active_filters %}hidden{% endif %}>{{ active_filters }}</span>
       </button>
       {% if request.user.role == 'coordinator' %}
       {# A coordinator keeps no default of their own: the button just shows the global member password. #}
@@ -52,93 +53,7 @@
     </div>
   </div>
 
-  {% if page.object_list %}
-  <form id="bulk-form" method="post" action="{% role_url 'user_bulk' %}"
-        x-show="selected.length" x-cloak style="display:none" x-transition
-        class="sticky top-16 z-20 mt-4 flex flex-wrap items-center gap-2 rounded-xl border border-border-strong bg-surface-alt px-4 py-3"
-        role="region" aria-label="Actions for the selected people">
-    {% csrf_token %}
-    <input type="hidden" name="submit_token" value="{{ submit_token }}">
-    <input type="hidden" name="qs" value="{{ full_querystring }}">
-    <p class="mr-2 text-sm font-medium" aria-live="polite"><span x-text="selected.length"></span> selected</p>
-    {% for b in bulk_buttons %}
-    <button type="submit" name="action" value="{{ b.value }}"
-            class="btn {% if b.danger %}btn-danger{% else %}btn-secondary{% endif %}"
-            x-show="count('{{ b.applies }}') > 0" x-cloak style="display:none"
-            :data-confirm="'{{ b.message|escapejs }}'"
-            :data-confirm-title="'{{ b.title|escapejs }}'.replace('{n}', count('{{ b.applies }}'))"
-            data-confirm-text="{{ b.label }}"{% if b.danger %} data-confirm-danger{% endif %}>
-      {% include 'includes/icon.html' with name=b.icon class='size-4' %}
-      {{ b.label }} <span x-text="`(${count('{{ b.applies }}')})`"></span>
-    </button>
-    {% endfor %}
-    <button type="button" class="btn btn-ghost ml-auto" @click="selected = []">Clear selection</button>
-  </form>
-
-  <div class="mt-4 flex items-center gap-3 px-1">
-    <label class="inline-flex cursor-pointer items-center gap-2 text-sm text-txt-secondary">
-      <input type="checkbox" class="size-5 rounded border-border-strong accent-[var(--color-accent)]"
-             :checked="allSelected" @change="toggleAll($event.target.checked)">
-      Select everyone on this page
-    </label>
-  </div>
-
-  <ul class="card mt-2 divide-y divide-border overflow-hidden p-0">
-    {# Header row: the same grid as the people rows, so the column titles sit over their columns. #}
-    <li class="hidden grid-cols-[auto_minmax(0,2fr)_8rem_minmax(0,1.5fr)_7.5rem_2.5rem] items-center gap-x-4 px-5 py-3 text-sm text-txt-secondary lg:grid" aria-hidden="true">
-      <span class="size-5"></span><span>Name</span><span>Role</span><span>Extension</span><span>Status</span><span></span>
-    </li>
-    {% for person in page.object_list %}
-    {% person_actions person as can %}
-    <li class="relative grid grid-cols-[auto_minmax(0,1fr)_auto] items-center gap-x-4 gap-y-1 px-5 py-3.5 transition-colors hover:bg-surface-alt lg:grid-cols-[auto_minmax(0,2fr)_8rem_minmax(0,1.5fr)_7.5rem_2.5rem]"
-        :class="selected.includes('{{ person.pk }}') && 'bg-surface-alt'"
-        data-row data-id="{{ person.pk }}" data-name="{{ person.full_name }}" data-status="{{ person.status }}"
-        data-can="{% for a in can %}{{ a }} {% endfor %}"
-        data-detail-url="{% role_url 'user_detail' person.pk %}"
-        {% if 'edit' in can %}data-edit-url="{% role_url 'user_edit' person.pk %}"{% endif %}
-        {% if 'archive' in can %}data-archive-url="{% role_url 'user_archive' person.pk %}"{% endif %}
-        {% if 'restore' in can %}data-restore-url="{% role_url 'user_restore' person.pk %}"{% endif %}
-        {% if 'suspend' in can %}data-suspend-url="{% role_url 'user_suspend' person.pk %}"{% endif %}
-        {% if 'unsuspend' in can %}data-unsuspend-url="{% role_url 'user_unsuspend' person.pk %}"{% endif %}
-        {% if 'deactivate' in can %}data-deactivate-url="{% role_url 'user_deactivate' person.pk %}"{% endif %}
-        {% if 'delete' in can %}data-delete-url="{% role_url 'user_delete' person.pk %}"{% endif %}
-        @contextmenu.prevent="openMenu($event, $el)">
-      <input type="checkbox" form="bulk-form" name="ids" value="{{ person.pk }}" x-model="selected"
-             class="relative z-10 size-5 shrink-0 rounded border-border-strong accent-[var(--color-accent)]"
-             aria-label="Select {{ person.full_name }}">
-      <div class="min-w-0">
-        {# The link stretches over the whole row (the after: layer), so a click anywhere opens the person. #}
-        <a href="{% role_url 'user_detail' person.pk %}"
-           class="block truncate font-medium text-txt-primary after:absolute after:inset-0 after:content-[''] hover:underline focus-visible:outline-2 focus-visible:outline-accent">{{ person.full_name }}</a>
-        <p class="font-mono text-sm text-txt-secondary">{{ person.account_id }}</p>
-        {% if person.special_role_codes %}
-        <p class="mt-1 flex flex-wrap gap-1.5">{% special_role_badges person %}</p>
-        {% endif %}
-      </div>
-      <button type="button" class="btn btn-ghost relative z-10 -mr-2 px-2 lg:order-last"
-              @click.stop="openMenu($event, $el.closest('[data-row]'), true)"
-              aria-haspopup="menu" aria-label="Actions for {{ person.full_name }}">
-        {% include 'includes/icon.html' with name='ellipsis-vertical' class='size-5' %}
-      </button>
-      <p class="col-start-2 text-sm text-txt-secondary lg:col-auto">{{ person.get_role_display }}</p>
-      <p class="col-start-2 min-w-0 truncate text-sm text-txt-secondary lg:col-auto">{% if person.extension %}{{ person.extension.name|title_case }}{% else %}No extension{% endif %}</p>
-      <span class="col-start-2 w-fit rounded-full border px-2.5 py-0.5 text-xs lg:col-auto
-        {% if person.status == 'suspended' %}border-warning text-warning
-        {% elif person.status == 'archived' %}border-border bg-surface-alt text-txt-secondary
-        {% elif person.status == 'active' %}border-success text-success
-        {% else %}border-border-strong text-txt-secondary{% endif %}">{{ person.get_status_display }}</span>
-    </li>
-    {% endfor %}
-  </ul>
-  {% include 'includes/pagination.html' with page=page querystring=querystring %}
-  {% else %}
-  <div class="card mt-6 text-center">
-    <p class="font-medium text-txt-primary">No people found</p>
-    <p class="mt-1 text-sm text-txt-secondary">
-      {% if active_filters %}Try a different search or filter.{% else %}Add the first person to get started.{% endif %}
-    </p>
-  </div>
-  {% endif %}
+  {% include 'accounts/people/_user_list_results.html' %}
 
   {# Right-click / three-dot menu: only what the server would allow for this person right now. #}
   <div x-show="menu.open" x-cloak style="display:none" role="menu" aria-label="Person actions"
@@ -164,11 +79,7 @@
 </div>
 
 {% modal "filters" title="Filter people" %}
-<form method="get" role="search" class="grid gap-4">
-  <div>
-    <label for="{{ form.q.id_for_label }}" class="label">{{ form.q.label }}</label>
-    {{ form.q }}
-  </div>
+<form method="get" class="grid gap-4">
   <div class="grid gap-4 sm:grid-cols-2">
     <div>
       <label for="{{ form.status.id_for_label }}" class="label">{{ form.status.label }}</label>
@@ -246,6 +157,52 @@ document.addEventListener('alpine:init', () => {
       y = Math.max(8, Math.min(y, window.innerHeight - 280));
       this.menu = { open: true, x, y, name: d.name, can: (d.can || '').trim().split(/\s+/), row };
       this.$nextTick(() => this.$refs.firstItem?.focus());
+    },
+    init() {
+      const form = document.querySelector('[data-live-search-form]');
+      const input = form?.querySelector('[name="q"]');
+      let timer;
+      input?.addEventListener('input', () => {
+        clearTimeout(timer);
+        timer = setTimeout(() => this.refreshResults(form), 300);
+      });
+    },
+    async refreshResults(form) {
+      this.controller?.abort();
+      const controller = new AbortController();
+      this.controller = controller;
+      const url = new URL(form.action || window.location.href, window.location.href);
+      const params = new URLSearchParams(window.location.search);
+      const term = new FormData(form).get('q')?.toString().trim();
+      if (term) params.set('q', term);
+      else params.delete('q');
+      params.delete('page');
+      url.search = params;
+      try {
+        const response = await fetch(url, {
+          headers: { 'X-Requested-With': 'XMLHttpRequest' },
+          credentials: 'same-origin', signal: controller.signal,
+        });
+        if (!response.ok) throw new Error(`Search failed: ${response.status}`);
+        const doc = new DOMParser().parseFromString(await response.text(), 'text/html');
+        const replacement = doc.querySelector('#people-results');
+        const current = this.$root.querySelector('#people-results');
+        if (!replacement || !current || controller !== this.controller) return;
+        this.selected = [];
+        this.closeMenu();
+        Alpine.destroyTree(current);
+        current.replaceWith(replacement);
+        Alpine.initTree(replacement);
+        const count = replacement.dataset.activeFilters;
+        const badge = this.$root.querySelector('[data-filter-count]');
+        badge.textContent = count;
+        badge.hidden = count === '0';
+        badge.setAttribute('aria-label', `${count} active`);
+        this.$root.querySelector('[data-clear-filters]').hidden = count === '0';
+        window.history.replaceState({}, '', url);
+      } catch (error) {
+        if (error.name !== 'AbortError') console.error(error);
+      }
     },
     closeMenu() { this.menu.open = false; },
     // A right-click anywhere that is not a row closes the menu and leaves the browser's own menu alone.
