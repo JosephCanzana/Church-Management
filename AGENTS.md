@@ -6,7 +6,7 @@ Church-Management is a Django + PostgreSQL system for Jesus Is Lord Church
 attendance, tithes and offering, faith goals and Bible streaks, accountability
 buddies, prayer requests, events, resources, notifications and audit logging.
 
-**Status:** all 14 apps and 45 models exist, with migrations and seed data.
+**Status:** all 14 apps and 46 models exist, with migrations and seed data.
 `check` and `makemigrations --check --dry-run` verify them (there is no `core.test_schema` in this repo).
 
 - **Built:**
@@ -21,7 +21,7 @@ buddies, prayer requests, events, resources, notifications and audit logging.
     passwords for the super-admin and admins (see People screens for admin and coordinator).
   - A global toast and confirm dialog (`static/js/ui.js`, rendered by `includes/messages.html`).
   - Bible: reader with three versions (KJV and Ang Dating Biblia from the database, ESV from api.esv.org), version
-    picker with locking, chapter reads, ESV call limits, locks and a size-capped cache, and the super-admin
+    picker with locking, chapter reads (Next counts a chapter as read), a per-account bookmark, ESV call limits, locks and a size-capped cache, and the super-admin
     switches for every version (`/superadmin/site-settings/`, see Bible), and the verse of the day.
   - Dashboards: one page per role (super-admin, admin, coordinator, member) with the verse of the day, continue
     reading, quick links and, for leaders, counts and charts (see Dashboards).
@@ -118,7 +118,7 @@ moving or reorganizing app code.
 | `accounts` | `extension`, `app_user`, `special_role`, `user_special_role`, `extension_special_role_limit`, `default_password`, `email_token`, `user_extension_history` | Login/logout/activation, forgot + reset password, email verification, profile, create/manage accounts, extensions, special roles and limits, default passwords, `archive_inactive_users`, `auto_transfer_extension`, `cleanup_email_tokens`, `mark_attended()` |
 | `theming` | `theme`, `theme_palette`, `user_settings` | Theme CRUD (both palettes in one transaction), contrast warning (including `highlight` / `on_highlight`), CSS generation + cache, context processor; `UserSettings` row created by `signals.py` |
 | `pages` | `church_content`, `landing_image`, `donation_account`, `jil_video` | Landing page (`get_landing_context()` in `pages/services.py`, a default for every block) and terms editing, donation page, `fetch_jil_videos` |
-| `bible` | `bible_verse`, `bible_esv_cache`, `daily_verse`, `bible_chapter_read` | Reader (KJV, Ang Dating Biblia, ESV), `import_bible`, ESV client with limits, locks and cache, version picker, daily verse (`daily_verse.py`, `seed_daily_verses`), `record_chapter_read()` |
+| `bible` | `bible_verse`, `bible_esv_cache`, `daily_verse`, `bible_chapter_read`, `bible_bookmark` | Reader (KJV, Ang Dating Biblia, ESV), `import_bible`, ESV client with limits, locks and cache, version picker, daily verse (`daily_verse.py`, `seed_daily_verses`), `record_chapter_read()`, `finish_chapter()`, bookmark |
 | `faith` | `goal`, `goal_checkin`, `user_daily_activity`, `user_streak` | Goals, check-ins, consistency, heatmap, streak rules, `complete_ended_goals` |
 | `events` | `event` | Event CRUD, change/cancel notices, `send_event_reminders` |
 | `resources` | `monthly_theme`, `monthly_resource`, `weekly_powerpoint`, `general_resource` | Monthly theme + files, weekly PPT (admin/coordinator only), general resources |
@@ -574,7 +574,7 @@ The source plan `docs/attendance.md` is not present in this checkout; the defaul
   `KJV` is the fallback for a missing or tampered cookie.
 - **Models:** `BibleVerse` (local text; constraints refuse ESV and MBBTAG rows), `EsvChapterCache`, `DailyVerse`,
   `BibleChapterRead` (unique per person, book, chapter and Manila day, NOT per translation: reading Genesis 1 in two
-  versions on one day is one chapter; `translation` records the first version used). `book` is always an OSIS id
+  versions on one day is one chapter; `translation` records the first version used), `BibleBookmark` (one row per person, `OneToOneField` on the user: where they are currently reading). `book` is always an OSIS id
   (`Gen`, `1John`).
 - **Loading the public domain texts:** `manage.py import_bible KJV|ADB (--file PATH | --url URL)` reads the
   seven1m/open-bibles OSIS files (`eng-kjv.osis.xml`, `tgl-tagalog.osis.xml`). Import is all-or-nothing: `osis.py`
@@ -582,7 +582,7 @@ The source plan `docs/attendance.md` is not present in this checkout; the defaul
   the Apocrypha) and the command replaces one translation in a single transaction, so a failed run keeps the old text.
   Psalm titles and poetry line breaks are not imported (plain verse text only).
 - **Reader:** routes `/bible/` (books), `/bible/<book>/` (chapters), `/bible/<book>/<chapter>/` (text), POST
-  `/bible/version/` (choose a version), POST `/bible/<book>/<chapter>/read/` (mark as read). All four roles can use
+  `/bible/version/` (choose a version), POST `/bible/<book>/<chapter>/finish/` (count as read, move the bookmark), POST `/bible/<book>/<chapter>/bookmark/` (set the bookmark). All four roles can use
   them (still wrapped in `role_required`). The chosen version is kept in the `bible_version` cookie (per device, not per
   account, HttpOnly, one year) and checked against the catalog on every request.
 - **Locked versions:** shown in the picker, disabled, with the reason as text, and refused on the server
@@ -596,6 +596,7 @@ The source plan `docs/attendance.md` is not present in this checkout; the defaul
   which goes through `services.get_chapter()`, so switches, ESV locks and the ESV cache all apply. A version that
   cannot be read gives a notice, never another version. `manage.py seed_daily_verses [--days N]` saves the next N
   days ahead (optional, safe to repeat). Tests: `apps/bible/tests/test_daily_verse.py`.
+- **Bookmark and Next:** there is no "mark as read" button. The Next button on `chapter.html` is a POST form to `bible:finish` (`after=next`): `services.finish_chapter()` calls `record_chapter_read()`, moves the person's single `BibleBookmark` to the following chapter (crossing book ends) and the view redirects there. The target is computed on the server, never read from the form. "I'm done for now" posts to the same url without `after` and stays on the page. On Revelation 22 the button reads "Finish", the bookmark stays and a toast is shown. Previous is a plain link and counts nothing. A GET never writes. A "Bookmark" button (`bible:bookmark`) sets the bookmark without counting a read. When the text is locked or not imported, Next is a plain link and changes nothing.
 - **Chapter reads:** `record_chapter_read()` is idempotent and sends `bible.signals.chapter_read` only for a new row;
   `faith` listens to it for the Bible streak. It does not check version availability (the text may have come from the
   cache). Reads are not written to `audit_log` (high volume, not an administrative action).
