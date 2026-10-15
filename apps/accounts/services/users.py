@@ -46,7 +46,10 @@ ROLES_WITH_EXTENSION = (Role.COORDINATOR, Role.MEMBER)
 IDENTITY_FIELDS = ("first_name", "middle_name", "last_name", "suffix", "birth_date")
 # Optional contact details. Never written to audit_log (only the field NAMES that changed).
 CONTACT_FIELDS = ("phone_number", *ADDRESS_FIELDS)
-USER_DETAIL_FIELDS = (*IDENTITY_FIELDS, *CONTACT_FIELDS)
+# Saved with the other details, but NOT part of who a person is (changing it never re-runs the
+# duplicate-name check) and never written to audit_log: only the field name is logged.
+PRIVATE_FIELDS = (*CONTACT_FIELDS, "gender")
+USER_DETAIL_FIELDS = (*IDENTITY_FIELDS, *PRIVATE_FIELDS)
 MAX_BULK = 100
 MIN_PASSWORD_LENGTH = 8
 # No 0/O, 1/l/I: generated passwords get read aloud and typed by hand.
@@ -211,24 +214,44 @@ def check_contact(data, existing=None):
         raise ServiceError(next(iter(problems.values())))
 
 
-def find_duplicate_person(first_name, middle_name, last_name, birth_date=None, *, suffix="", exclude_pk=None):
-    """Someone with the same name and suffix, or None. Archived people count.
+def find_duplicate_people(
+    first_name, middle_name, last_name, birth_date=None, *, suffix="", exclude_pk=None, limit=None,
+):
+    """People with the same name and suffix, oldest account first. Archived people count.
 
-    Two real people can share a name, so a match is ignored only when BOTH have
-    a birth date and the dates differ. `__iexact` also catches rows saved
-    before names were stored in lowercase.
+    The ONE duplicate-name rule: `find_duplicate_person` (user create and edit) and the
+    attendance "same person?" prompt both use it. Two real people can share a name, so a
+    match is ignored only when BOTH have a birth date and the dates differ. `__iexact` also
+    catches rows saved before names were stored in lowercase. `middle_name=None` means "any
+    middle name" (a first timer on an attendance sheet rarely gives one); "" means none.
+    Callers pass names already cleaned with `normalize_details` / `clean_text`.
     """
-    people = User.objects.filter(
-        first_name__iexact=first_name, middle_name__iexact=middle_name, last_name__iexact=last_name,
-        suffix__iexact=suffix,
+    people = User.objects.select_related("extension").filter(
+        first_name__iexact=first_name, last_name__iexact=last_name, suffix__iexact=suffix,
     )
+    if middle_name is not None:
+        people = people.filter(middle_name__iexact=middle_name)
     if exclude_pk is not None:
         people = people.exclude(pk=exclude_pk)
+    found = []
     for other in people.order_by("pk"):
         if birth_date and other.birth_date and birth_date != other.birth_date:
             continue
-        return other
-    return None
+        found.append(other)
+        if limit is not None and len(found) >= limit:
+            break
+    return found
+
+
+def find_duplicate_person(first_name, middle_name, last_name, birth_date=None, *, suffix="", exclude_pk=None):
+    """Someone with the same name and suffix, or None. Archived people count.
+
+    The first result of `find_duplicate_people`, which holds the rule.
+    """
+    found = find_duplicate_people(
+        first_name, middle_name, last_name, birth_date, suffix=suffix, exclude_pk=exclude_pk, limit=1,
+    )
+    return found[0] if found else None
 
 
 def duplicate_message(data, *, exclude_pk=None):
@@ -410,6 +433,7 @@ def create_user(actor, request, data, *, token):
             last_name=data["last_name"],
             suffix=data.get("suffix", ""),
             birth_date=data.get("birth_date"),
+            gender=data.get("gender", ""),
             phone_number=data.get("phone_number", ""),
             **{name: data.get(name, "") for name in ADDRESS_FIELDS},
             role=role,
@@ -552,11 +576,11 @@ def update_user(actor, request, ref, data):
                 )
 
         if details_changed:
-            shown = [n for n in details_changed if n not in CONTACT_FIELDS]
+            shown = [n for n in details_changed if n not in PRIVATE_FIELDS]
             after = {n: getattr(person, n) for n in shown}
-            contact = [n for n in details_changed if n in CONTACT_FIELDS]
+            contact = [n for n in details_changed if n in PRIVATE_FIELDS]
             if contact:
-                after["contact_fields_changed"] = contact     # names only, never the phone or address
+                after["contact_fields_changed"] = contact     # names only, never the phone, address or gender
             _log_person(
                 "account.update", actor, request, person,
                 before={n: before[n] for n in shown}, after=after,
@@ -708,9 +732,10 @@ def _reset_password(actor, request, ref, typed=""):
             raise ServiceError("Restore this person before resetting their password.")
         _refuse_self(actor, person, "reset the password of")
         info = _set_initial_password(actor, person, typed)
+        person.status = Status.NOT_ACTIVATED
         person.must_change_password = True
         # Changing the hash also signs the person out of every open session.
-        person.save(update_fields=["password", "must_change_password", "updated_at"])
+        person.save(update_fields=["password", "status", "must_change_password", "updated_at"])
         _log_person("account.password_reset", actor, request, person,
                     after={"needs_activation": True, "how_set": info.kind})
     return person, info
@@ -773,6 +798,50 @@ def _clear_special_roles(person):
 
     removed, _ = UserSpecialRole.objects.filter(user=person).delete()
     return removed
+
+
+def auto_transfer_visitor(actor, request, person_id, target_extension_id, on_date):
+    """Move an active member after attendance has confirmed repeated visits to a new extension.
+
+    The attendance service decides whether the visit threshold has been reached. This accounts-owned
+    operation rechecks the member and extension under locks, moves the open history row, clears
+    extension-specific roles, and records the automatic transfer without importing attendance.
+    """
+    if not getattr(actor, "is_authenticated", False) or not actor.is_active:
+        raise PermissionDenied("A signed-in leader must upload attendance before an automatic transfer.")
+    if actor.role not in (Role.SUPER_ADMIN, Role.ADMIN) and not (
+            actor.role == Role.COORDINATOR and actor.extension_id == target_extension_id):
+        raise PermissionDenied("You cannot record an automatic transfer for this extension.")
+
+    with transaction.atomic():
+        current_extension_id = User.objects.filter(pk=person_id).values_list("extension_id", flat=True).first()
+        if current_extension_id is None:
+            return False
+        extensions = _lock_extensions([current_extension_id, target_extension_id])
+        target = extensions.get(target_extension_id)
+        person = User.objects.select_for_update().filter(pk=person_id).first()
+        if person is None or person.extension_id != current_extension_id:
+            return False
+        if target is None or target.is_archived or person.extension_id == target.pk:
+            return False
+        if person.role != Role.MEMBER or person.status != Status.ACTIVE:
+            return False
+
+        old_extension_id = person.extension_id
+        cleared = _clear_special_roles(person)
+        person.extension = target
+        person.save(update_fields=["extension", "updated_at"])
+        UserExtensionHistory.objects.filter(user=person, to_date__isnull=True).update(to_date=on_date)
+        UserExtensionHistory.objects.create(
+            user=person, extension=target, from_date=on_date,
+            reason=UserExtensionHistory.Reason.AUTO_TRANSFER,
+        )
+        _log_person(
+            "account.extension_auto_transfer", actor, request, person,
+            before={"extension_id": old_extension_id},
+            after={"extension_id": target.pk, "special_roles_cleared": cleared},
+        )
+    return True
 
 
 def move_person(actor, request, person_ref, target_ref, *, confirmed=False, expected_from=None):

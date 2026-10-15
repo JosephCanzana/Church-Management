@@ -21,7 +21,7 @@ from apps.core.text import clean_suffix as normalize_suffix, clean_text, title_c
 
 from .address import ADDRESS_FIELDS, COUNTRIES, HIERARCHY, PHILIPPINES, canonical_country, check_address
 from .contact import PHONE_MESSAGE, clean_phone, is_valid_phone
-from .models import Extension, Role, Status, User
+from .models import Extension, Gender, Role, Status, User
 from .permissions import assignable_roles, can_type_password
 from .validators import validate_strong_password, STRONG_PASSWORD_MESSAGE
 
@@ -292,6 +292,11 @@ class UserForm(forms.Form):
     birth_date = forms.DateField(
         required=False,
         widget=forms.DateInput(attrs={"class": "input", "type": "date"}, format="%Y-%m-%d"),
+    )
+    # Optional; leaders set it here (the member's own profile page does not show it in v1).
+    gender = forms.ChoiceField(
+        required=False, label="Gender", choices=[("", "Not given"), *Gender.choices],
+        widget=forms.Select(attrs={"class": "input"}),
     )
     role = forms.ChoiceField(widget=forms.Select(attrs={"class": "input", "x-model": "role"}))
     # The page renders a dropdown; the server still checks the selected extension.

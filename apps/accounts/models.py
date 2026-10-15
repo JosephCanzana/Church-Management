@@ -28,6 +28,17 @@ class Status(models.TextChoices):
     ARCHIVED = "archived", "Archived"
 
 
+class Gender(models.TextChoices):
+    """A person's gender as the attendance summary counts it. Optional on a User (blank = not given).
+
+    Defined here, not in `attendance`, because `accounts` is lower in the dependency
+    direction (core <- audit <- accounts <- attendance): attendance imports this.
+    """
+
+    MALE = "male", "Male"
+    FEMALE = "female", "Female"
+
+
 class ArchiveReason(models.TextChoices):
     MANUAL = "manual", "Manual"
     INACTIVE = "inactive", "Inactive"
@@ -117,6 +128,9 @@ class User(AbstractBaseUser, TimestampedModel, ArchivableModel):
     email_verified_at = models.DateTimeField(null=True, blank=True)
     pending_email = models.EmailField(null=True, blank=True)    # waiting for link click
     birth_date = models.DateField(null=True, blank=True)
+    # Optional. Existing people stay blank until a leader fills it in. Like the contact
+    # details below, it is never written to audit_log.
+    gender = models.CharField(max_length=10, choices=Gender.choices, blank=True)
     # Contact details, all optional, so a coordinator can follow someone up.
     # The address uses the same parts as Extension (see accounts.address) but has
     # no defaults: an empty address means "not given". Never written to audit_log.

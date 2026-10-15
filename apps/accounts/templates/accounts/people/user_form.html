@@ -34,7 +34,7 @@
     {% endif %}{% endfor %}
   </div>
 
-  <div class="mt-4 grid gap-4 sm:grid-cols-2">
+  <div class="mt-4 grid gap-4 sm:grid-cols-3">
     <div>
       <label for="{{ form.suffix.id_for_label }}" class="label">Suffix <span class="font-normal text-txt-secondary">(optional)</span></label>
       {{ form.suffix }}
@@ -44,6 +44,11 @@
       <label for="{{ form.birth_date.id_for_label }}" class="label">Birth date <span class="font-normal text-txt-secondary">(optional)</span></label>
       {{ form.birth_date }}
       {% for error in form.birth_date.errors %}<p class="field-error">{{ error }}</p>{% endfor %}
+    </div>
+    <div>
+      <label for="{{ form.gender.id_for_label }}" class="label">Gender <span class="font-normal text-txt-secondary">(optional)</span></label>
+      {{ form.gender }}
+      {% for error in form.gender.errors %}<p class="field-error">{{ error }}</p>{% endfor %}
     </div>
   </div>
 

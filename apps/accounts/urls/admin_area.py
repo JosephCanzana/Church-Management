@@ -6,7 +6,7 @@ The namespace is `admin_area` because `admin` already belongs to Django's built-
 current namespace, so every link and redirect stays inside this area. There is no delete route:
 only the super-admin force deletes.
 """
-from django.urls import path
+from django.urls import include, path
 
 from ..views import default_passwords as defaults
 from ..views import special_roles as special
@@ -31,4 +31,6 @@ urlpatterns = [
     path("users/<int:pk>/special-roles/remove/", special.special_role_remove, name="special_role_remove"),
     # How many people each extension may have in each special role.
     path("special-roles/", special.special_role_limits, name="special_role_limits"),
+    # Attendance sheets: written once in attendance/area_urls.py (string include: accounts imports nothing from attendance).
+    path("attendance/", include("apps.attendance.area_urls")),
 ]

@@ -7,7 +7,7 @@ attendance, tithes and offering, faith goals and Bible streaks, accountability
 buddies, prayer requests, events, resources, notifications and audit logging.
 
 **Status:** all 14 apps and 45 models exist, with migrations and seed data.
-`core.test_schema` verifies them.
+`check` and `makemigrations --check --dry-run` verify them (there is no `core.test_schema` in this repo).
 
 - **Built:**
   - Base templates, design tokens, light/dark toggle, the public landing page (a default for every block until
@@ -25,14 +25,14 @@ buddies, prayer requests, events, resources, notifications and audit logging.
     switches for every version (`/superadmin/site-settings/`, see Bible), and the verse of the day.
   - Dashboards: one page per role (super-admin, admin, coordinator, member) with the verse of the day, continue
     reading, quick links and, for leaders, counts and charts (see Dashboards).
+  - Attendance (bricks 1 to 14): gender and age networks, model changes, permissions and scoping, draft services,
+    summary, upload, reopen, the sheet screens for every role, A4 print page, first timer conversion, repeat-visitor
+    auto-transfer, reset-to-activation, 58 mm welcome slip and personal history (see Attendance).
 - **Not built yet:**
-  - Forgot/reset password (the "Forgot password?" link on the login page is a placeholder, `href="#"`) and
-    brute-force login throttling.
+  - Brute-force login throttling.
   - The `faith` listener that turns a chapter read into a streak, MBBTAG. The dashboards show "Coming soon"
     cards for the Bible streak, goals and events until those apps have views.
-  - Linking an attendance first timer to a new account (`attendance_first_timer.converted_user`, then showing it in the
-    member's attendance history), the attendance and tithes screens that check the special roles, and the admin alert
-    when a special role is given.
+  - The tithes screens.
   - Beyond the list above, services, views and forms are mostly not built yet: features are being added on top of
     the models, one app at a time.
 
@@ -122,11 +122,11 @@ moving or reorganizing app code.
 | `faith` | `goal`, `goal_checkin`, `user_daily_activity`, `user_streak` | Goals, check-ins, consistency, heatmap, streak rules, `complete_ended_goals` |
 | `events` | `event` | Event CRUD, change/cancel notices, `send_event_reminders` |
 | `resources` | `monthly_theme`, `monthly_resource`, `weekly_powerpoint`, `general_resource` | Monthly theme + files, weekly PPT (admin/coordinator only), general resources |
-| `attendance` | `attendance`, `attendance_member`, `attendance_first_timer` | Sheets, first timers, upload (freeze counts, update `last_attended_at`), reopen (admin) |
+| `attendance` | `attendance`, `attendance_member`, `attendance_first_timer` | Sheets, draft services (ticks, first timers, search), summary, upload (freeze counts, update `last_attended_at`), reopen (admin) |
 | `tithes` | `tithes_offering`, `tithe_entry` | Entries, live totals, denomination count, finalize, reopen; members see only their own entries |
 | `buddy` | `user_buddy`, `buddy_request`, `buddy_note` | Request/accept (transactional one-partner check), notes/nudges, end partnership, view partner goals |
 | `prayer` | `prayer_request`, `prayer_reply` | Send, inbox (coordinator scope, anonymous masking), reply, done, delete |
-| `notifications` | `notification`, `notification_preference`, `notification_rule` | `notify()`, bell + list, preferences, admin-alert listener, `cleanup_notifications` |
+| `notifications` | `notification`, `notification_preference`, `notification_rule` | `notify()`, bell + list, preferences, the admin-alert receiver (`notifications/listeners.py`, applies `notification_rule` to `action_logged`), `cleanup_notifications` |
 
 Before adding a model, put it in the app whose data it shares a lifecycle
 with. Only create a new app if the answer is "none".
@@ -168,7 +168,7 @@ with. Only create a new app if the answer is "none".
 - Four join tables use a surrogate `id` plus a unique constraint instead of a
   composite primary key (Django limitation).
 - A table added in Django first (`bible_verse`, `bible_esv_cache`) must also be added to `docs/schema.sql`,
-  and the table count in `core.test_schema` updated. A column added to an existing table (for example the contact
+  A column added to an existing table (for example the contact
   fields on `app_user`) is added there too.
 
 ## Roles and routing
@@ -186,8 +186,8 @@ with. Only create a new app if the answer is "none".
   Hiding a link in a template is not access control.
 - Coordinator-scoped data must be fetched through the `for_user(user)`
   queryset helper, not with ad hoc `.filter(extension=...)` calls in views. For people this is
-  `User.objects.for_user(actor)` (see People screens for admin and coordinator); attendance and tithes get their own
-  `for_user` when their screens are built.
+  `User.objects.for_user(actor)` (see People screens for admin and coordinator); for attendance it is
+  `Attendance.objects.for_user(actor)` (see Attendance); tithes get their own when their screens are built.
 - Use `{% url 'admin:index' %}` to link to Django admin, never a hardcoded
   path.
 
@@ -231,6 +231,10 @@ with. Only create a new app if the answer is "none".
   automatic archive with `archive_reason='inactive'`. Restore and unsuspend go back to `active` when
   `must_change_password` is false, otherwise to `not_activated`. Deactivate = back to `not_activated` with
   `must_change_password=True`.
+- **Last attended:** `app_user.last_attended_at` (what the inactivity job reads) is written only through
+  `services/presence.mark_attended(user_ids, on_date)`: one UPDATE that moves people with no date, or an earlier one, to
+  `on_date` and never moves anyone back. The attendance upload calls it (`accounts` never imports `attendance`, so it takes
+  plain ids and a date). It does not touch `updated_at`: attending is activity, not an edit. A reopen does not roll it back.
 - **Default passwords:** kept by the super-admin (the global ones) and by each admin, one per role beneath them
   (`DefaultPassword.owner` + `applies_to_role`); a coordinator keeps none. Stored as a hash plus an encrypted copy so the
   owner can see it again. Which one a person gets depends on who creates or resets them; the rules are under People
@@ -368,8 +372,11 @@ with. Only create a new app if the answer is "none".
   `address.ADDRESS_FIELDS` lists the parts. Rules: `check_address` (the Philippine rules, same as extensions) plus "a partly
   filled address needs a country" (`services.users.check_contact`, and in `UserForm`). Phone: `accounts/contact.py`
   (stored as digits; `+639...` becomes `09...`). Suffix: `core.text.clean_suffix` / `suffix_case` (stored `jr`, shown
-  `Jr.`). The duplicate-name check includes the suffix and only runs when a name, the suffix or the birth date changes.
+  `Jr.`). The duplicate-name check (`find_duplicate_people` in `services/users.py`, also used by attendance) includes the suffix and only runs when a name, the suffix or the birth date changes.
   Phone and address values are NEVER written to `audit_log`: `update_user` logs only `contact_fields_changed` (field names).
+  `app_user.gender` (`accounts.models.Gender`: male, female; blank = not given) is handled the same way (`PRIVATE_FIELDS` in
+  `services/users.py`): optional, set by leaders on the people create and edit screens only (not on the member's own
+  profile in v1), saved without re-running the duplicate-name check, never written to `audit_log`.
 - **Special roles** (`services/special_roles.py`, `views/special_roles.py`): `tithes_offering` and `attendance`. The
   super-admin and admins (any extension) and a coordinator (their own) give or take them on a member's detail page. Only a
   member who can sign in (not archived, not suspended) can hold one. `assign_special_role` locks the extension row, then
@@ -390,6 +397,163 @@ with. Only create a new app if the answer is "none".
   `coordinator_area:default_password_show` (`reveal_default_password`), which shows the global member password read-only in
   the show-once dialog and writes the audit row `default_password.view` (who looked, never the password). Each default is
   stored as a hash plus an encrypted copy (`DefaultPassword.password_encrypted`, key `DEFAULT_PASSWORD_KEY`).
+
+## Attendance
+Bricks 1 to 14 are implemented. In addition to the sheet workflow, first-timer conversion and "My attendance":
+- **Repeat visitors (brick 11):** after three distinct uploaded sheets at an extension, an active member whose home extension differs is transferred there. A draft or a single visit never changes their extension. The transfer is performed by `accounts.services.users.auto_transfer_visitor`, updates `user_extension_history` with reason `auto_transfer`, clears extension-specific roles, and logs extension ids only.
+- **Account reset (brick 12):** a reset sets `status=not_activated` and `must_change_password=True`; the account id remains the sign-in identifier and activation is required on the next login. The password hash change ends existing sessions.
+- **Welcome slip (brick 13):** first-timer conversion offers a browser-printable 58 mm receipt. It is rendered only in the uncached one-time response; a generated password can be printed, while default/typed credentials require the leader to hand over the password separately. No printer driver or server-side PDF dependency is used.
+- **My attendance (brick 14):** own uploaded-sheet history only, newest first, with no user id accepted from the request. The first-visit row appears once its sheet is uploaded.
+
+The source plan `docs/attendance.md` is not present in this checkout; the defaults above are the implemented acceptance assumptions.
+- **Models** (`attendance/models.py`): `Attendance` (one sheet per extension, date and label; `taken_by`, `uploaded_by`,
+  frozen `summary` JSON that is NULL while a draft; `is_locked` is true when uploaded), `AttendanceMember` (a tick, with a
+  SNAPSHOT of name, gender, age network and home extension taken at tick time; gender and age network may be blank until the
+  taker fills them in), `AttendanceFirstTimer` (first, middle, last name, suffix, required gender and age network, optional
+  phone and birth date; names stored lowercase and cleaned in `save()`, shown with `full_name`).
+- **Age networks** (`attendance/age.py`): `AgeNetwork` (adult 36+, young adult 25 to 35, youth 13 to 24, children 0 to 12),
+  `age_on(birth_date, on_date)` and `age_network_for(birth_date, on_date)` (None without a birth date or when it is after
+  the date). A 29 February birthday counts on 1 March in a common year. Always computed as of the SHEET date.
+- **Dependencies:** `Gender` lives in `accounts/models.py` and attendance imports it; `AgeNetwork` lives in attendance.
+  `accounts` never imports `attendance`.
+- **Who may do what** (`attendance/permissions.py`, the only place that decides): `Attendance.objects.for_user(actor)`
+  (super-admin and admin all sheets; coordinator their extension's; an attendance special member the DRAFTS of the extension
+  where they hold the seat; anyone else, or anyone who cannot sign in, nothing) and `can_view`, `can_create`,
+  `can_edit_draft`, `can_review`, `can_upload`, `can_reopen`, `can_convert`, `can_print` (+ `has_attendance_role`, `require`). "Own extension"
+  means the SHEET's extension. Views start from `for_user`; services call `require(can_..., actor, sheet)` again.
+  `can_convert` is the coordinator of the sheet's extension or an admin or super-admin, on a draft or uploaded sheet (never a
+  special member, never an archived sheet).
+  Upload is the coordinator of that extension on a draft; an admin or super-admin may upload only while the extension has no
+  coordinator (open item in the plan, default taken). Reopen is admin and super-admin only, on an uploaded sheet.
+- **Draft services** (`attendance/services.py`): `create_sheet`, `set_taken_by`, `search_people`, `find_possible_matches`,
+  `mark_present`, `unmark_present`, `set_member_category`, `add_first_timer`, `update_first_timer`, `remove_first_timer`.
+  Every action on a sheet's rows runs in `transaction.atomic()`, locks the sheet row (`select_for_update`), re-checks permission
+  on the LOCKED row and refuses with a `ServiceError` unless the sheet is a draft (the upload takes the same lock, so a late tick
+  from a slow device is refused). Details:
+  - `create_sheet` locks the extension row and refuses a repeat of extension, date and label (ignoring capitals, archived
+    sheets included); `created_by` and `taken_by` are the actor; logs `attendance.create` (date and label only).
+    `request` is an optional keyword for the audit row.
+  - `set_taken_by`: coordinator of the extension or an admin, on a draft (`can_set_taken_by`); the person must be that
+    extension's coordinator or an attendance special member who can sign in. Not audited.
+  - `search_people` is a DELIBERATE exception to `for_user` (a visitor belongs to another extension): it searches everyone who
+    can sign in, needs the right to edit the draft, asks for 3+ characters (fewer returns `[]`), returns at most 20 people and
+    only `id`, `name`, `home_extension` ("-" for an admin or super-admin) and `age_network`. Never birth date, phone or address.
+  - `mark_present` returns `(row, created)`. The row snapshots name, home extension, gender and age network (the age network as
+    of the SHEET date). The person's own gender and birth date win; what the taker supplies only fills blanks and is stored on
+    the row, never on the user. A row with a missing category is saved blank and flagged on the screen; the upload refuses blanks.
+    A second tick of the same person changes nothing.
+  - `add_first_timer` returns an `AddFirstTimerResult` (`first_timer` or `matches`, `needs_confirmation`). When people with the
+    same name exist and `confirm_new` is false, nothing is saved and the matches come back for the "same person?" prompt. A birth
+    date, when given, DECIDES the age network. The same first timer twice on one sheet is refused unless birth dates differ.
+    An earlier unconverted first timer of the same extension with the same name counts like an existing person: without
+    `confirm_new` nothing is saved and the result carries `previous_visits` (see First timer to member).
+  - Two guards protect conversions: `mark_present` refuses a person who is already a CONVERTED first timer on that sheet (they
+    would count twice), and `remove_first_timer` refuses a converted row (it is the member's "First visit").
+  - Ticks, first timers and `taken_by` changes are working data and are NOT audited.
+- **Duplicate-name rule** (`accounts.services.users.find_duplicate_people`, one rule for user create and edit and for the
+  attendance "same person?" prompt; `find_duplicate_person` returns its first result). Same first name, last name and suffix;
+  archived people count; a match is dropped only when both sides have a birth date and they differ. `middle_name=None` means
+  any middle name (used by attendance).
+- **Summary** (`attendance/summary.py`): `build_summary(sheet)` counts the STORED rows only (never current birth dates) with two
+  grouped queries and returns a `SheetSummary` (`summary` JSON for `Attendance.summary`, `members_present`,
+  `first_timers_count`, `total_present`, `incomplete`). It serves the live preview on a draft and the value frozen at upload, so
+  they cannot disagree. `summary_for(sheet)` returns the frozen numbers for an uploaded sheet and counts live otherwise (draft or
+  reopened); screens and the print page call it. `incomplete_rows(sheet)` lists member rows missing a gender or age network
+  (the upload refuses while any exist). `summary_table(summary)` gives the display rows (Men and Women by the four age networks,
+  for first timers and for members, with totals) for the screen and the print page. A member row without a category counts in
+  `members_present` but in no cell, so a frozen summary always adds up.
+- **Upload** (`upload_sheet(actor, sheet_id, *, token, request=None)` in `attendance/services.py`, returns an `UploadResult`
+  with `sheet` and `duplicate`): runs in ONE transaction, in this order: (1) consume the form's one-time token (a replay
+  returns `duplicate=True` and does nothing, so a double tap is quiet); (2) lock the sheet row and require a draft
+  (`_check_draft`, so an uploaded sheet is refused even with a fresh token) and `can_upload`; (3) refuse while
+  `incomplete_rows` is not empty (the message says how many) or nobody is marked (a sheet of only first timers is fine);
+  (4) `build_summary`; (5) write `members_present`, `first_timers_count`, `total_present`, `summary`, `uploaded_by`,
+  `uploaded_at` and the uploaded status; (6) `accounts.services.presence.mark_attended` for the ticked people; (7) log
+  `attendance.upload` with the three counts only. Any refusal rolls the token back too, so the same form can be sent again
+  once the problem is fixed. `last_attended_at` is set to the sheet date capped at TODAY in Manila, so a sheet dated in the
+  future by mistake cannot give anyone a future attendance date. The view puts `new_submission_token()` in the form.
+- **Reopen** (`reopen_sheet(actor, sheet_id, *, token, request=None)` in `attendance/services.py`, returns a `ReopenResult` with
+  `sheet` and `duplicate`): admin or super-admin only (`can_reopen`), uploaded sheets only. ONE transaction, in this order:
+  (1) consume the form's one-time token (a replay returns `duplicate=True`); (2) lock the sheet row and require the uploaded
+  status (a draft or archived sheet is a `ServiceError`); (3) `require(can_reopen, ...)`; (4) set the status back to draft and
+  clear `members_present`, `first_timers_count`, `total_present`, `summary`, `uploaded_by` and `uploaded_at`; (5) log
+  `attendance.reopen` with the old counts in `before` (counts only, no free-text reason). A refusal rolls the token back too.
+  `last_attended_at` is NOT rolled back; the next upload only moves it forward. A reopened sheet leaves the dashboards (they
+  count uploaded sheets only) until it is uploaded again. This is the ONLY way to edit an uploaded sheet: reopen, change it with
+  the draft services, then the coordinator uploads again. The view puts `new_submission_token()` in the form.
+- **First timer to member** (brick 10, `attendance/services.py`): `convert_first_timer(actor, first_timer_id, *, token,
+  request=None)` returns a `ConvertResult` (`user`, `password` as a `PasswordInfo`, `first_timer`, `duplicate`). Allowed through
+  `can_convert` on the first timer's OWN sheet. ONE transaction, in this order: (1) consume the form's one-time token (a replay
+  returns `duplicate=True`); (2) lock the sheet row, then the first-timer row; refuse an archived sheet and a row that is
+  already converted; (3) call `accounts.services.users.create_user` (role member, the sheet's extension, the row's names, gender,
+  birth date and phone, the actor's default-password rules). It derives its own token from the form's (`cv-<token>`), so one
+  submit is one account, and it runs the duplicate-name check first, so someone who already has an account is refused;
+  (4) set `converted_user`; (5) log `attendance.first_timer_convert` with ids only (`attendance_id`, `user_id`). NO account is
+  created automatically, and NO member row is added to the sheet: the person already counts once, as a first timer, so a member
+  row would count them twice in the frozen numbers. `previous_first_timer_visits(extension, first_name, last_name, *, suffix,
+  before_date, exclude_sheet_id)` lists earlier UNCONVERTED visits in the same extension (`first_timer_id`, `sheet_id`, `date`;
+  archived sheets and converted rows left out); `add_first_timer` returns them as `previous_visits` for the "Visited before on
+  [date]" prompt. `member_attendance_history(user)` reads UPLOADED sheets only, newest first: ticks are "Present", first-timer
+  rows converted into this account are "First visit"; nothing is copied between tables, and a reopened sheet leaves the history
+  until it is uploaded again.
+- **Convert screen** (`sheet_first_timer_convert` in `views.py`, route `sheets/<pk>/first-timers/convert/` in `area_urls.py`):
+  a `sheet_action` POST that renders `attendance/convert_result.html` instead of redirecting, because the new password is shown
+  ONCE through the secrets dialog (`secrets-data`), like the people screens. The first timer may be on this sheet or an earlier
+  one (the "visited before" prompt); with `mark_here` the new member is also ticked present on this draft. Partials to include
+  in the workspace and review templates: `_convert_button.html` (one first-timer line) and `_previous_visits.html` (the
+  "same person?" prompt). The context carries `can_convert` and `convert_token`.
+- **My attendance** (brick 14, `my_attendance` in `views.py`, route `mine/` in `attendance/urls.py` ONLY, name `attendance:mine`,
+  template `attendance/mine.html`, a "My attendance" entry in `NAV_ITEMS` for every role): the signed-in person's own history
+  from `member_attendance_history(request.user)`. It never reads a person id from the URL, query string or a form, skips
+  `attendance_screen` on purpose (that guard is about sheets) and is NOT in `area_urls.py`, so it never appears under a role area.
+- **Admin alerts** (`notifications/listeners.py`, `notify_admin_alert`, connected to `audit.signals.action_logged`): looks up the
+  ENABLED `notification_rule` for the logged action; the recipients are the people whose role is in `notify_roles` and who can
+  still sign in, except the person who did the action and anyone who turned off in-app alerts of type `admin_alert`. The bell
+  item (`type="admin_alert"`, important) carries only `data={"action": ...}`, the entity type and id, and `audit_log_id`. It
+  runs inside `log_action`'s transaction. `notifications` never imports a feature app. Every seeded rule alerts this way, not
+  only `attendance.reopen`. The bell list does not render this type yet (open item).
+- **Screens** (`attendance/views.py`, `forms.py`, `templates/attendance/`): thin views over the services, one set shared by four
+  places. The routes are written ONCE in `attendance/area_urls.py` (no `app_name`) and mounted by a STRING include
+  (`include("apps.attendance.area_urls")`, so `accounts` imports nothing from `attendance`) in `accounts/urls/superadmin.py`
+  (`/superadmin/attendance/`), `admin_area.py` (`/admin/attendance/`) and `coordinator_area.py` (`/coordinator/attendance/`),
+  and once more by `attendance/urls.py` at the member root (`/attendance/`, namespace `attendance`, for attendance special
+  members). Routes: `sheets/` (list), `sheets/new/`, `sheets/<pk>/` (the draft workspace, or the review once uploaded),
+  `review/`, `print/`, and POST-only `mark/`, `unmark/`, `category/`, `first-timers/add/`, `first-timers/remove/`, `upload/`,
+  `reopen/`, and POST-only `first-timers/convert/`. Templates and redirects follow the namespace of the request (`request.resolver_match.namespace`, and
+  `{% role_url %}` in templates), never a hardcoded one. Every view goes through `attendance_screen`: `role_required`, then
+  `AREA_ROLES` (each namespace belongs to ONE role: a coordinator typing an admin URL is sent home), then
+  `permissions.can_use_area`, and it is `never_cache`. Every sheet is opened with `_open_sheet`, which starts from
+  `Attendance.objects.for_user(request.user)`; a sheet that is missing OR out of reach gives the same "no longer exists"
+  message. POST actions use the `sheet_action` decorator: it loads the sheet, runs ONE service, and turns a `ServiceError` or
+  `PermissionDenied` into an error toast and a redirect back. `AREA_ROLES` must stay in step with `church_management/urls.py`
+  and the role url modules.
+- **A4 print page** (brick 9; `sheet_print` in `views.py`, `templates/attendance/print.html`, route `sheets/<pk>/print/`):
+  a read-only GET that changes nothing and logs nothing. Allowed through `can_print` (the same rule as `can_view`: a special
+  member prints drafts only). The page is STANDALONE, it does not extend `base_app.html`: black text on white whatever the
+  person's light or dark mode, inline CSS, no external fonts, no Tailwind, no `{% include 'includes/logo.html' %}` (that logo
+  is a CSS mask whose class lives in `input.css`, so the page uses a plain `<img src="{% static 'images/black-logo.svg' %}">`).
+  Layout copies the paper sheet: header (logo, church and extension name, municipality and province, "Attendance sheet", date,
+  service label, "Taken by", and "Uploaded by" with the upload date or a plain "DRAFT, not uploaded" line), ONE numbered grid
+  (members by name, then first timers by name) with Name, Belongs to, Men and Women by Adult, YA, Youth, C, and an FT column, a
+  tick in the cell of the person's stored gender and age network (a first timer gets their gender and age tick AND the FT tick),
+  then the summary table from `summary_table`, "Total attendees" (`summary.total_present`), the age-network legend and the
+  printed date and time in Manila. "Belongs to" shows the home extension only for a visitor (home extension different from the
+  sheet's, the same rule as the review) and is blank for everyone else, admins included. The view builds `rows` (`_print_rows`:
+  `number`, `name`, `belongs`, `first_timer`, `needs_category`, `cells`, eight booleans, men then women, in age-network order);
+  only names, home extension, gender and age network are read, so a birth date, phone number or address cannot reach the page.
+  An uploaded sheet prints its FROZEN numbers (`summary_for`); a draft counts live and a member still missing a category is
+  marked "(no category yet)" with no tick. CSS: `@page { size: A4; margin: 12mm }`, `thead { display: table-header-group }`
+  so the header repeats on page 2, `tr { break-inside: avoid }`, the summary block never splits, and NO page numbers (CSS page
+  counters are unreliable across browsers). The toolbar and the grey desk are screen only. "Save as PDF" is the browser's print
+  destination; there is no server-side PDF library (it would add system packages to the Docker image) and no direct ESC/POS
+  printing. The review page has a "Print or save as PDF" button (`can_print` in its context) that opens the page in a new tab.
+- **Privacy:** no names, birth dates, phone numbers or passwords in `audit_log`; individual ticks are not audited. The print
+  page and the people search show no birth dates, phone numbers or addresses.
+- **Tests:** `attendance/tests/` (a package, so there is no `tests.py` beside it): `test_age`, `test_conversion`, `test_models`,
+  `test_permissions`, `test_print`, `test_reopen`, `test_services`, `test_summary`, `test_upload`. The admin-alert receiver is tested in
+  `notifications/tests.py`. The gender field is tested in
+  `accounts/tests/test_gender.py` and `mark_attended` in `accounts/tests/test_presence.py` (tests live with the code they check). In tests, never create two sheets with the same extension, date and label,
+  and set `archived_at` together with `status="archived"` (a database constraint ties them).
 
 ## Bible
 - **Where:** `apps/bible/`: `models.py`, `books.py` (the 66 books, OSIS ids), `osis.py` (file reader),
@@ -561,7 +725,8 @@ with. Only create a new app if the answer is "none".
   extension. Only the super-admin sees super-admin rows. Amounts are shown in pesos (`CURRENCY` in `services.py`).
 - **Scoping:** the only code that narrows data to a coordinator's extension is `_scope_people`, `_scope_attendance`
   and `_scope_tithes` in `services.py`. `User.objects.for_user(user)` now exists for people, so `_scope_people` can use it;
-  attendance and tithes still need their own helper. Nothing else changes.
+  `_scope_attendance(user)` already returns `Attendance.objects.for_user(user)` limited to UPLOADED sheets (a reopened
+  sheet drops out until it is uploaded again); tithes still need their own helper.
 - **Privacy:** tithe amounts appear only on leader dashboards and are never written to `audit_log` or
   `notification.data`. The dashboard writes nothing except today's `daily_verse` reference row.
 - **Charts:** server-rendered with Tailwind (no JavaScript, no library); colors are tokens only (`bg-accent`,
@@ -747,12 +912,17 @@ still in use), `archive_inactive_users`, `auto_transfer_extension`,
   the auth backend reads `app_user` on every request.
 - The URL namespace `admin` is Django's built-in admin. The Admin role's screens use `admin_area`, so reverse names such
   as `admin_area:user_list`, never `admin:user_list`.
+- The attendance routes exist only where `include("apps.attendance.area_urls")` is added. If `superadmin.py`, `admin_area.py`
+  or `coordinator_area.py` lacks it, `{% role_url 'sheet_list' %}` and every attendance link fail for that role. A new
+  attendance route goes in `attendance/area_urls.py` once, never in a role url module.
+- `attendance/print.html` is standalone on purpose. Do not make it extend `base_app.html` or reuse `includes/logo.html`: the app
+  shell's tokens, dark mode and the logo mask would put colours and an empty logo on paper. Rebuilding Tailwind does not affect it.
 - The people templates are shared by three roles. Link through `{% role_url %}` and gate buttons with
   `{% person_actions %}`; a hardcoded `superadmin:` URL works for the super-admin and raises `NoReverseMatch` or sends an
   admin or coordinator to the wrong area.
 
 ## Working rules for agents
-- Use Docker commands; run `check` and `core.test_schema` after any model change.
+- Use Docker commands; run `check` and `makemigrations --check --dry-run` after any model change.
 - Never edit an applied migration; add a new one.
 - Do not commit `.env`, `venv/`, `theme/tailwindcss`, media uploads or db dumps.
 - Keep `.env.example` in sync with settings.

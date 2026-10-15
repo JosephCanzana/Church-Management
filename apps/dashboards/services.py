@@ -84,8 +84,8 @@ def get_dashboard_context(user, version_code, path):
 # --------------------------------------------------------------- scoping
 # AGENTS.md says coordinator-scoped data goes through the project's for_user(user)
 # queryset helper. These three functions are the only places this app narrows
-# data to a coordinator's extension, so swapping in that helper means editing
-# them and nothing else.
+# data to a coordinator's extension. Attendance already uses its own
+# `Attendance.objects.for_user`; people and tithes still filter by hand.
 def _scope_people(queryset, user):
     """Limit people to the coordinator's own extension; leaders above see everyone."""
     if user.role == Role.COORDINATOR:
@@ -93,11 +93,13 @@ def _scope_people(queryset, user):
     return queryset
 
 
-def _scope_attendance(queryset, user):
-    """Limit attendance sheets to the coordinator's own extension."""
-    if user.role == Role.COORDINATOR:
-        return queryset.filter(extension_id=user.extension_id)
-    return queryset
+def _scope_attendance(user):
+    """Uploaded sheets the person may see, through `Attendance.objects.for_user`.
+
+    Drafts are never part of a dashboard, so only uploaded sheets are returned (a reopened
+    sheet is a draft again and drops out until it is uploaded once more).
+    """
+    return Attendance.objects.for_user(user).filter(status=Attendance.Status.UPLOADED)
 
 
 def _scope_tithes(queryset, user):
@@ -243,7 +245,7 @@ def _attendance_trend(user):
     Only uploaded sheets count (drafts are not final, archived ones are gone). Sheets
     on the same date, for example from several extensions, are added together.
     """
-    sheets = _scope_attendance(Attendance.objects.filter(status=Attendance.Status.UPLOADED), user)
+    sheets = _scope_attendance(user)
     rows = list(
         sheets.values("attendance_date")
         .annotate(present=Coalesce(Sum("total_present"), 0), first=Coalesce(Sum("first_timers_count"), 0))

@@ -1,0 +1,7 @@
+<!--
+attendance/_status_badge.html
+A small pill with the sheet's status as TEXT (meaning never rests on color alone).
+Usage: include this file with sheet=sheet.
+Draft has a gold outline, uploaded an accent outline, archived a plain one.
+-->
+<span class="inline-flex items-center rounded-full border px-2.5 py-0.5 text-sm font-medium {% if sheet.status == 'draft' %}border-highlight text-txt-primary{% elif sheet.status == 'uploaded' %}border-accent text-txt-primary{% else %}border-border text-txt-secondary{% endif %}">{{ sheet.get_status_display }}</span>

@@ -1,0 +1,59 @@
+<!--
+attendance/convert_result.html
+Shown right after a first timer was converted into a member (attendance.views.sheet_first_timer_convert).
+Renders the show-once password dialog from `secrets` and a browser-printable 58 mm receipt from
+`welcome_slip`; credentials exist only in this response. The page is never cached (`attendance_screen`).
+Extends base_app.html and fills: title, page_title, content.
+Context: sheet, member, secrets, welcome_slip, sheet_url.
+-->
+{% extends 'base_app.html' %}
+
+{% block title %}New member{% endblock %}
+{% block page_title %}New member{% endblock %}
+
+{% block content %}
+<div class="card max-w-xl">
+  <p class="text-base text-txt-primary">{{ member.full_name }} is now a member. Their first visit stays in their history.</p>
+  <p class="mt-1 text-sm text-txt-secondary">They must change their password the first time they sign in.</p>
+  <div class="mt-4 flex flex-wrap gap-2">
+    <button class="btn btn-secondary" type="button" onclick="window.print()">
+      {% include 'includes/icon.html' with name='printer' class='size-5' %}
+      Print 58 mm welcome slip
+    </button>
+    <a class="btn btn-primary" href="{{ sheet_url }}">Back to the sheet</a>
+  </div>
+</div>
+<style>
+  .welcome-slip { display: none; }
+  @media print {
+    @page { size: 58mm auto; margin: 2mm; }
+    body * { visibility: hidden !important; }
+    .welcome-slip, .welcome-slip * { visibility: visible !important; }
+    .welcome-slip {
+      display: block !important;
+      position: absolute;
+      inset: 0 auto auto 0;
+      width: 54mm;
+      color: #111;
+      background: #fff;
+      font: 10pt/1.4 monospace;
+      overflow-wrap: anywhere;
+    }
+    .welcome-slip h2 { margin: 0 0 3mm; font-size: 13pt; }
+    .welcome-slip p { margin: 0 0 2mm; }
+    .welcome-slip hr { border: 0; border-top: 1px dashed #111; margin: 3mm 0; }
+  }
+</style>
+<section class="welcome-slip" aria-label="Printable welcome slip">
+  <h2>Welcome to JIL</h2>
+  <p>{{ welcome_slip.name }}</p>
+  <hr>
+  <p>Account ID</p>
+  <p>{{ welcome_slip.account_id }}</p>
+  <p>Password</p>
+  <p>{{ welcome_slip.password }}</p>
+  <hr>
+  <p>Please change your password when you first sign in.</p>
+</section>
+{{ secrets|json_script:"secrets-data" }}
+{% endblock %}

@@ -210,6 +210,9 @@ for the super-admin only. Only users with `is_staff=True` can open it.
   `purge_at`. Attendance and tithes are never auto-deleted by default.
 - **Frozen records:** uploaded attendance and tithes totals are frozen; only an
   admin can reopen them (logged).
+- **Attendance:** repeat visitors are transferred to a new extension after three distinct uploaded visits;
+  first-timer conversion includes an uncached 58 mm browser-printable welcome slip, and `/attendance/mine/`
+  shows each signed-in person's own uploaded-sheet history.
 - **Audit:** every change is written to `audit_log`; passwords, tokens, goal
   text, notes and prayer text are never logged.
 

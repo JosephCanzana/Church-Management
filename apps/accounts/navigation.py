@@ -68,7 +68,14 @@ NAV_ITEMS = [
     NavItem("Prayer", "prayer:list", "heart", roles=(COORDINATOR, MEMBER), bottom=True),
     NavItem("Goals", "faith:goals", "flag", roles=(COORDINATOR, MEMBER)),
     NavItem("Buddy", "buddy:home", "user-group", roles=(COORDINATOR, MEMBER)),
-    NavItem("Attendance", "attendance:list", "clipboard-document-check"),
+    # One Attendance entry per role: each role area has its own url namespace (see attendance/area_urls.py).
+    # Members get the member-root one; a member without the attendance seat is refused on the page (plan, open item).
+    NavItem("Attendance", "superadmin:sheet_list", "clipboard-document-check", roles=(SUPER_ADMIN,)),
+    NavItem("Attendance", "admin_area:sheet_list", "clipboard-document-check", roles=(ADMIN,)),
+    NavItem("Attendance", "coordinator_area:sheet_list", "clipboard-document-check", roles=(COORDINATOR,)),
+    NavItem("Attendance", "attendance:sheet_list", "clipboard-document-check", roles=(MEMBER,)),
+    # Personal history (brick 14): every role, member-root URL, separate from the sheet screens above.
+    NavItem("My attendance", "attendance:mine", "calendar-days"),
     NavItem("Tithes", "tithes:list", "banknotes"),
     NavItem("Resources", "resources:list", "folder-open"),
     NavItem("Settings", "theming:settings", "cog-6-tooth"),
