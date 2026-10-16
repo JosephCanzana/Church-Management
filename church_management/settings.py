@@ -85,6 +85,7 @@ TEMPLATES = [
                 'django.contrib.messages.context_processors.messages',
                 "apps.accounts.context_processors.navigation",
                 "apps.notifications.context_processors.bell",
+                "apps.theming.context_processors.color_mode",
             ],
         },
     },

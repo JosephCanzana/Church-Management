@@ -2,7 +2,6 @@
 topbar.html: right-hand side of the app header, on the frame color. A notification bell that opens a frosted-glass dropdown with the latest five notifications (a "View all" link goes to the full page), then a quiet avatar button. The avatar opens a small account menu that holds the name, the role, the profile link and Log out (a POST form with the same confirm dialog as the sidebar), so the name no longer competes with the page title.
 The bell shows a dot when unread_count is above zero. Below sm the notification dropdown is fixed under the header and spans the screen so it never runs off the edge; from sm up it hangs under the bell. The account menu hangs under the avatar at every size.
 The header, the menu button and the page title live in base_app.html, because a block inside an included file never overrides anything.
-The light/dark toggle and log out are in sidebar_utilities.html.
 Variables: user (from the auth context processor), unread_count and recent_notifications (from notifications.context_processors.bell).
 Usage: {% include 'includes/topbar.html' %}
 {% endcomment %}
@@ -85,6 +84,11 @@ Usage: {% include 'includes/topbar.html' %}
          class="flex min-h-12 items-center justify-between gap-3 border-t border-txt-primary/10 bg-surface/30 px-4 text-base font-medium text-txt-primary transition-colors hover:bg-txt-primary/5 focus-visible:outline focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-accent">
         <span>View profile</span>
         {% include 'includes/icon.html' with name='chevron-right' class='size-4 text-txt-muted' %}
+      </a>
+      <a href="{% url 'theming:settings' %}"
+         class="flex min-h-12 items-center justify-between gap-3 border-t border-txt-primary/10 bg-surface/30 px-4 text-base font-medium text-txt-primary transition-colors hover:bg-txt-primary/5 focus-visible:outline focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-accent">
+        <span>Settings</span>
+        {% include 'includes/icon.html' with name='cog-6-tooth' class='size-4 text-txt-muted' %}
       </a>
       <form method="post" action="{% url 'accounts:logout' %}"
             data-confirm="Are you sure you want to sign out?" data-confirm-title="Sign out">

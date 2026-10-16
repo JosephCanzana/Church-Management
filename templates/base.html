@@ -1,24 +1,40 @@
 {% load static %}
 <!DOCTYPE html>
 <html lang="{{ LANGUAGE_CODE|default:'en' }}"
-      data-mode="{{ theme_mode|default:'light' }}"
+      data-mode="{% if theme_mode == 'dark' %}dark{% else %}light{% endif %}"
+      data-pref="{{ theme_mode|default:'' }}"
       class="{% if theme_mode == 'dark' %}dark{% endif %}">
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>{% block title %}Church Management{% endblock %}</title>
-  <!-- Light mode and dark mode -->
+  <!-- Light mode and dark mode. data-pref is the saved choice of a signed-in person (light, dark
+       or system); it is empty for visitors, who keep using the toggle and localStorage. -->
   <script>
     (function () {
       var root = document.documentElement;
+      var pref = root.dataset.pref || '';
+      var media = matchMedia('(prefers-color-scheme: dark)');
       function apply(mode) {
         root.dataset.mode = mode;
         root.classList.toggle('dark', mode === 'dark');
       }
-      var saved = null;
-      try { saved = localStorage.getItem('mode'); } catch (e) {}
-      apply(saved || (matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light'));
+      function device() { return media.matches ? 'dark' : 'light'; }
 
+      if (pref === 'light' || pref === 'dark') {
+        apply(pref);                       // already in the HTML; this just keeps the state consistent
+      } else if (pref === 'system') {
+        apply(device());
+        // Follow the device while the page is open.
+        if (media.addEventListener) media.addEventListener('change', function () { apply(device()); });
+      } else {
+        var saved = null;
+        try { saved = localStorage.getItem('mode'); } catch (e) {}
+        apply(saved || device());
+      }
+
+      // Only visitors who are not signed in use this (the navbar toggle). A signed-in person
+      // changes the mode on the Settings page, which saves it to the account.
       window.toggleMode = function () {
         var next = root.classList.contains('dark') ? 'light' : 'dark';
         apply(next);

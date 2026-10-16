@@ -1,0 +1,95 @@
+<!--
+  theming/settings.html: the signed-in person's own settings (color mode, mobile menu style).
+  Extends: base_app.html (fills title, page_title and content). Page content uses h2 and below.
+  Context: form (UserSettingsForm; a bound form comes back after an error), color_options and
+  nav_options (lists of value, label, help and checked, from the form's options method).
+  Layout: one column, two cards. One POST form with one Save button and data-confirm, so ui.js
+  asks first; nothing saves by itself. The dialog is only a UX guard: the service re-checks.
+  Each choice is a radio input (visually hidden, peer) with a card label, so it is keyboard
+  accessible. The chosen card also shows a check icon, so the choice is not carried by color alone.
+  Note: this comment contains no template tags on purpose.
+-->
+{% extends "base_app.html" %}
+
+{% block title %}Settings{% endblock %}
+{% block page_title %}Settings{% endblock %}
+
+{% block content %}
+<div class="w-full max-w-2xl">
+  <form method="post" action="{% url 'theming:settings' %}" class="space-y-6" novalidate
+        data-confirm="Save your settings?" data-confirm-title="Save settings" data-confirm-text="Save">
+    {% csrf_token %}
+
+    {% if form.non_field_errors %}
+      <div class="flex items-start gap-3 rounded-2xl border border-error px-4 py-3 text-base text-error" role="alert">
+        <span class="mt-0.5 shrink-0">{% include "includes/icon.html" with name="exclamation-circle" class="h-5 w-5" %}</span>
+        <div>{% for error in form.non_field_errors %}<p>{{ error }}</p>{% endfor %}</div>
+      </div>
+    {% endif %}
+
+    {# ------------------------------------------------------- color mode #}
+    <section class="card" aria-labelledby="appearance-heading">
+      <h2 id="appearance-heading" class="text-lg font-semibold tracking-tight text-txt-primary">Appearance</h2>
+      <p class="mt-1 text-base text-txt-secondary">Saved to your account, so it is the same on every device you sign in on.</p>
+
+      <fieldset class="mt-5">
+        <legend class="label text-base">Color mode</legend>
+        <div class="mt-2 grid gap-3 sm:grid-cols-3">
+          {% for opt in color_options %}
+          <div class="relative">
+            <input type="radio" name="color_mode" id="id_color_mode_{{ opt.value }}" value="{{ opt.value }}"
+                   class="peer sr-only" {% if opt.checked %}checked{% endif %}>
+            <label for="id_color_mode_{{ opt.value }}"
+                   class="flex h-full min-h-14 cursor-pointer flex-col gap-1 rounded-2xl border border-border bg-surface p-4 pr-10 transition-colors hover:border-border-strong peer-checked:border-accent peer-checked:bg-accent/10 peer-focus-visible:outline peer-focus-visible:outline-2 peer-focus-visible:outline-offset-2 peer-focus-visible:outline-accent">
+              <span class="text-base font-medium text-txt-primary">{{ opt.label }}</span>
+              <span class="text-base text-txt-secondary">{{ opt.help }}</span>
+            </label>
+            <span class="pointer-events-none absolute right-3 top-3 hidden text-accent peer-checked:block" aria-hidden="true">
+              {% include "includes/icon.html" with name="check-circle" class="size-5" %}
+            </span>
+          </div>
+          {% endfor %}
+        </div>
+        {% if form.color_mode.errors %}
+          <div class="mt-2 space-y-1 text-base text-error" role="alert">
+            {% for error in form.color_mode.errors %}<p>{{ error }}</p>{% endfor %}
+          </div>
+        {% endif %}
+      </fieldset>
+    </section>
+
+    {# ------------------------------------------------- mobile menu style #}
+    <section class="card" aria-labelledby="mobile-nav-heading">
+      <h2 id="mobile-nav-heading" class="text-lg font-semibold tracking-tight text-txt-primary">Phone menu</h2>
+      <p class="mt-1 text-base text-txt-secondary">How the menu works on small screens. It changes the next time a page loads.</p>
+
+      <fieldset class="mt-5">
+        <legend class="label text-base">Menu style</legend>
+        <div class="mt-2 grid gap-3 sm:grid-cols-2">
+          {% for opt in nav_options %}
+          <div class="relative">
+            <input type="radio" name="mobile_nav_style" id="id_mobile_nav_style_{{ opt.value }}" value="{{ opt.value }}"
+                   class="peer sr-only" {% if opt.checked %}checked{% endif %}>
+            <label for="id_mobile_nav_style_{{ opt.value }}"
+                   class="flex h-full min-h-14 cursor-pointer flex-col gap-1 rounded-2xl border border-border bg-surface p-4 pr-10 transition-colors hover:border-border-strong peer-checked:border-accent peer-checked:bg-accent/10 peer-focus-visible:outline peer-focus-visible:outline-2 peer-focus-visible:outline-offset-2 peer-focus-visible:outline-accent">
+              <span class="text-base font-medium text-txt-primary">{{ opt.label }}</span>
+              <span class="text-base text-txt-secondary">{{ opt.help }}</span>
+            </label>
+            <span class="pointer-events-none absolute right-3 top-3 hidden text-accent peer-checked:block" aria-hidden="true">
+              {% include "includes/icon.html" with name="check-circle" class="size-5" %}
+            </span>
+          </div>
+          {% endfor %}
+        </div>
+        {% if form.mobile_nav_style.errors %}
+          <div class="mt-2 space-y-1 text-base text-error" role="alert">
+            {% for error in form.mobile_nav_style.errors %}<p>{{ error }}</p>{% endfor %}
+          </div>
+        {% endif %}
+      </fieldset>
+    </section>
+
+    <button type="submit" class="btn btn-primary">Save settings</button>
+  </form>
+</div>
+{% endblock %}

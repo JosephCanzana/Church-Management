@@ -34,6 +34,7 @@ urlpatterns = [
     path("coordinator/", include("apps.accounts.urls.coordinator_area")),
     # Member root: attendance special members (the role areas mount the same sheet routes themselves).
     path("attendance/", include("apps.attendance.urls")),
+    path("settings/", include("apps.theming.urls")),
 ]
 
 # Dev only: Django serves uploaded photos. In production Caddy serves /media/.
