@@ -149,10 +149,13 @@ with. Only create a new app if the answer is "none".
   confirmation dialog, and report results through Django messages/toasts.
 - Templates live in `apps/resources/templates/resources/manage/`; list screens
   filter by title/status and paginate. The library route remains separate and
-  is built in the next brick.
+  is at `/resources/`: coordinators see published monthly themes, active weekly
+  presentations and active general resources; members see published monthly
+  themes only. Every document download uses a permission-checked view and the
+  original filename; resource storage has no public URL.
 - Run `apps.resources.tests.test_permissions`,
-  `apps.resources.tests.test_services`, and `apps.resources.tests.test_views`
-  when changing these rules or screens.
+  `apps.resources.tests.test_services`, `apps.resources.tests.test_views`, and
+  `apps.resources.tests.test_downloads` when changing these rules or screens.
 
 ### Dependency rules
 1. Direction: `core` <- `audit` <- `accounts` <- everything else. `theming`

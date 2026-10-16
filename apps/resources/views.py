@@ -3,6 +3,7 @@ from django.conf import settings
 from django.contrib import messages
 from django.core.paginator import Paginator
 from django.db.models import Q
+from django.http import FileResponse, Http404
 from django.shortcuts import get_object_or_404, redirect, render
 from django.views.decorators.cache import never_cache
 from django.views.decorators.http import require_http_methods, require_POST
@@ -20,6 +21,11 @@ from .forms import (
 	WeeklyPowerpointForm,
 )
 from .models import GeneralResource, MonthlyResource, MonthlyTheme, WeeklyPowerpoint
+from .permissions import (
+	can_view_general_resource,
+	can_view_monthly_resource,
+	can_view_weekly_powerpoint,
+)
 
 
 PAGE_SIZE = 25
@@ -28,6 +34,87 @@ super_admin_required = role_required(Role.SUPER_ADMIN)
 THEME_SORTS = (("-month", "Newest month"), ("month", "Oldest month"), ("title", "Title, A to Z"))
 WEEKLY_SORTS = (("-week_start", "Newest week"), ("week_start", "Oldest week"), ("title", "Title, A to Z"))
 GENERAL_SORTS = (("title", "Title, A to Z"), ("-title", "Title, Z to A"), ("-created_at", "Newest first"))
+APP_ROLES = (Role.SUPER_ADMIN, Role.ADMIN, Role.COORDINATOR, Role.MEMBER)
+
+
+@role_required(*APP_ROLES)
+@never_cache
+@require_http_methods(["GET"])
+def library(request):
+	"""Show published monthly themes and the active resources available to this role."""
+	themes = MonthlyTheme.objects.filter(
+		archived_at__isnull=True,
+		is_published=True,
+	).prefetch_related("resources")
+	can_view_shared_resources = request.user.role in (
+		Role.SUPER_ADMIN, Role.ADMIN, Role.COORDINATOR,
+	)
+	weekly = WeeklyPowerpoint.objects.none()
+	general = GeneralResource.objects.none()
+	if can_view_shared_resources:
+		weekly = WeeklyPowerpoint.objects.filter(archived_at__isnull=True).select_related("monthly_theme")
+		general = GeneralResource.objects.filter(archived_at__isnull=True)
+	return render(request, "resources/library.html", {
+		"themes": themes,
+		"weekly_presentations": weekly,
+		"general_resources": general,
+		"can_view_shared_resources": can_view_shared_resources,
+	})
+
+
+def _download_private_file(request, record, can_view):
+	"""Stream an authorized private file with its original upload filename."""
+	if not can_view:
+		raise Http404
+
+	stored_file = record.file
+	if not stored_file or not stored_file.name:
+		messages.error(request, "This file is no longer available.")
+		return redirect("resources:list")
+	try:
+		if not stored_file.storage.exists(stored_file.name):
+			raise FileNotFoundError(stored_file.name)
+		file_handle = stored_file.open("rb")
+	except (FileNotFoundError, OSError, ValueError):
+		messages.error(request, "This file is no longer available.")
+		return redirect("resources:list")
+	filename = record.original_filename or stored_file.name.rsplit("/", 1)[-1]
+	return FileResponse(file_handle, as_attachment=True, filename=filename)
+
+
+@role_required(*APP_ROLES)
+@never_cache
+@require_http_methods(["GET"])
+def monthly_resource_download(request, pk):
+	"""Download a monthly theme file after checking the parent theme's visibility."""
+	resource = get_object_or_404(
+		MonthlyResource.objects.select_related("monthly_theme"), pk=pk,
+	)
+	return _download_private_file(
+		request, resource, can_view_monthly_resource(request.user, resource),
+	)
+
+
+@role_required(*APP_ROLES)
+@never_cache
+@require_http_methods(["GET"])
+def weekly_powerpoint_download(request, pk):
+	"""Download a weekly presentation only for roles allowed to view it."""
+	item = get_object_or_404(WeeklyPowerpoint, pk=pk)
+	return _download_private_file(
+		request, item, can_view_weekly_powerpoint(request.user, item),
+	)
+
+
+@role_required(*APP_ROLES)
+@never_cache
+@require_http_methods(["GET"])
+def general_resource_download(request, pk):
+	"""Download a general resource only for roles allowed to view it."""
+	item = get_object_or_404(GeneralResource, pk=pk)
+	return _download_private_file(
+		request, item, can_view_general_resource(request.user, item),
+	)
 
 
 def _list_context(request, form, queryset, status):
@@ -416,8 +503,6 @@ def _resource_action(request, pk, service, entity, *, done, unchanged):
 		messages.error(request, str(error))
 	else:
 		messages.success(request, done) if changed else messages.info(request, unchanged)
-	if to_list:
-		return redirect(f"resources:{entity}_list")
 	return redirect(f"resources:{entity}_list")
 
 

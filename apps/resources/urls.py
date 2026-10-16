@@ -6,6 +6,10 @@ from . import views
 app_name = "resources"
 
 urlpatterns = [
+    path("", views.library, name="list"),
+    path("monthly-files/<int:pk>/download/", views.monthly_resource_download, name="monthly_resource_download"),
+    path("weekly/<int:pk>/download/", views.weekly_powerpoint_download, name="weekly_download"),
+    path("general/<int:pk>/download/", views.general_resource_download, name="general_download"),
     path("manage/themes/", views.theme_list, name="theme_list"),
     path("manage/themes/new/", views.theme_create, name="theme_create"),
     path("manage/themes/<int:pk>/", views.theme_detail, name="theme_detail"),

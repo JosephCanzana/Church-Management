@@ -180,3 +180,24 @@ class ResourceManagementViewTests(TestCase):
         response = self.client.get(reverse("resources:theme_list"), {"q": "October", "status": "all"})
         self.assertContains(response, active.title)
         self.assertNotContains(response, archived.title)
+
+    def test_weekly_and_general_archive_actions_redirect_and_update_state(self):
+        self.client.force_login(self.admin)
+        weekly = WeeklyPowerpoint.objects.create(
+            title="Sunday slides", week_start=date(2026, 10, 18),
+            file=self.upload("sunday.pptx"),
+        )
+        general = GeneralResource.objects.create(
+            title="Fonts", category=GeneralResource.Category.FONT,
+            file=self.upload("fonts.pdf"),
+        )
+
+        response = self.client.post(reverse("resources:weekly_archive", args=[weekly.pk]))
+        self.assertRedirects(response, reverse("resources:weekly_list"), fetch_redirect_response=False)
+        weekly.refresh_from_db()
+        self.assertTrue(weekly.is_archived)
+
+        response = self.client.post(reverse("resources:general_archive", args=[general.pk]))
+        self.assertRedirects(response, reverse("resources:general_list"), fetch_redirect_response=False)
+        general.refresh_from_db()
+        self.assertTrue(general.is_archived)
