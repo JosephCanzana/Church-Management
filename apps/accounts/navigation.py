@@ -78,9 +78,6 @@ NAV_ITEMS = [
     NavItem("My attendance", "attendance:mine", "calendar-days"),
     NavItem("Tithes", "tithes:list", "banknotes"),
     NavItem("Resources", "resources:list", "folder-open"),
-    # About is its own item (brick 8), not part of Settings. Every role sees it.
-    NavItem("About", "pages:about", "building-office-2"),
-    NavItem("Settings", "theming:settings", "cog-6-tooth"),
     # Management section (sidebar heading "Manage")
     NavItem("Extensions", "superadmin:extension_list", "building-office", roles=(SUPER_ADMIN, ADMIN), group="Manage"),
     # One People entry per role: each role has its own url namespace (see accounts/urls/).

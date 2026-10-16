@@ -90,6 +90,11 @@ Usage: {% include 'includes/topbar.html' %}
         <span>Settings</span>
         {% include 'includes/icon.html' with name='cog-6-tooth' class='size-4 text-txt-muted' %}
       </a>
+      <a href="{% url 'pages:about' %}"
+         class="flex min-h-12 items-center justify-between gap-3 border-t border-txt-primary/10 bg-surface/30 px-4 text-base font-medium text-txt-primary transition-colors hover:bg-txt-primary/5 focus-visible:outline focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-accent">
+        <span>About</span>
+        {% include 'includes/icon.html' with name='building-office-2' class='size-4 text-txt-muted' %}
+      </a>
       <form method="post" action="{% url 'accounts:logout' %}"
             data-confirm="Are you sure you want to sign out?" data-confirm-title="Sign out">
         {% csrf_token %}
