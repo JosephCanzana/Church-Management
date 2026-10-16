@@ -1,0 +1,51 @@
+<!--
+  pages/manage/footer_link_form.html
+  Add or edit one footer link (admin and super-admin only).
+  Extends base_app.html. Blocks filled: title, page_title, content.
+  Context variables: form (FooterLinkForm: label and url), link (dict with id, label, url when editing, else None).
+  Saving asks for confirmation first (data-confirm). Errors, such as a refused javascript: address,
+  stay inline next to the field. Colors use design tokens only.
+-->
+{% extends "base_app.html" %}
+
+{% block title %}{% if link %}Edit footer link{% else %}Add footer link{% endif %}{% endblock %}
+{% block page_title %}{% if link %}Edit footer link{% else %}Add footer link{% endif %}{% endblock %}
+
+{% block content %}
+{% url 'pages:pages_manage:footer_links' as list_url %}
+{% include "includes/breadcrumb.html" with parent_label="Footer links" parent_url=list_url current=link|yesno:"Edit,Add" %}
+
+<form method="post" class="card mt-4 max-w-2xl space-y-5 p-6"
+      {% if link %}
+      data-confirm="Save your changes to this footer link? The landing page shows them right away." data-confirm-title="Save changes?" data-confirm-text="Save"
+      {% else %}
+      data-confirm="Add this link to the footer? The landing page shows it right away." data-confirm-title="Add this link?" data-confirm-text="Add link"
+      {% endif %}>
+  {% csrf_token %}
+
+  {% if form.non_field_errors %}
+  <div role="alert">
+    {% for e in form.non_field_errors %}<p class="field-error">{{ e }}</p>{% endfor %}
+  </div>
+  {% endif %}
+
+  <div>
+    <label for="{{ form.label.id_for_label }}" class="label">Label</label>
+    {{ form.label }}
+    <p class="field-help">The words visitors see, for example "Privacy Policy".</p>
+    {% for e in form.label.errors %}<p class="field-error">{{ e }}</p>{% endfor %}
+  </div>
+
+  <div>
+    <label for="{{ form.url.id_for_label }}" class="label">Address</label>
+    {{ form.url }}
+    <p class="field-help">https://example.org, mailto:name@example.org, tel:+639170000000, or a path on this site such as /privacy/.</p>
+    {% for e in form.url.errors %}<p class="field-error">{{ e }}</p>{% endfor %}
+  </div>
+
+  <div class="flex flex-wrap gap-3 pt-2">
+    <button type="submit" class="btn btn-primary min-h-11">{% if link %}Save changes{% else %}Add link{% endif %}</button>
+    <a href="{{ list_url }}" class="btn btn-secondary min-h-11">Cancel</a>
+  </div>
+</form>
+{% endblock %}

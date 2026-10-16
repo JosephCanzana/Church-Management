@@ -1,7 +1,7 @@
 """Admin views for editing landing-page text content."""
 from django.contrib import messages
 from django.http import Http404
-from django.shortcuts import redirect, render
+from django.shortcuts import get_object_or_404, redirect, render
 from django.views.decorators.cache import never_cache
 from django.views.decorators.http import require_http_methods, require_POST
 
@@ -10,10 +10,9 @@ from apps.accounts.models import Role
 from apps.core.services import ServiceError
 
 from . import manage_services
-from .forms import LandingContentForm
-from .forms import LandingImageForm
+from .forms import DonationAccountForm, FooterLinkForm, LandingContentForm, LandingImageForm
 from .manage_services import CONTENT_BLOCKS
-from .models import LandingImage
+from .models import DonationAccount, LandingImage
 
 
 landing_manager_required = role_required(Role.ADMIN, Role.SUPER_ADMIN)
@@ -190,3 +189,186 @@ def image_delete(request, pk):
     else:
         messages.success(request, "Landing photo deleted.")
     return redirect("pages:pages_manage:image_list")
+
+
+@landing_manager_required
+@never_cache
+@require_http_methods(["GET"])
+def donation_account_list(request):
+    """Show active and hidden public donation accounts in display order."""
+    accounts = DonationAccount.objects.all().order_by("sort_order", "pk")
+    return render(request, "pages/manage/donation_accounts.html", {"accounts": accounts})
+
+
+@landing_manager_required
+@never_cache
+@require_http_methods(["GET", "POST"])
+def donation_account_create(request):
+    """Create a public donation account with an optional QR image."""
+    form = DonationAccountForm(request.POST or None, request.FILES or None)
+    if request.method == "POST" and form.is_valid():
+        try:
+            account = manage_services.create_donation_account(
+                request.user, data=form.cleaned_data, request=request,
+            )
+        except ServiceError as error:
+            form.add_error(None, str(error))
+        else:
+            messages.success(request, "Donation account created.")
+            return redirect("pages:pages_manage:donation_accounts")
+    return render(request, "pages/manage/donation_account_form.html", {
+        "form": form, "account": None,
+    })
+
+
+@landing_manager_required
+@never_cache
+@require_http_methods(["GET", "POST"])
+def donation_account_edit(request, pk):
+    """Edit public donation details and optionally replace or clear the QR image."""
+    account = get_object_or_404(DonationAccount, pk=pk)
+    form = DonationAccountForm(request.POST or None, request.FILES or None, instance=account)
+    if request.method == "POST" and form.is_valid():
+        data = dict(form.cleaned_data)
+        qr_image = data.get("qr_image")
+        if qr_image is False:
+            data["qr_image"] = ""
+        elif not qr_image or getattr(qr_image, "_committed", False):
+            data.pop("qr_image", None)
+        try:
+            result = manage_services.update_donation_account(
+                request.user, account.pk, data=data, request=request,
+            )
+        except ServiceError as error:
+            form.add_error(None, str(error))
+        else:
+            messages.success(request, "Donation account updated.") if result else messages.info(request, "No changes to save.")
+            return redirect("pages:pages_manage:donation_accounts")
+    return render(request, "pages/manage/donation_account_form.html", {
+        "form": form, "account": account,
+    })
+
+
+@landing_manager_required
+@never_cache
+@require_POST
+def donation_account_toggle(request, pk):
+    """Show or hide a donation account on public pages."""
+    value = request.POST.get("active")
+    if value not in ("0", "1"):
+        messages.error(request, "Choose whether this donation account should be active.")
+        return redirect("pages:pages_manage:donation_accounts")
+    try:
+        changed = manage_services.set_donation_account_active(
+            request.user, pk, value == "1", request=request,
+        )
+    except ServiceError as error:
+        messages.error(request, str(error))
+    else:
+        messages.success(request, "Donation account is now public." if value == "1" else "Donation account is hidden.") if changed else messages.info(request, "Donation account already has that status.")
+    return redirect("pages:pages_manage:donation_accounts")
+
+
+@landing_manager_required
+@never_cache
+@require_POST
+def donation_account_delete(request, pk):
+    """Delete a donation account and its optional QR image."""
+    try:
+        manage_services.delete_donation_account(request.user, pk, request=request)
+    except ServiceError as error:
+        messages.error(request, str(error))
+    else:
+        messages.success(request, "Donation account deleted.")
+    return redirect("pages:pages_manage:donation_accounts")
+
+
+@landing_manager_required
+@never_cache
+@require_http_methods(["GET"])
+def footer_link_list(request):
+    """Show current footer links and whether they come from defaults or a saved override."""
+    links, is_custom = manage_services.footer_links_for_manager(request.user)
+    return render(request, "pages/manage/footer_links.html", {
+        "links": links,
+        "is_custom": is_custom,
+    })
+
+
+@landing_manager_required
+@never_cache
+@require_http_methods(["GET", "POST"])
+def footer_link_create(request):
+    """Add one validated footer link."""
+    form = FooterLinkForm(request.POST or None)
+    if request.method == "POST" and form.is_valid():
+        try:
+            manage_services.save_footer_link(request.user, **form.cleaned_data, request=request)
+        except ServiceError as error:
+            form.add_error(None, str(error))
+        else:
+            messages.success(request, "Footer link added.")
+            return redirect("pages:pages_manage:footer_links")
+    return render(request, "pages/manage/footer_link_form.html", {"form": form, "link": None})
+
+
+@landing_manager_required
+@never_cache
+@require_http_methods(["GET", "POST"])
+def footer_link_edit(request, link_id):
+    """Edit one saved or default footer link."""
+    links, _is_custom = manage_services.footer_links_for_manager(request.user)
+    link = next((item for item in links if item["id"] == link_id), None)
+    if link is None:
+        raise Http404
+    form = FooterLinkForm(request.POST or None, initial={"label": link["label"], "url": link["url"]})
+    if request.method == "POST" and form.is_valid():
+        try:
+            manage_services.save_footer_link(
+                request.user, link_id=link_id, **form.cleaned_data, request=request,
+            )
+        except ServiceError as error:
+            form.add_error(None, str(error))
+        else:
+            messages.success(request, "Footer link updated.")
+            return redirect("pages:pages_manage:footer_links")
+    return render(request, "pages/manage/footer_link_form.html", {"form": form, "link": link})
+
+
+@landing_manager_required
+@never_cache
+@require_POST
+def footer_link_delete(request, link_id):
+    """Remove one footer link from the current ordered list."""
+    try:
+        manage_services.delete_footer_link(request.user, link_id, request=request)
+    except ServiceError as error:
+        messages.error(request, str(error))
+    else:
+        messages.success(request, "Footer link deleted.")
+    return redirect("pages:pages_manage:footer_links")
+
+
+@landing_manager_required
+@never_cache
+@require_POST
+def footer_link_move(request, link_id, direction):
+    """Move one footer link up or down immediately."""
+    try:
+        changed = manage_services.reorder_footer_link(request.user, link_id, direction, request=request)
+    except ServiceError as error:
+        messages.error(request, str(error))
+    else:
+        if changed:
+            messages.success(request, "Footer link order updated.")
+    return redirect("pages:pages_manage:footer_links")
+
+
+@landing_manager_required
+@never_cache
+@require_POST
+def footer_links_reset(request):
+    """Restore the built-in footer links."""
+    changed = manage_services.reset_footer_links_to_default(request.user, request=request)
+    messages.success(request, "Default footer links restored.") if changed else messages.info(request, "Footer links already use their defaults.")
+    return redirect("pages:pages_manage:footer_links")

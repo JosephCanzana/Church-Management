@@ -15,6 +15,8 @@ Context: hero_images, gallery_images, placement active counts, and active_image_
   <nav class="flex flex-wrap gap-2" aria-label="Landing page management">
     <a href="{% url 'pages:pages_manage:content_list' %}" class="btn btn-ghost">Text blocks</a>
     <a href="{% url 'pages:pages_manage:image_list' %}" class="btn btn-secondary" aria-current="page">Photos</a>
+    <a href="{% url 'pages:pages_manage:donation_accounts' %}" class="btn btn-ghost">Donation accounts</a>
+    <a href="{% url 'pages:pages_manage:footer_links' %}" class="btn btn-ghost">Footer links</a>
   </nav>
   <a href="{% url 'pages:pages_manage:image_create' %}" class="btn btn-primary">
     {% include 'includes/icon.html' with name='plus' class='size-4' %} Upload photo

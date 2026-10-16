@@ -277,6 +277,26 @@ def _give_accounts():
     return list(DonationAccount.objects.filter(is_active=True).order_by("sort_order", "id"))
 
 
+def _donation_instructions():
+    """Return English-managed giving instructions, or empty text when none are saved."""
+    from apps.pages.models import ChurchContent
+
+    row = ChurchContent.objects.filter(
+        key=ChurchContent.Key.DONATION_INSTRUCTIONS,
+        language=ChurchContent.Language.EN,
+    ).first()
+    return row.body if row and row.body.strip() else ""
+
+
+def _footer_with_managed_links():
+    """Copy footer data and replace More links with the saved/default link list."""
+    from apps.pages.site_settings import get_footer_links
+
+    footer = {**FOOTER, "social": dict(FOOTER["social"])}
+    footer["more"] = [{"label": link["label"], "url": link["url"]} for link in get_footer_links()]
+    return footer
+
+
 def get_landing_context():
     """Everything the landing template needs, with a default for every block."""
     return {
@@ -291,10 +311,11 @@ def get_landing_context():
         "theme": _current_theme(),
         "video": _latest_video(),
         "give_accounts": _give_accounts(),
+        "donation_instructions": _donation_instructions(),
         "church_intro": CHURCH_INTRO,
         "church_points": CHURCH_POINTS,
         "member_features": MEMBER_FEATURES,
         "serving_features": SERVING_FEATURES,
         "buddy_points": BUDDY_POINTS,
-        "footer": FOOTER,
+        "footer": _footer_with_managed_links(),
     }

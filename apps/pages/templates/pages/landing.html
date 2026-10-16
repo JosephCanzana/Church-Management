@@ -5,7 +5,8 @@
     hero (title, intro), hero_images and gallery_images (lists of {url, caption}),
     church_intro (title, body), church_points,
     about (mission, vision, values: each title and body), theme (month, title, description, url),
-    video (youtube_video_id, title, thumbnail_url), give_accounts (list of active DonationAccount),
+    video (youtube_video_id, title, thumbnail_url), give_accounts (active DonationAccount list),
+    donation_instructions (managed text or empty),
     member_features, serving_features, buddy_points, footer.
   Colors: only design tokens, so it follows any theme and light/dark mode (accent fills use highlight).
   The navy "deep" sections use bg-txt-primary with text-surface: txt-primary is dark in light mode
@@ -314,7 +315,7 @@
 
     <div class="flex flex-col justify-center gap-4 bg-txt-primary px-6 py-14 text-surface sm:px-[9%]">
       <h2 id="give-heading" class="text-3xl font-bold">Support the ministry</h2>
-      <p class="max-w-lg text-base text-surface/80">Support the work of the church through generosity, service, prayer, and faithful partnership. Together, we can help bring hope and God's love to more people.</p>
+      {% if donation_instructions %}<div class="max-w-lg text-base text-surface/80">{{ donation_instructions|linebreaksbr }}</div>{% endif %}
       {% if give_accounts %}
       <ul class="space-y-4">
         {% for acct in give_accounts %}

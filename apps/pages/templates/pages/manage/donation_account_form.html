@@ -1,0 +1,86 @@
+<!--
+  pages/manage/donation_account_form.html
+  Create or edit one public donation account (admin and super-admin only).
+  Extends base_app.html. Blocks filled: title, page_title, content.
+  Context variables: form (DonationAccountForm), account (the DonationAccount being edited, or None when creating).
+  The form is multipart because of the optional QR image. Saving asks for confirmation first
+  (data-confirm), because an active account is public the moment it is saved. Validation errors
+  stay inline next to the fields. Colors use design tokens only.
+-->
+{% extends "base_app.html" %}
+
+{% block title %}{% if account %}Edit donation account{% else %}Add donation account{% endif %}{% endblock %}
+{% block page_title %}{% if account %}Edit donation account{% else %}Add donation account{% endif %}{% endblock %}
+
+{% block content %}
+{% url 'pages:pages_manage:content_list' as landing_url %}
+{% url 'pages:pages_manage:donation_accounts' as list_url %}
+{% include "includes/breadcrumb.html" with parent_label="Donation accounts" parent_url=list_url current=form.instance.pk|yesno:"Edit,Add" %}
+
+<form method="post" enctype="multipart/form-data" class="card mt-4 max-w-2xl space-y-5 p-6"
+      {% if account %}
+      data-confirm="Save your changes to {{ account.payment_app }}? Visitors will see them right away if the account is public." data-confirm-title="Save changes?" data-confirm-text="Save"
+      {% else %}
+      data-confirm="Add this donation account? It becomes public right away." data-confirm-title="Add this account?" data-confirm-text="Add account"
+      {% endif %}>
+  {% csrf_token %}
+
+  {% if form.non_field_errors %}
+  <div role="alert">
+    {% for e in form.non_field_errors %}<p class="field-error">{{ e }}</p>{% endfor %}
+  </div>
+  {% endif %}
+
+  <div>
+    <label for="{{ form.payment_app.id_for_label }}" class="label">{{ form.payment_app.label }}</label>
+    {{ form.payment_app }}
+    <p class="field-help">For example GCash, Maya, or the name of the bank.</p>
+    {% for e in form.payment_app.errors %}<p class="field-error">{{ e }}</p>{% endfor %}
+  </div>
+
+  <div>
+    <label for="{{ form.account_name.id_for_label }}" class="label">{{ form.account_name.label }}</label>
+    {{ form.account_name }}
+    {% for e in form.account_name.errors %}<p class="field-error">{{ e }}</p>{% endfor %}
+  </div>
+
+  <div>
+    <label for="{{ form.account_number.id_for_label }}" class="label">{{ form.account_number.label }}</label>
+    {{ form.account_number }}
+    {% for e in form.account_number.errors %}<p class="field-error">{{ e }}</p>{% endfor %}
+  </div>
+
+  <div>
+    <label for="{{ form.swift_code.id_for_label }}" class="label">{{ form.swift_code.label }}</label>
+    {{ form.swift_code }}
+    <p class="field-help">Only needed for gifts sent from another country.</p>
+    {% for e in form.swift_code.errors %}<p class="field-error">{{ e }}</p>{% endfor %}
+  </div>
+
+  <div>
+    <label for="{{ form.instructions.id_for_label }}" class="label">Note for givers</label>
+    {{ form.instructions }}
+    <p class="field-help">Optional. Shown under this account. Line breaks are kept.</p>
+    {% for e in form.instructions.errors %}<p class="field-error">{{ e }}</p>{% endfor %}
+  </div>
+
+  <div>
+    <label for="{{ form.qr_image.id_for_label }}" class="label">QR image</label>
+    {{ form.qr_image }}
+    <p class="field-help">Optional. JPG, PNG or WebP. This image is public.</p>
+    {% for e in form.qr_image.errors %}<p class="field-error">{{ e }}</p>{% endfor %}
+  </div>
+
+  <div>
+    <label for="{{ form.sort_order.id_for_label }}" class="label">Order</label>
+    {{ form.sort_order }}
+    <p class="field-help">Lower numbers come first. Leave empty to put it first among equals.</p>
+    {% for e in form.sort_order.errors %}<p class="field-error">{{ e }}</p>{% endfor %}
+  </div>
+
+  <div class="flex flex-wrap gap-3 pt-2">
+    <button type="submit" class="btn btn-primary min-h-11">{% if account %}Save changes{% else %}Add account{% endif %}</button>
+    <a href="{{ list_url }}" class="btn btn-secondary min-h-11">Cancel</a>
+  </div>
+</form>
+{% endblock %}

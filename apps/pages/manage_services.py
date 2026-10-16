@@ -1,12 +1,13 @@
 """Business rules for editing landing-page text and image content."""
 from django.db import connection, transaction
-from django.db import transaction
+from django.core.exceptions import ValidationError
 
 from apps.audit.services import log_action
 from apps.core.services import ServiceError
 
-from .models import ChurchContent, LandingImage
+from .models import ChurchContent, DonationAccount, LandingImage
 from .permissions import require_landing_manager
+from .site_settings import get_footer_links, replace_footer_links, reset_footer_links
 from .services import DEFAULT_ABOUT, DEFAULT_HERO
 
 
@@ -314,3 +315,191 @@ def delete_landing_image(actor, image_id, *, request=None):
         )
         record.delete()
     return True
+
+
+def _donation_snapshot(account):
+    """Return audit-safe changed-value metadata; never include QR file data."""
+    return {
+        "payment_app": account.payment_app,
+        "account_name": account.account_name,
+        "account_number": account.account_number,
+        "swift_code": account.swift_code,
+        "instructions_changed": bool(account.instructions),
+        "is_active": account.is_active,
+        "sort_order": account.sort_order,
+        "qr_image_set": bool(account.qr_image),
+    }
+
+
+def create_donation_account(actor, *, data, request=None):
+    """Create one public donation account and audit its public-facing details."""
+    require_landing_manager(actor)
+    with transaction.atomic():
+        account = DonationAccount(**data, updated_by=actor)
+        try:
+            account.full_clean()
+            account.save()
+        except ValidationError as error:
+            raise ServiceError(" ".join(error.messages)) from error
+        log_action(
+            "pages.donation_account_created",
+            actor=actor,
+            request=request,
+            entity_type="donation_account",
+            entity_id=account.pk,
+            entity_label=account.payment_app,
+            after=_donation_snapshot(account),
+        )
+    return account
+
+
+def update_donation_account(actor, account_id, *, data, request=None):
+    """Update a donation account and remove a replaced QR file after commit."""
+    require_landing_manager(actor)
+    with transaction.atomic():
+        account = DonationAccount.objects.select_for_update().filter(pk=account_id).first()
+        if account is None:
+            raise ServiceError("That donation account no longer exists.")
+        before = _donation_snapshot(account)
+        changed = []
+        for field in (
+            "payment_app", "account_name", "account_number", "swift_code",
+            "instructions", "sort_order", "qr_image",
+        ):
+            if field not in data:
+                continue
+            value = data[field]
+            if field == "qr_image" and value is None:
+                continue
+            if getattr(account, field) != value:
+                setattr(account, field, value)
+                changed.append(field)
+        if not changed:
+            return False
+        account.updated_by = actor
+        try:
+            # An unchanged QR file is not re-validated: that would read its size from disk,
+            # so one missing file would make every text edit of the account crash.
+            account.full_clean(exclude=None if "qr_image" in changed else ["qr_image"])
+            account.save()
+        except ValidationError as error:
+            raise ServiceError(" ".join(error.messages)) from error
+        after = _donation_snapshot(account)
+        after["changed_fields"] = changed
+        log_action(
+            "pages.donation_account_updated",
+            actor=actor,
+            request=request,
+            entity_type="donation_account",
+            entity_id=account.pk,
+            entity_label=account.payment_app,
+            before=before,
+            after=after,
+        )
+    return account
+
+
+def set_donation_account_active(actor, account_id, active, *, request=None):
+    """Activate or hide a donation account from public pages."""
+    require_landing_manager(actor)
+    if not isinstance(active, bool):
+        raise ServiceError("Choose whether this account should be active.")
+    with transaction.atomic():
+        account = DonationAccount.objects.select_for_update().filter(pk=account_id).first()
+        if account is None:
+            raise ServiceError("That donation account no longer exists.")
+        if account.is_active == active:
+            return False
+        previous = account.is_active
+        account.is_active = active
+        account.updated_by = actor
+        account.save(update_fields=["is_active", "updated_by", "updated_at"])
+        log_action(
+            "pages.donation_account_toggled",
+            actor=actor,
+            request=request,
+            entity_type="donation_account",
+            entity_id=account.pk,
+            entity_label=account.payment_app,
+            before={"is_active": previous},
+            after={"is_active": active},
+        )
+    return True
+
+
+def delete_donation_account(actor, account_id, *, request=None):
+    """Delete one donation account and its optional public QR image."""
+    require_landing_manager(actor)
+    with transaction.atomic():
+        account = DonationAccount.objects.select_for_update().filter(pk=account_id).first()
+        if account is None:
+            raise ServiceError("That donation account no longer exists.")
+        log_action(
+            "pages.donation_account_deleted",
+            actor=actor,
+            request=request,
+            entity_type="donation_account",
+            entity_id=account.pk,
+            entity_label=account.payment_app,
+            before=_donation_snapshot(account),
+        )
+        account.delete()
+    return True
+
+
+def footer_links_for_manager(actor):
+    """Return editable footer links and whether they override the defaults."""
+    require_landing_manager(actor)
+    from apps.core.models import SiteSetting
+
+    return get_footer_links(), SiteSetting.objects.filter(key="pages_footer_links").exists()
+
+
+def save_footer_link(actor, *, link_id=None, label, url, request=None):
+    """Create or update an ordered footer link over the default-or-saved list."""
+    require_landing_manager(actor)
+    links = get_footer_links()
+    if link_id is None:
+        import secrets
+
+        link_id = secrets.token_urlsafe(9)
+        links.append({"id": link_id, "label": label, "url": url})
+    else:
+        link = next((item for item in links if item["id"] == str(link_id)), None)
+        if link is None:
+            raise ServiceError("That footer link no longer exists.")
+        link.update(label=label, url=url)
+    return replace_footer_links(actor, links, request=request)
+
+
+def delete_footer_link(actor, link_id, *, request=None):
+    """Delete one link, materializing the remaining defaults as the new override."""
+    require_landing_manager(actor)
+    links = get_footer_links()
+    updated = [item for item in links if item["id"] != str(link_id)]
+    if len(updated) == len(links):
+        raise ServiceError("That footer link no longer exists.")
+    replace_footer_links(actor, updated, request=request)
+    return True
+
+
+def reorder_footer_link(actor, link_id, direction, *, request=None):
+    """Move a footer link up or down immediately within its ordered list."""
+    require_landing_manager(actor)
+    if direction not in ("up", "down"):
+        raise ServiceError("Choose up or down to reorder footer links.")
+    links = get_footer_links()
+    index = next((i for i, item in enumerate(links) if item["id"] == str(link_id)), None)
+    if index is None:
+        raise ServiceError("That footer link no longer exists.")
+    target = index - 1 if direction == "up" else index + 1
+    if target < 0 or target >= len(links):
+        return False
+    links[index], links[target] = links[target], links[index]
+    return replace_footer_links(actor, links, request=request)
+
+
+def reset_footer_links_to_default(actor, *, request=None):
+    """Remove the footer override and restore the built-in links."""
+    require_landing_manager(actor)
+    return reset_footer_links(actor, request=request)

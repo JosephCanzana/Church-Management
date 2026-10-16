@@ -174,6 +174,40 @@ with. Only create a new app if the answer is "none".
 - Run `apps.pages.tests.test_manage_content` and `apps.pages.tests.test_landing`
   and `apps.pages.tests.test_manage_images` when changing landing management.
 
+### Donation accounts and footer links
+- Admin and super-admin manage both under `/manage/landing/` (namespace `pages:pages_manage`):
+  `donation-accounts/` and `footer-links/`. Same two guards as the rest of landing management:
+  `landing_manager_required` on the view, `require_landing_manager` at the top of every service.
+- **Donation accounts** are public giving details only (GCash, Maya, a bank): `payment_app`, account
+  name, account number, optional SWIFT code, a note (`instructions`), an optional QR image, an
+  `is_active` flag and `sort_order`. There is no login, verification or limit for visitors. The
+  active flag only lets an admin hide an outdated account; with no active account the public page
+  shows "Giving details have not been published yet" and never invents text. Never store a PIN,
+  password or card number there. QR images are public photos (`donation_qr/` under `MEDIA_ROOT`);
+  a replaced or deleted image is removed after commit by `FileCleanupModel`. Create, edit, hide or
+  show, and delete each ask for confirmation, then show a toast. Audit rows (`pages.donation_account_*`)
+  carry before and after values for the public fields, `changed_fields`, and only `qr_image_set`
+  for the image, never a file name or content. An edit that leaves the QR alone skips validating that
+  file (it would read its size from disk).
+- **Footer links** are the "More" list of the landing footer: one JSON list `[{id, label, url}]` in
+  the `site_setting` row `pages_footer_links`, handled only by `apps/pages/site_settings.py`
+  (`get_footer_links`, `replace_footer_links`, `reset_footer_links`, `validate_footer_url`).
+  No row means the built-in `FOOTER["more"]` links (given ids like `default-privacy-policy`); a row
+  means exactly that list, even an empty one; Reset deletes the row. Saving the list that already
+  applies changes nothing and writes no audit row. Up and down apply immediately; add, edit, delete
+  and reset ask first. At most 20 links; labels up to 100 characters.
+- **URL rule:** `http`/`https` with a host, `mailto:` or `tel:` with a value, a path starting with a
+  single `/`, or a `#anchor`. Spaces, control characters and backslashes are refused (browsers
+  ignore a tab inside `java\tscript:`), as are `javascript:`, `data:`, `//host` and bare
+  `example.com`. A stored row that fails the rule is ignored and the defaults are shown. Audit rows
+  (`pages.footer_links_saved`, `pages.footer_links_reset`) hold the label and address lists.
+- Footer addresses, phones, affiliates and social links stay in `FOOTER` in `pages/services.py`
+  (not managed yet). The page copy of `FOOTER` is built by `_footer_with_managed_links()`.
+- Templates: `apps/pages/templates/pages/manage/` (`donation_accounts`, `donation_account_form`,
+  `footer_links`, `footer_link_form`). Run `apps.pages.tests.test_manage_donation` and
+  `apps.pages.tests.test_manage_footer` (shared helpers in `apps/pages/tests/helpers.py`) when
+  changing them, and `make tailwind-build` after template changes.
+
 ### Dependency rules
 1. Direction: `core` <- `audit` <- `accounts` <- everything else. `theming`
    depends on `accounts`; `tithes` depends on `attendance`; `attendance` depends
@@ -747,7 +781,7 @@ The source plan `docs/attendance.md` is not present in this checkout; the defaul
   | Current month theme | `resources.MonthlyTheme` for this Manila month, `is_published`, not archived | `DEFAULT_THEME` (labels its own month, so it is never mislabeled) |
   | Latest video | newest `JilVideo` | `DEFAULT_VIDEO_ID` |
   | Support the ministry | active `DonationAccount` rows | none: a "not published yet" note, nothing invented |
-  | Long footer | none yet | `FOOTER` (move to `site_setting` when it is managed) |
+  | Long footer "More" links | `site_setting` key `pages_footer_links` (see Donation accounts and footer links) | `FOOTER["more"]`; the rest of `FOOTER` (offices, social, affiliates) is not managed yet |
   | "What's inside", Buddy Buddy, welcome copy | none | `MEMBER_FEATURES`, `SERVING_FEATURES`, `BUDDY_POINTS`, `CHURCH_INTRO`, `CHURCH_POINTS` |
 
 - **Default texts come from the church's own landing draft** (mission, vision, values, theme, addresses,

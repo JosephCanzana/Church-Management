@@ -1,0 +1,75 @@
+<!--
+  pages/manage/footer_links.html
+  Admin list of the "More" links in the landing page footer (admin and super-admin only).
+  Extends base_app.html. Blocks filled: title, page_title, content.
+  Context variables: links (list of dicts with id, label, url, in display order),
+  is_custom (true when a saved list is in use, false while the built-in links are shown).
+  Up and down apply at once (no confirmation); delete and reset ask first through data-confirm.
+  Colors use design tokens only.
+-->
+{% extends "base_app.html" %}
+
+{% block title %}Footer links{% endblock %}
+{% block page_title %}Footer links{% endblock %}
+
+{% block content %}
+{% url 'pages:pages_manage:content_list' as landing_url %}
+{% include "includes/breadcrumb.html" with parent_label="Landing page" parent_url=landing_url current="Footer links" %}
+
+<div class="mt-4 flex flex-wrap items-start justify-between gap-4">
+  <div class="max-w-2xl">
+    <p class="text-base text-txt-secondary">
+      These are the links under "More" in the landing page footer. Addresses can start with https://, mailto:
+      or tel:, or be a path on this site that starts with /. Office addresses and phone numbers in the footer
+      stay as they are for now.
+    </p>
+    <p class="mt-3 text-base font-medium text-txt-primary">
+      {% if is_custom %}Showing your saved links.{% else %}Showing the built-in links. Change anything below to start your own list.{% endif %}
+    </p>
+  </div>
+  <div class="flex flex-wrap gap-3">
+    {% if is_custom %}
+    <form method="post" action="{% url 'pages:pages_manage:footer_links_reset' %}"
+          data-confirm="Go back to the built-in footer links? Your saved list will be removed." data-confirm-title="Reset footer links?" data-confirm-text="Reset" data-confirm-danger>
+      {% csrf_token %}
+      <button type="submit" class="btn btn-secondary min-h-11">Reset to default</button>
+    </form>
+    {% endif %}
+    <a href="{% url 'pages:pages_manage:footer_link_create' %}" class="btn btn-primary min-h-11">Add link</a>
+  </div>
+</div>
+
+{% if links %}
+<ul class="card mt-6 divide-y divide-border">
+  {% for l in links %}
+  <li class="flex flex-wrap items-center justify-between gap-3 px-4 py-3">
+    <div class="min-w-0">
+      <p class="font-medium text-txt-primary">{{ l.label }}</p>
+      <p class="break-all font-mono text-sm text-txt-secondary">{{ l.url }}</p>
+    </div>
+    <div class="flex flex-wrap items-center gap-2">
+      <form method="post" action="{% url 'pages:pages_manage:footer_link_move' l.id 'up' %}">
+        {% csrf_token %}
+        <button type="submit" class="btn btn-secondary min-h-11" aria-label="Move {{ l.label }} up" {% if forloop.first %}disabled{% endif %}>Up</button>
+      </form>
+      <form method="post" action="{% url 'pages:pages_manage:footer_link_move' l.id 'down' %}">
+        {% csrf_token %}
+        <button type="submit" class="btn btn-secondary min-h-11" aria-label="Move {{ l.label }} down" {% if forloop.last %}disabled{% endif %}>Down</button>
+      </form>
+      <a href="{% url 'pages:pages_manage:footer_link_edit' l.id %}" class="btn btn-secondary min-h-11" aria-label="Edit {{ l.label }}">Edit</a>
+      <form method="post" action="{% url 'pages:pages_manage:footer_link_delete' l.id %}"
+            data-confirm="Remove the link {{ l.label }} from the footer?" data-confirm-title="Delete this link?" data-confirm-text="Delete" data-confirm-danger>
+        {% csrf_token %}
+        <button type="submit" class="btn btn-danger min-h-11" aria-label="Delete {{ l.label }}">Delete</button>
+      </form>
+    </div>
+  </li>
+  {% endfor %}
+</ul>
+{% else %}
+<div class="card mt-6 p-6 text-center">
+  <h2 class="text-lg font-semibold text-txt-primary">No footer links</h2>
+  <p class="mx-auto mt-2 max-w-xl text-base text-txt-secondary">The footer currently shows no links under "More". Add one, or reset to bring the built-in links back.</p>
+</div>
+{% endif %}
+{% endblock %}
