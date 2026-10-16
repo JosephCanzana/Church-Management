@@ -1,0 +1,34 @@
+<!--
+  pages/give.html
+  Public giving page at /give/ (no login). Extends base_public.html. Blocks filled: title, content.
+  Context variables (get_give_context in apps/pages/services.py):
+    donation_instructions (managed text, or empty), give_accounts (active DonationAccount list).
+  Read-only: no form, no amount field, nothing is written. With no instructions it shows only the
+  accounts; with no accounts it shows the "not published yet" note. Nothing is invented.
+  Colors use design tokens only.
+-->
+{% extends "base_public.html" %}
+
+{% block title %}Give{% endblock %}
+
+{% block content %}
+<div class="w-full max-w-3xl">
+  <h1 class="text-3xl font-bold text-txt-primary sm:text-4xl">Give</h1>
+
+  {% if donation_instructions %}
+  <div class="mt-4 text-base leading-relaxed text-txt-secondary">{{ donation_instructions|linebreaksbr }}</div>
+  {% endif %}
+
+  <div class="mt-8">
+    {% if give_accounts %}
+    {% include "pages/_donation_accounts.html" %}
+    {% else %}
+    <p class="card p-5 text-base font-medium text-txt-primary">Giving details have not been published yet. Ask your extension coordinator how to give.</p>
+    {% endif %}
+  </div>
+
+  <p class="mt-8">
+    <a href="{% url 'pages:landing' %}" class="btn btn-secondary min-h-11">Back to home</a>
+  </p>
+</div>
+{% endblock %}

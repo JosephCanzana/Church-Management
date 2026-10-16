@@ -1,0 +1,39 @@
+<!--
+  pages/about.html
+  In-app About page at /about/, for every signed-in role. Extends base_app.html.
+  Blocks filled: title, page_title, content.
+  Context variables (get_about_context in apps/pages/services.py):
+    about (mission, vision, values: each title and body; values also has items, one per line).
+  Text is escaped by Django. A Give section links to the public /give/ page. Tokens only.
+-->
+{% extends "base_app.html" %}
+
+{% block title %}About{% endblock %}
+{% block page_title %}About{% endblock %}
+
+{% block content %}
+<div class="mt-2 grid max-w-4xl gap-6">
+  <section class="card p-6" aria-labelledby="about-mission">
+    <h2 id="about-mission" class="text-xl font-semibold text-txt-primary">{{ about.mission.title }}</h2>
+    <p class="mt-2 text-base leading-relaxed text-txt-secondary">{{ about.mission.body|linebreaksbr }}</p>
+  </section>
+
+  <section class="card p-6" aria-labelledby="about-vision">
+    <h2 id="about-vision" class="text-xl font-semibold text-txt-primary">{{ about.vision.title }}</h2>
+    <p class="mt-2 text-base leading-relaxed text-txt-secondary">{{ about.vision.body|linebreaksbr }}</p>
+  </section>
+
+  <section class="card p-6" aria-labelledby="about-values">
+    <h2 id="about-values" class="text-xl font-semibold text-txt-primary">{{ about.values.title }}</h2>
+    <ul class="mt-2 list-disc space-y-1 pl-5 text-base text-txt-secondary">
+      {% for item in about.values.items %}<li>{{ item }}</li>{% endfor %}
+    </ul>
+  </section>
+
+  <section class="card p-6" aria-labelledby="about-give">
+    <h2 id="about-give" class="text-xl font-semibold text-txt-primary">Give</h2>
+    <p class="mt-2 text-base text-txt-secondary">See how to support the ministry, including account details and QR codes.</p>
+    <a href="{% url 'pages:give' %}" class="btn btn-primary mt-4 min-h-11">How to give</a>
+  </section>
+</div>
+{% endblock %}

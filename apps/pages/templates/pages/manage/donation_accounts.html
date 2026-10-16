@@ -1,6 +1,7 @@
 <!--
   pages/manage/donation_accounts.html
-  Admin list of the public donation accounts (admin and super-admin only).
+  Admin list of the public donation accounts, the "Give page" manager (admin and super-admin only).
+  The accounts and the instructions are shown on the public /give/ page, not on the landing page.
   Extends base_app.html. Blocks filled: title, page_title, content.
   Context variables: accounts (DonationAccount rows in display order, active and hidden).
   Everything on this page is public once an account is active, so the page says so.
@@ -9,20 +10,18 @@
 -->
 {% extends "base_app.html" %}
 
-{% block title %}Donation accounts{% endblock %}
-{% block page_title %}Donation accounts{% endblock %}
+{% block title %}Give page{% endblock %}
+{% block page_title %}Give page{% endblock %}
 
 {% block content %}
-{% url 'pages:pages_manage:content_list' as landing_url %}
-{% include "includes/breadcrumb.html" with parent_label="Landing page" parent_url=landing_url current="Donation accounts" %}
-
 <div class="mt-4 flex flex-wrap items-start justify-between gap-4">
   <p class="max-w-2xl text-base text-txt-secondary">
-    Active accounts are shown to everyone on the landing page, with no login. Hide an outdated account
+    Active accounts are shown to everyone on the public Give page, with no login. Hide an outdated account
     instead of deleting it if you may need it again. Only enter what a giver needs to send a gift,
     and never a PIN, password or card number.
   </p>
   <div class="flex flex-wrap gap-3">
+    <a href="{% url 'pages:give' %}" class="btn btn-secondary min-h-11" target="_blank" rel="noopener">View public page</a>
     <a href="{% url 'pages:pages_manage:content_edit' 'donation_instructions' %}" class="btn btn-secondary min-h-11">Edit instructions</a>
     <a href="{% url 'pages:pages_manage:donation_account_create' %}" class="btn btn-primary min-h-11">Add account</a>
   </div>
@@ -91,11 +90,11 @@
     </tbody>
   </table>
 </div>
-<p class="mt-3 text-base text-txt-secondary">If every account is hidden, the public pages say that giving details have not been published yet.</p>
+<p class="mt-3 text-base text-txt-secondary">If every account is hidden, the Give page says that giving details have not been published yet.</p>
 {% else %}
 <div class="card mt-6 p-6 text-center">
   <h2 class="text-lg font-semibold text-txt-primary">No donation accounts yet</h2>
-  <p class="mx-auto mt-2 max-w-xl text-base text-txt-secondary">Until you add one, the public pages say that giving details have not been published yet.</p>
+  <p class="mx-auto mt-2 max-w-xl text-base text-txt-secondary">Until you add one, the Give page says that giving details have not been published yet.</p>
   <a href="{% url 'pages:pages_manage:donation_account_create' %}" class="btn btn-primary mt-4 min-h-11">Add the first account</a>
 </div>
 {% endif %}

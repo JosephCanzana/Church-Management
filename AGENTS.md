@@ -208,6 +208,23 @@ with. Only create a new app if the answer is "none".
   `apps.pages.tests.test_manage_footer` (shared helpers in `apps/pages/tests/helpers.py`) when
   changing them, and `make tailwind-build` after template changes.
 
+### Donation page and About
+- `/give/` (`pages:give`, `give_view`) is public: no login, no form, no amount field, no database write
+  (POST gives 405). It shows the managed `donation_instructions` text (English, escaped, line breaks kept)
+  and the active `DonationAccount` rows (`_donation_accounts.html`). No instructions saved: only the
+  accounts. No active account: the "Giving details have not been published yet" note. Nothing is invented.
+  Context comes from `get_give_context()` in `pages/services.py`.
+- The landing page no longer holds giving details. Its `#give` block is an invitation with a button to
+  `/give/`; the `#about` and `#give` anchors still exist. Giving instructions and accounts are managed from
+  the "Give page" screen (`donation_accounts.html`, Manage group in the sidebar), not from "Landing content".
+- `/about/` (`pages:about`, `about_view`) is in-app for every role (`role_required` with all four roles). It
+  shows mission, vision and core values from `get_about_context()` (managed content, else `DEFAULT_ABOUT`; core
+  values are one per line) plus a Give section that links to `/give/`. About is its own nav item, not part of
+  Settings.
+- The public navbar links to `{{ landing_url }}#about` and the real `/give/` URL, and shows "Open app" instead
+  of "Login" for a signed-in visitor. The shared footer is in normal flow and links to `/give/`.
+- Run `apps.pages.tests.test_give` and `apps.pages.tests.test_about` when changing these pages.
+
 ### Dependency rules
 1. Direction: `core` <- `audit` <- `accounts` <- everything else. `theming`
    depends on `accounts`; `tithes` depends on `attendance`; `attendance` depends
@@ -780,7 +797,7 @@ The source plan `docs/attendance.md` is not present in this checkout; the defaul
   | Photos (hero carousel and "Come as you are" gallery) | `LandingImage` (`is_active`, `sort_order`) | `DEFAULT_IMAGES` |
   | Current month theme | `resources.MonthlyTheme` for this Manila month, `is_published`, not archived | `DEFAULT_THEME` (labels its own month, so it is never mislabeled) |
   | Latest video | newest `JilVideo` | `DEFAULT_VIDEO_ID` |
-  | Support the ministry | active `DonationAccount` rows | none: a "not published yet" note, nothing invented |
+  | Support the ministry | a link to `/give/`; the accounts and instructions are on that page (see Donation page and About) | none |
   | Long footer "More" links | `site_setting` key `pages_footer_links` (see Donation accounts and footer links) | `FOOTER["more"]`; the rest of `FOOTER` (offices, social, affiliates) is not managed yet |
   | "What's inside", Buddy Buddy, welcome copy | none | `MEMBER_FEATURES`, `SERVING_FEATURES`, `BUDDY_POINTS`, `CHURCH_INTRO`, `CHURCH_POINTS` |
 
@@ -802,7 +819,7 @@ The source plan `docs/attendance.md` is not present in this checkout; the defaul
 - **Full width:** the wrapper uses `-mx-4 -my-10` to cancel the `px-4 py-10` that `base_public.html` puts on
   `main`. If that padding changes, change both numbers (or add a `main_padding` block to the base).
 - **In-page anchors:** `#about`, `#church`, `#theme`, `#buddy`, `#whats-inside`, `#watch`, `#prayer`, `#give`,
-  `#contact`. The public navbar links to `#about` and `#give`; keep both.
+  `#contact`. Keep every anchor. The public navbar links to `/#about` and to the real `/give/` page.
 - **Prayer request is a Log in button, not a form.** A prayer request needs an account (the coordinator
   receives it), so the landing page never collects one.
 - **External requests:** the video poster loads from `i.ytimg.com` and the default photos from
@@ -887,9 +904,8 @@ still in use), `archive_inactive_users`, `auto_transfer_extension`,
   the links stay centered whatever the brand text width; below `md` it is a flex row. The
   mobile menu is `absolute inset-x-0 top-full` under the sticky header, so it overlays the
   page instead of pushing it down. Keep the nav and menu `max-w-*` the same.
-- The navbar Login button uses `{% url 'accounts:login' %}`. The About / Give links are in-page
-  anchors (`#about`, `#give`) that exist only on the landing page; give them real URLs before
-  adding other public pages. `{% url %}` on a missing route raises `NoReverseMatch`.
+- The navbar Login button uses `{% url 'accounts:login' %}` (a signed-in visitor sees "Open app"). About links to
+  `/#about` (landing anchor) and Give links to the real `/give/` page, so both work from any public page. `{% url %}` on a missing route raises `NoReverseMatch`.
 - Fonts are self-hosted from `static/fonts/`. `font-main` is Space Grotesk (body and UI, declared as `'Grotesk'`);
   `font-mono` is JetBrains Mono (account ids, amounts). Change a font by editing
   `--font-main` / `--font-mono` and the matching `@font-face` in `input.css`. The Space Grotesk `@font-face`

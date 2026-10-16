@@ -5,15 +5,15 @@
     hero (title, intro), hero_images and gallery_images (lists of {url, caption}),
     church_intro (title, body), church_points,
     about (mission, vision, values: each title and body), theme (month, title, description, url),
-    video (youtube_video_id, title, thumbnail_url), give_accounts (active DonationAccount list),
-    donation_instructions (managed text or empty),
+    video (youtube_video_id, title, thumbnail_url),
     member_features, serving_features, buddy_points, footer.
   Colors: only design tokens, so it follows any theme and light/dark mode (accent fills use highlight).
   The navy "deep" sections use bg-txt-primary with text-surface: txt-primary is dark in light mode
   and light in dark mode, so those sections flip by themselves. The accent fill is the
   highlight token (bg-highlight, text-on-highlight), used for fills and lines only, never for text.
   Full width: the wrapper cancels the padding base_public.html puts on main (px-4 py-10).
-  The long footer is part of this page; base_public.html's own footer follows it as the copyright line.
+  The #give block is only an invitation: giving instructions and accounts are on the public /give/ page
+  (pages/give.html). The long footer is part of this page; base_public.html's own footer follows it as the copyright line.
 -->
 {% extends "base_public.html" %}
 {% load static %}
@@ -301,36 +301,16 @@
     </div>
   </section>
 
-  {% comment %} SUPPORT THE MINISTRY: QR codes on the left when there are any, account details on the right. {% endcomment %}
+  {% comment %} SUPPORT THE MINISTRY: a short invitation. The instructions and accounts live on the public /give/ page. {% endcomment %}
   <section id="give" class="grid md:grid-cols-2" aria-labelledby="give-heading">
-    <div class="flex min-h-56 flex-wrap items-center justify-center gap-5 bg-highlight-soft p-8">
-      {% for acct in give_accounts %}{% if acct.qr_image %}
-      <figure class="m-0 text-center">
-        <img src="{{ acct.qr_image.url }}" alt="QR code for {{ acct.payment_app }}" class="size-36 rounded-lg border border-border bg-surface object-contain p-1" loading="lazy">
-        <figcaption class="mt-2 text-base font-medium text-on-highlight">{{ acct.payment_app }}</figcaption>
-      </figure>
-      {% endif %}{% endfor %}
-      {% if not give_accounts %}<span class="border border-on-highlight px-4 py-2 text-sm font-extrabold uppercase tracking-widest text-on-highlight">Support the ministry</span>{% endif %}
+    <div class="flex min-h-56 items-center justify-center bg-highlight-soft p-8">
+      <span class="border border-on-highlight px-4 py-2 text-sm font-extrabold uppercase tracking-widest text-on-highlight">Support the ministry</span>
     </div>
 
     <div class="flex flex-col justify-center gap-4 bg-txt-primary px-6 py-14 text-surface sm:px-[9%]">
       <h2 id="give-heading" class="text-3xl font-bold">Support the ministry</h2>
-      {% if donation_instructions %}<div class="max-w-lg text-base text-surface/80">{{ donation_instructions|linebreaksbr }}</div>{% endif %}
-      {% if give_accounts %}
-      <ul class="space-y-4">
-        {% for acct in give_accounts %}
-        <li>
-          <h3 class="font-bold">{{ acct.payment_app }}</h3>
-          {% if acct.account_name %}<p class="text-base text-surface/80">{{ acct.account_name }}</p>{% endif %}
-          {% if acct.account_number %}<p class="font-mono text-base">{{ acct.account_number }}</p>{% endif %}
-          {% if acct.swift_code %}<p class="text-base text-surface/80">SWIFT: <span class="font-mono">{{ acct.swift_code }}</span></p>{% endif %}
-          {% if acct.instructions %}<p class="text-base text-surface/80">{{ acct.instructions|linebreaksbr }}</p>{% endif %}
-        </li>
-        {% endfor %}
-      </ul>
-      {% else %}
-      <p class="max-w-lg text-base font-medium">Giving details have not been published yet. Ask your extension coordinator how to give.</p>
-      {% endif %}
+      <p class="max-w-lg text-base text-surface/80">See how to give, with account details and QR codes, on our giving page. No login needed.</p>
+      <div><a href="{% url 'pages:give' %}" class="btn min-h-12 bg-highlight px-8 font-extrabold uppercase tracking-wider text-on-highlight hover:bg-highlight-soft">How to give</a></div>
     </div>
   </section>
 
@@ -342,7 +322,7 @@
       <div class="mb-12 mt-6 flex flex-wrap justify-center gap-3">
         <a href="#about" class="btn btn-secondary min-h-11 font-bold uppercase tracking-wider">Our church</a>
         <a href="#watch" class="btn btn-secondary min-h-11 font-bold uppercase tracking-wider">Watch</a>
-        <a href="#give" class="btn btn-secondary min-h-11 font-bold uppercase tracking-wider">Give</a>
+        <a href="{% url 'pages:give' %}" class="btn btn-secondary min-h-11 font-bold uppercase tracking-wider">Give</a>
         <a href="{% url 'accounts:login' %}" class="btn btn-primary min-h-11 font-bold uppercase tracking-wider">Log in</a>
       </div>
 

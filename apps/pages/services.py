@@ -12,7 +12,8 @@ Where content comes from (managed content wins, the default is the fallback):
                     (used by the hero carousel and the "Come as you are" gallery)
   theme          -> resources.MonthlyTheme for the current Manila month (published, not archived)
   video          -> newest JilVideo
-  giving         -> active DonationAccount rows (no default: nothing is invented)
+  giving         -> active DonationAccount rows (no default: nothing is invented).
+                    Shown on the public /give/ page (get_give_context), not on the landing page.
   footer         -> FOOTER below (static; move it to `site_setting` when that is managed)
 
 The default texts (hero intro, mission, vision, values, October 2026 theme, footer
@@ -318,4 +319,33 @@ def get_landing_context():
         "serving_features": SERVING_FEATURES,
         "buddy_points": BUDDY_POINTS,
         "footer": _footer_with_managed_links(),
+    }
+
+
+def _lines(body):
+    """Split stored text into non-empty, stripped lines (core values are one per line)."""
+    return [line.strip() for line in body.splitlines() if line.strip()]
+
+
+def get_give_context():
+    """Context for the public /give/ page: the managed instructions and the active accounts.
+
+    Nothing is invented: no instructions saved means an empty string, and no active account
+    means an empty list (the template then shows the "not published yet" note).
+    """
+    return {
+        "give_accounts": _give_accounts(),
+        "donation_instructions": _donation_instructions(),
+    }
+
+
+def get_about_context():
+    """Context for the in-app /about/ page: mission, vision and core values (managed or default)."""
+    values = _about_block("core_values", "values")
+    return {
+        "about": {
+            "mission": _about_block("mission", "mission"),
+            "vision": _about_block("vision", "vision"),
+            "values": {**values, "items": _lines(values["body"])},
+        },
     }
