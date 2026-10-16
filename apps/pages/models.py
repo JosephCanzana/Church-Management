@@ -17,6 +17,7 @@ class ChurchContent(models.Model):
         MISSION = "mission", "Mission"
         VISION = "vision", "Vision"
         CORE_VALUES = "core_values", "Core values"
+        DONATION_INSTRUCTIONS = "donation_instructions", "Donation instructions"
         TERMS = "terms", "Terms"
         LANDING_DESCRIPTION = "landing_description", "Landing description"
 

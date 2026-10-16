@@ -157,6 +157,19 @@ with. Only create a new app if the answer is "none".
   `apps.resources.tests.test_services`, `apps.resources.tests.test_views`, and
   `apps.resources.tests.test_downloads` when changing these rules or screens.
 
+### Landing management
+- Admin and super-admin manage landing text under `/manage/landing/`.
+  `apps/pages/views.py` remains the public landing view; management logic is in
+  `manage_services.py`, `manage_views.py`, and `manage_urls.py`.
+- Editable English keys are `landing_description`, `mission`, `vision`,
+  `core_values`, and `donation_instructions`. Empty text deletes the English row
+  so the landing loader uses its default; donation instructions default to empty.
+- Text is rendered escaped by Django, with line breaks preserved. Core values
+  are entered one per line. Audits record the content key and version/state only,
+  never the submitted text. The landing loader's language fallback is unchanged.
+- Run `apps.pages.tests.test_manage_content` and `apps.pages.tests.test_landing`
+  when changing the management rules or landing lookup.
+
 ### Dependency rules
 1. Direction: `core` <- `audit` <- `accounts` <- everything else. `theming`
    depends on `accounts`; `tithes` depends on `attendance`; `attendance` depends

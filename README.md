@@ -74,6 +74,8 @@ delivered through permission-checked Django download views. Coordinators see
 active shared resources, while members see published monthly themes at
 `/resources/`. Admins and the super-admin manage themes and resource files under
 `/resources/manage/`.
+Landing text blocks are managed by admins and the super-admin at
+`/manage/landing/`; blanking a block restores its built-in default.
 
 ## Project structure
 
