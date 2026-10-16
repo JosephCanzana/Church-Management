@@ -39,6 +39,20 @@ class Gender(models.TextChoices):
     FEMALE = "female", "Female"
 
 
+class AgeNetwork(models.TextChoices):
+    """The four age groups shown on the attendance summary.
+
+    Defined here, next to `Gender`, because `User.age_network` stores one and `accounts` may not
+    import `attendance`. `attendance.age` re-exports it and holds the functions that work out a
+    network from a birth date.
+    """
+
+    ADULT = "adult", "Adult"                    # 36 and above
+    YOUNG_ADULT = "young_adult", "Young adult"  # 25 to 35
+    YOUTH = "youth", "Youth"                    # 13 to 24
+    CHILDREN = "children", "Children"           # 0 to 12
+
+
 class ArchiveReason(models.TextChoices):
     MANUAL = "manual", "Manual"
     INACTIVE = "inactive", "Inactive"
@@ -69,9 +83,18 @@ class Extension(TimestampedModel, ArchivableModel):
     province = models.CharField(max_length=150, default="Nueva Ecija")
     country = models.CharField(max_length=150, default="Philippines")
     postal_code = models.CharField(max_length=10, default="3101")
+    # The "main church" tag. At most ONE extension carries it (partial unique index below);
+    # `accounts.services` moves the tag from the old holder to the new one in one transaction.
+    is_main_church = models.BooleanField(default=False)
 
     class Meta:
         db_table = "extension"
+        constraints = [
+            models.UniqueConstraint(
+                fields=["is_main_church"], condition=Q(is_main_church=True),
+                name="uq_extension_main_church",
+            ),
+        ]
 
     def __str__(self):
         return self.name
@@ -130,7 +153,14 @@ class User(AbstractBaseUser, TimestampedModel, ArchivableModel):
     birth_date = models.DateField(null=True, blank=True)
     # Optional. Existing people stay blank until a leader fills it in. Like the contact
     # details below, it is never written to audit_log.
+    # Required whenever a person is created or edited (form and services); `blank=True` only
+    # because people saved before the rule stay blank until someone edits them.
     gender = models.CharField(max_length=10, choices=Gender.choices, blank=True)
+    # Fallback age group for people WITHOUT a birth date. The birth date always wins when there is
+    # one. Filled in when the attendance taker picks it for someone (see
+    # `accounts.services.presence.remember_age_network`), so it is asked once, not every Sunday.
+    # Like gender and the contact details, it is never written to audit_log.
+    age_network = models.CharField(max_length=20, choices=AgeNetwork.choices, blank=True)
     # Contact details, all optional, so a coordinator can follow someone up.
     # The address uses the same parts as Extension (see accounts.address) but has
     # no defaults: an empty address means "not given". Never written to audit_log.

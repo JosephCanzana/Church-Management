@@ -235,6 +235,9 @@ with. Only create a new app if the answer is "none".
   `services/presence.mark_attended(user_ids, on_date)`: one UPDATE that moves people with no date, or an earlier one, to
   `on_date` and never moves anyone back. The attendance upload calls it (`accounts` never imports `attendance`, so it takes
   plain ids and a date). It does not touch `updated_at`: attending is activity, not an edit. A reopen does not roll it back.
+  `services/presence.remember_age_network(user_id, age_network)` stores `app_user.age_network` for a person WITHOUT a birth
+  date (the birth date always wins, so anyone with one is never touched); attendance calls it when the taker picks or changes a
+  category. Same rules: no `updated_at`, nothing in `audit_log`.
 - **Default passwords:** kept by the super-admin (the global ones) and by each admin, one per role beneath them
   (`DefaultPassword.owner` + `applies_to_role`); a coordinator keeps none. Stored as a hash plus an encrypted copy so the
   owner can see it again. Which one a person gets depends on who creates or resets them; the rules are under People
@@ -246,8 +249,6 @@ with. Only create a new app if the answer is "none".
   (`update_session_auth_hash`) and logs `account.activated` (flag logged as `needs_activation`). It is idempotent, and
   suspended or archived accounts are left alone. `ActivationRequiredMiddleware` (`accounts/middleware.py`, after
   `MessageMiddleware`) redirects everything except `accounts:activate` and `accounts:logout` while activation is pending.
-  The activation form requires at least 8 characters, lowercase and uppercase letters, a digit, and one of `@$!%*?&`;
-  spaces and other symbols are rejected.
   Tests that log a user in must create them activated (`status="active"`, `must_change_password=False`), or the
   middleware redirects every request.
 - **Profile:** `/accounts/profile/` (every role; `login_required`, `never_cache`). Services in `accounts/services/profile.py`,
@@ -376,9 +377,20 @@ with. Only create a new app if the answer is "none".
   (stored as digits; `+639...` becomes `09...`). Suffix: `core.text.clean_suffix` / `suffix_case` (stored `jr`, shown
   `Jr.`). The duplicate-name check (`find_duplicate_people` in `services/users.py`, also used by attendance) includes the suffix and only runs when a name, the suffix or the birth date changes.
   Phone and address values are NEVER written to `audit_log`: `update_user` logs only `contact_fields_changed` (field names).
-  `app_user.gender` (`accounts.models.Gender`: male, female; blank = not given) is handled the same way (`PRIVATE_FIELDS` in
-  `services/users.py`): optional, set by leaders on the people create and edit screens only (not on the member's own
-  profile in v1), saved without re-running the duplicate-name check, never written to `audit_log`.
+  `app_user.gender` (`accounts.models.Gender`: male, female) is handled the same way (`PRIVATE_FIELDS` in
+  `services/users.py`): REQUIRED on the people create and edit screens (`UserForm`, and `create_user` / `update_user` refuse
+  a blank one with "Choose a gender."), set by leaders only (not on the member's own profile in v1), saved without
+  re-running the duplicate-name check, never written to `audit_log`. The column stays `blank=True`: people saved before the
+  rule keep working and are forced to get a gender the next time they are edited.
+  `app_user.age_network` (`accounts.models.AgeNetwork`, blank = unknown) is the fallback age group for people with no birth
+  date. It is not on the people forms; attendance fills it (see `remember_age_network`), and `convert_first_timer` copies the
+  first timer's network when there is no birth date. Never written to `audit_log`.
+- **Main church tag:** `extension.is_main_church` (default false) with a partial unique index (`uq_extension_main_church`), so
+  at most one extension holds it. `create_extension` / `update_extension` take `data["is_main_church"]`; giving the tag to an
+  extension takes it from the old holder in the same transaction (rows locked in ascending id order, old holder saved first)
+  and writes one `extension.main_church_change` audit row. Unticking removes it (no main church is allowed). A key that is
+  absent changes nothing. The main church cannot be archived until another one (or none) holds the tag. `ExtensionForm`
+  keeps the field out of the model's constraint check on purpose (the service moves the tag).
 - **Special roles** (`services/special_roles.py`, `views/special_roles.py`): `tithes_offering` and `attendance`. The
   super-admin and admins (any extension) and a coordinator (their own) give or take them on a member's detail page. Only a
   member who can sign in (not archived, not suspended) can hold one. `assign_special_role` locks the extension row, then
@@ -391,8 +403,7 @@ with. Only create a new app if the answer is "none".
   coordinator, member; admin: coordinator, member); a coordinator keeps none. The password a person gets depends on WHO
   creates or resets them (`services.users.default_password_row`): the super-admin their own (the global default); an admin
   their own, else the global one (`global_default_row`: the most recently changed row of an active super-admin); a
-  coordinator the global MEMBER one only. A new or reset admin account uses the global ADMIN password. No default means a
-  generated password. Only the super-admin and admin may type a
+  coordinator the global MEMBER one only. No default means a generated password. Only the super-admin and admin may type a
   password or skip activation (`can_type_password`); a coordinator's new members always get the global member password
   and must change it at first sign-in. Screen: `views/default_passwords.py` with
   `accounts/people/default_passwords.html` (super-admin and admin; an admin with none of their own for a role sees that the
@@ -414,10 +425,13 @@ The source plan `docs/attendance.md` is not present in this checkout; the defaul
   SNAPSHOT of name, gender, age network and home extension taken at tick time; gender and age network may be blank until the
   taker fills them in), `AttendanceFirstTimer` (first, middle, last name, suffix, required gender and age network, optional
   phone and birth date; names stored lowercase and cleaned in `save()`, shown with `full_name`).
-- **Age networks** (`attendance/age.py`): `AgeNetwork` (adult 36+, young adult 25 to 35, youth 13 to 24, children 0 to 12),
-  `age_on(birth_date, on_date)` and `age_network_for(birth_date, on_date)` (None without a birth date or when it is after
-  the date). A 29 February birthday counts on 1 March in a common year. Always computed as of the SHEET date.
-- **Dependencies:** `Gender` lives in `accounts/models.py` and attendance imports it; `AgeNetwork` lives in attendance.
+- **Age networks** (`attendance/age.py`): `AgeNetwork` (adult 36+, young adult 25 to 35, youth 13 to 24, children 0 to 12;
+  defined in `accounts/models.py`, re-exported here), `age_on(birth_date, on_date)` and `age_network_for(birth_date, on_date)`
+  (None without a birth date or when it is after the date). `effective_age_network(person, on_date)` is what the sheet
+  uses: the birth date when there is one, else the network stored on the person (`User.age_network`), else None.
+  A 29 February birthday counts on 1 March in a common year. Always computed as of the SHEET date.
+- **Dependencies:** `Gender` and `AgeNetwork` live in `accounts/models.py` and attendance imports them (`attendance.age`
+  re-exports `AgeNetwork`).
   `accounts` never imports `attendance`.
 - **Who may do what** (`attendance/permissions.py`, the only place that decides): `Attendance.objects.for_user(actor)`
   (super-admin and admin all sheets; coordinator their extension's; an attendance special member the DRAFTS of the extension
@@ -442,8 +456,10 @@ The source plan `docs/attendance.md` is not present in this checkout; the defaul
     can sign in, needs the right to edit the draft, asks for 3+ characters (fewer returns `[]`), returns at most 20 people and
     only `id`, `name`, `home_extension` ("-" for an admin or super-admin) and `age_network`. Never birth date, phone or address.
   - `mark_present` returns `(row, created)`. The row snapshots name, home extension, gender and age network (the age network as
-    of the SHEET date). The person's own gender and birth date win; what the taker supplies only fills blanks and is stored on
-    the row, never on the user. A row with a missing category is saved blank and flagged on the screen; the upload refuses blanks.
+    of the SHEET date). The person's own gender, birth date and stored age network win; what the taker supplies only fills
+    blanks. A gender is stored on the row only. An age network is stored on the row AND on the person (when they have no birth
+    date), and `set_member_category` also updates the person's stored age network when the taker changes it, so nobody is asked
+    every Sunday. A row with a missing category is saved blank and flagged on the screen; the upload refuses blanks.
     A second tick of the same person changes nothing.
   - `add_first_timer` returns an `AddFirstTimerResult` (`first_timer` or `matches`, `needs_confirmation`). When people with the
     same name exist and `confirm_new` is false, nothing is saved and the matches come back for the "same person?" prompt. A birth
@@ -555,7 +571,8 @@ The source plan `docs/attendance.md` is not present in this checkout; the defaul
 - **Tests:** `attendance/tests/` (a package, so there is no `tests.py` beside it): `test_age`, `test_conversion`, `test_models`,
   `test_permissions`, `test_print`, `test_reopen`, `test_services`, `test_summary`, `test_upload`. The admin-alert receiver is tested in
   `notifications/tests.py`. The gender field is tested in
-  `accounts/tests/test_gender.py` and `mark_attended` in `accounts/tests/test_presence.py` (tests live with the code they check). In tests, never create two sheets with the same extension, date and label,
+  `accounts/tests/test_gender.py`, the stored age network in `accounts/tests/test_age_network.py`, the main church tag in
+  `accounts/tests/test_main_church.py`, and `mark_attended` in `accounts/tests/test_presence.py` (tests live with the code they check). In tests, never create two sheets with the same extension, date and label,
   and set `archived_at` together with `status="archived"` (a database constraint ties them).
 
 ## Bible

@@ -168,7 +168,8 @@ def _form_initial(person):
     initial = {
         "first_name": name_case(person.first_name), "middle_name": name_case(person.middle_name),
         "last_name": name_case(person.last_name), "suffix": suffix_case(person.suffix),
-        "birth_date": person.birth_date, "phone_number": person.phone_number,
+        "birth_date": person.birth_date, "gender": person.gender,
+        "phone_number": person.phone_number,
         "role": person.role, "extension": person.extension_id,
         "postal_code": person.postal_code,
         "country": canonical_country(person.country) or title_case(person.country),

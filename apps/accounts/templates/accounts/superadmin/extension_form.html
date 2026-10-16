@@ -50,6 +50,16 @@ own required-field check runs before that, so the question only appears for a co
     <label for="{{ form.name.id_for_label }}" class="label">{{ form.name.label }} <span class="text-error" aria-hidden="true">*</span></label>
     {{ form.name }}
     {% for error in form.name.errors %}<p class="field-error">{{ error }}</p>{% endfor %}
+    <label class="flex items-start gap-3 text-sm">
+      {{ form.is_main_church }}
+      <span>
+        <span class="font-medium">Main church</span>
+        <span class="mt-0.5 block text-txt-secondary">
+          Only one extension can be the main church.
+          {% if form.current_main_church %}Ticking this moves the tag from {{ form.current_main_church }}.{% endif %}
+        </span>
+      </span>
+    </label>
   </div>
 
   <h2 class="mt-8 text-base font-semibold">Address</h2>

@@ -23,7 +23,7 @@ from .address import ADDRESS_FIELDS, COUNTRIES, HIERARCHY, PHILIPPINES, canonica
 from .contact import PHONE_MESSAGE, clean_phone, is_valid_phone
 from .models import Extension, Gender, Role, Status, User
 from .permissions import assignable_roles, can_type_password
-from .validators import validate_activation_password, validate_strong_password, STRONG_PASSWORD_MESSAGE
+from .validators import validate_strong_password, STRONG_PASSWORD_MESSAGE
 
 # One message for every login failure, so the page never reveals whether the
 # account exists, the password was wrong, or the account is archived.
@@ -76,10 +76,10 @@ class ExtensionForm(forms.ModelForm):
     #: Order of the fields (the template draws them by hand in this order).
     field_order = [
         "name", "country", "province", "municipality", "barangay",
-        "postal_code", "street", "building_number",
+        "postal_code", "street", "building_number", "is_main_church",
     ]
-    #: The only field that may stay empty.
-    OPTIONAL_FIELDS = {"street", "building_number"}
+    #: The fields that may stay empty (a tick box is never "required").
+    OPTIONAL_FIELDS = {"street", "building_number", "is_main_church"}
     #: Fields shown back in title case when an extension is edited.
     TITLE_FIELDS = ("name", "province", "municipality", "barangay", "street", "building_number")
 
@@ -91,9 +91,10 @@ class ExtensionForm(forms.ModelForm):
         model = Extension
         fields = [
             "name", "country", "province", "municipality", "barangay",
-            "postal_code", "street", "building_number",
+            "postal_code", "street", "building_number", "is_main_church",
         ]
         widgets = {
+            "is_main_church": forms.CheckboxInput(attrs={"class": "mt-0.5 size-4 accent-accent"}),
             "name": forms.TextInput(attrs={"class": "input", "autocomplete": "off"}),
             "province": forms.TextInput(attrs={"class": "input", "autocomplete": "off"}),
             "municipality": forms.TextInput(attrs={"class": "input", "autocomplete": "off"}),
@@ -105,7 +106,7 @@ class ExtensionForm(forms.ModelForm):
             "street": forms.TextInput(attrs={"class": "input", "autocomplete": "off"}),
             "building_number": forms.TextInput(attrs={"class": "input", "autocomplete": "off"}),
         }
-        labels = {"name": "Extension name"}
+        labels = {"name": "Extension name", "is_main_church": "Main church"}
 
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
@@ -130,6 +131,28 @@ class ExtensionForm(forms.ModelForm):
     def address_state(self):
         """Current country/province/municipality/barangay for the page's JavaScript."""
         return {name: self[name].value() or "" for name in HIERARCHY}
+
+    @property
+    def current_main_church(self):
+        """Title-case name of ANOTHER extension that holds the main church tag, or "".
+
+        The page uses it to say that ticking the box moves the tag from that extension.
+        """
+        others = Extension.objects.filter(is_main_church=True)
+        if self.instance.pk:
+            others = others.exclude(pk=self.instance.pk)
+        other = others.first()
+        return title_case(other.name) if other else ""
+
+    def _get_validation_exclusions(self):
+        """Keep the main church tag out of the model's constraint check.
+
+        Ticking it is allowed even when another extension holds the tag: the service moves the tag
+        in one transaction, so the unique constraint must not refuse the form first.
+        """
+        exclude = super()._get_validation_exclusions()
+        exclude.add("is_main_church")
+        return exclude
 
     # --- cleaning: everything stored lowercase ---------------------------
     def _lowered(self, name):
@@ -293,10 +316,12 @@ class UserForm(forms.Form):
         required=False,
         widget=forms.DateInput(attrs={"class": "input", "type": "date"}, format="%Y-%m-%d"),
     )
-    # Optional; leaders set it here (the member's own profile page does not show it in v1).
+    # Required. People saved before the rule may still have none; they are forced to pick one the
+    # next time a leader edits them. (The member's own profile page does not show it in v1.)
     gender = forms.ChoiceField(
-        required=False, label="Gender", choices=[("", "Not given"), *Gender.choices],
+        required=True, label="Gender", choices=[("", "Choose a gender"), *Gender.choices],
         widget=forms.Select(attrs={"class": "input"}),
+        error_messages={"required": "Choose a gender."},
     )
     role = forms.ChoiceField(widget=forms.Select(attrs={"class": "input", "x-model": "role"}))
     # The page renders a dropdown; the server still checks the selected extension.
@@ -633,7 +658,6 @@ class ActivationForm(forms.Form):
         value = self.cleaned_data["new_password"]
         if self.user.check_password(value):
             raise ValidationError("Choose a password different from your temporary one.")
-        validate_activation_password(value)
         validate_password(value, self.user)  # raises ValidationError with every problem
         return value
 

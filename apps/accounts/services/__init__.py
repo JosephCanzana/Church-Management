@@ -182,6 +182,54 @@ def _lock_extension(pk):
         raise ServiceError("That extension no longer exists.")
 
 
+def _lock_extension_and_main(pk):
+    """Lock extension `pk` and the current main church (when it is another row).
+
+    Both rows are locked in ascending id order, like every other multi-extension lock, so two people
+    moving the tag at once cannot deadlock. Returns (extension, other_main or None). If the tag moves
+    between the read and the lock, the partial unique index is the final guard (see
+    `_integrity_message`).
+    """
+    main_id = Extension.objects.filter(is_main_church=True).values_list("pk", flat=True).first()
+    ids = sorted({pk, *([main_id] if main_id else [])})
+    rows = {e.pk: e for e in Extension.objects.select_for_update().filter(pk__in=ids).order_by("pk")}
+    if pk not in rows:
+        raise ServiceError("That extension no longer exists.")
+    other = rows.get(main_id) if main_id and main_id != pk else None
+    if other is not None and not other.is_main_church:
+        other = None
+    return rows[pk], other
+
+
+def _apply_main_church(actor, request, ext, other_main, wanted):
+    """Give `ext` the main church tag, or take it away. Call with the rows locked.
+
+    Only one extension may hold the tag, so giving it first takes it from `other_main` (saved before
+    the new holder, because the unique index is checked on every statement). One audit row says who
+    held it and who holds it now.
+    """
+    old = None
+    if wanted and other_main is not None:
+        other_main.is_main_church = False
+        other_main.save(update_fields=["is_main_church", "updated_at"])
+        old = other_main
+    ext.is_main_church = wanted
+    ext.save(update_fields=["is_main_church", "updated_at"])
+    if wanted:
+        before = {"main_church": title_case(old.name) if old else None}
+        after = {"main_church": title_case(ext.name)}
+    else:
+        before, after = {"main_church": title_case(ext.name)}, {"main_church": None}
+    _log_extension("extension.main_church_change", actor, request, ext, before=before, after=after)
+
+
+def _integrity_message(exc):
+    """The friendly sentence for an IntegrityError raised while saving an extension."""
+    if "uq_extension_main_church" in str(exc):
+        return "Another extension just became the main church. Reload the page and try again."
+    return "An extension with that name already exists."
+
+
 def _log_extension(action, actor, request, extension, **kwargs):
     """One audit row about an extension, tagged with its own id."""
     log_action(
@@ -216,21 +264,29 @@ def create_extension(actor, request, data):
 
     Values are cleaned by `clean_extension_data` (lowercase, required fields,
     Philippine address rules). A duplicate name, whatever its capitalisation,
-    becomes a ServiceError.
+    becomes a ServiceError. `data["is_main_church"]` (optional) makes it the main church; the tag
+    moves from the extension that had it.
     """
     require_extension_manager(actor)
     values = clean_extension_data(data)
+    wants_main = bool(data.get("is_main_church"))
     try:
         with transaction.atomic():
             if _name_taken(values["name"]):
                 raise ServiceError("An extension with that name already exists.")
+            other_main = (
+                Extension.objects.select_for_update().filter(is_main_church=True).first()
+                if wants_main else None
+            )
             extension = Extension.objects.create(**values)
             _log_extension(
                 "extension.create", actor, request, extension,
                 after=_extension_snapshot(extension),
             )
-    except IntegrityError:
-        raise ServiceError("An extension with that name already exists.")
+            if wants_main:
+                _apply_main_church(actor, request, extension, other_main, True)
+    except IntegrityError as exc:
+        raise ServiceError(_integrity_message(exc))
     return extension
 
 
@@ -241,31 +297,40 @@ def update_extension(actor, request, extension, data):
     with no edits leaves no audit row. "Changed" ignores capitalisation, so an
     old "Santa Rosa" is not rewritten as "santa rosa" unless something else
     about it changed. Archived extensions must be restored first.
+
+    `data["is_main_church"]` (when present) turns the main church tag on or off for this extension.
+    Turning it on moves it from the extension that had it (one audit row,
+    `extension.main_church_change`); leaving the key out changes nothing.
     """
     require_extension_manager(actor)
+    wants_main = bool(data["is_main_church"]) if "is_main_church" in data else None
     try:
         with transaction.atomic():
-            locked = _lock_extension(extension.pk)
+            locked, other_main = _lock_extension_and_main(extension.pk)
             if locked.is_archived:
                 raise ServiceError("Restore this extension before editing it.")
             before = _extension_snapshot(locked)
             merged = {**before, **{k: v for k, v in data.items() if k in EXTENSION_FIELDS}}
             clean = clean_extension_data(merged, existing=before)
             changed = [n for n in EXTENSION_FIELDS if before[n].lower() != clean[n].lower()]
-            if not changed:
+            main_changed = wants_main is not None and wants_main != locked.is_main_church
+            if not changed and not main_changed:
                 return locked, False
             if "name" in changed and _name_taken(clean["name"], exclude_pk=locked.pk):
                 raise ServiceError("An extension with that name already exists.")
-            for name in changed:
-                setattr(locked, name, clean[name])
-            locked.save(update_fields=[*changed, "updated_at"])
-            _log_extension(
-                "extension.update", actor, request, locked,
-                before={n: before[n] for n in changed},
-                after={n: clean[n] for n in changed},
-            )
-    except IntegrityError:
-        raise ServiceError("An extension with that name already exists.")
+            if changed:
+                for name in changed:
+                    setattr(locked, name, clean[name])
+                locked.save(update_fields=[*changed, "updated_at"])
+                _log_extension(
+                    "extension.update", actor, request, locked,
+                    before={n: before[n] for n in changed},
+                    after={n: clean[n] for n in changed},
+                )
+            if main_changed:
+                _apply_main_church(actor, request, locked, other_main, wants_main)
+    except IntegrityError as exc:
+        raise ServiceError(_integrity_message(exc))
     return locked, True
 
 
@@ -353,8 +418,8 @@ def unassign_coordinator(actor, request, extension):
 def archive_extension(actor, request, extension):
     """Archive an extension. Returns (extension, changed).
 
-    Blocked while any non-archived person still belongs to it (move or archive
-    them first). An already archived extension is left alone and logs nothing,
+    Blocked while it is the main church (give the tag to another extension first), and while
+    any non-archived person still belongs to it (move or archive them first). An already archived extension is left alone and logs nothing,
     so a double click is harmless. Any leftover coordinator link (an archived
     person) is cleared.
     """
@@ -363,6 +428,10 @@ def archive_extension(actor, request, extension):
         ext = _lock_extension(extension.pk)
         if ext.is_archived:
             return ext, False
+        if ext.is_main_church:
+            raise ServiceError(
+                f"{title_case(ext.name)} is the main church. Choose another main church before archiving it."
+            )
         people = User.objects.filter(extension=ext).exclude(status=Status.ARCHIVED).count()
         if people:
             noun = "person" if people == 1 else "people"

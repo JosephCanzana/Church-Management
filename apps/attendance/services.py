@@ -27,7 +27,7 @@ from django.db.models import Q
 from django.utils import timezone
 
 from apps.accounts.models import Extension, Gender, Role, Status, User
-from apps.accounts.services.presence import mark_attended
+from apps.accounts.services.presence import mark_attended, remember_age_network
 from apps.accounts.services.users import (
     PasswordInfo, auto_transfer_visitor, check_contact, create_user, find_duplicate_people, normalize_details,
 )
@@ -35,7 +35,7 @@ from apps.audit.services import log_action
 from apps.core.services import ServiceError, consume_submission_token
 from apps.core.text import clean_suffix, clean_text, title_case
 
-from .age import AgeNetwork, age_network_for
+from .age import AgeNetwork, age_network_for, effective_age_network
 from .models import Attendance, AttendanceFirstTimer, AttendanceMember
 from .permissions import (
     can_convert, can_create, can_edit_draft, can_reopen, can_set_taken_by, can_upload, can_view, has_attendance_role,
@@ -97,9 +97,10 @@ def _pick(value, choices, what):
 def _person_row(person, on_date):
     """The few fields a screen may show about a person: id, name, where they belong, age network.
 
-    Never the birth date, phone number or address. The age network is worked out as of `on_date`.
+    Never the birth date, phone number or address. The age network is worked out as of `on_date`
+    (from the birth date, else the one stored on the person).
     """
-    network = age_network_for(person.birth_date, on_date)
+    network = effective_age_network(person, on_date)
     return {
         "id": person.pk,
         "name": person.full_name,
@@ -223,9 +224,11 @@ def mark_present(actor, sheet, user, gender=None, age_network=None):
 
     The row snapshots the name, home extension, gender and age network. The age network is worked
     out from the person's birth date AS OF THE SHEET DATE. `gender` and `age_network` only fill what
-    the person's own record lacks, and are stored on the row only, never on the user. When
-    something is still missing the row is saved with it blank and flagged on the screen: the taker
-    fills it in with `set_member_category`, and the upload refuses a sheet with blanks.
+    the person's own record lacks. A gender is stored on the row only. An age network picked here is
+    also kept on the person (`User.age_network`) when they have no birth date, so they are not asked
+    again next time; a birth date, or an age network already stored, always wins. When something is
+    still missing the row is saved with it blank and flagged on the screen: the taker fills it in
+    with `set_member_category`, and the upload refuses a sheet with blanks.
     A person who cannot sign in (archived or suspended) cannot be marked.
     """
     with transaction.atomic():
@@ -246,14 +249,16 @@ def mark_present(actor, sheet, user, gender=None, age_network=None):
             _pick(gender, Gender, "gender")
         if age_network not in (None, ""):
             _pick(age_network, AgeNetwork, "age network")
-        computed = age_network_for(person.birth_date, locked.attendance_date)
+        known = effective_age_network(person, locked.attendance_date)
         row = AttendanceMember.objects.create(
             attendance=locked, user=person, member_name=person.full_name,
             gender=person.gender or gender or "",
-            age_network=(computed.value if computed else None) or age_network or "",
+            age_network=(known.value if known else None) or age_network or "",
             home_extension=person.extension,
             home_extension_name=title_case(person.extension.name) if person.extension_id else "",
         )
+        if known is None and age_network:
+            remember_age_network(person.pk, age_network)   # no birth date: ask once, not every Sunday
     return row, True
 
 
@@ -268,7 +273,9 @@ def unmark_present(actor, sheet, member_id):
 def set_member_category(actor, sheet, member_id, gender=None, age_network=None):
     """Set the gender and/or age network on one ticked row; `None` leaves that one unchanged.
 
-    Changes the ROW only, never the person's own record. Returns the row.
+    Changes the row. A new age network is also kept on the person (`User.age_network`) when they have
+    no birth date, so the next sheet starts with it; a person with a birth date is never changed (the
+    birth date decides). The gender is never written to the person. Returns the row.
     """
     if gender is None and age_network is None:
         raise ServiceError("Choose a gender or an age network.")
@@ -285,6 +292,8 @@ def set_member_category(actor, sheet, member_id, gender=None, age_network=None):
             row.age_network = _pick(age_network, AgeNetwork, "age network")
             fields.append("age_network")
         row.save(update_fields=fields)
+        if age_network is not None and row.user_id:
+            remember_age_network(row.user_id, row.age_network)
     return row
 
 
@@ -517,6 +526,8 @@ def convert_first_timer(actor, first_timer_id, *, token, request=None):
             {
                 "first_name": row.first_name, "middle_name": row.middle_name, "last_name": row.last_name,
                 "suffix": row.suffix, "birth_date": row.birth_date, "gender": row.gender,
+                # The birth date decides when there is one; otherwise keep the network for next time.
+                "age_network": "" if row.birth_date else row.age_network,
                 "phone_number": row.phone_number, "role": Role.MEMBER, "extension": sheet.extension,
             },
             token=f"cv-{token}"[:64],

@@ -32,7 +32,8 @@ from ..validators import generate_strong_password, validate_strong_password
 from ..address import ADDRESS_FIELDS, check_address
 from ..contact import PHONE_MESSAGE, clean_phone, is_valid_phone
 from ..models import (
-    ArchiveReason, DefaultPassword, Extension, Role, Status, User, UserExtensionHistory,
+    AgeNetwork, ArchiveReason, DefaultPassword, Extension, Gender, Role, Status, User,
+    UserExtensionHistory,
 )
 from ..permissions import (
     ARCHIVE, CHANGE_PLACEMENT, DEACTIVATE, DELETE, EDIT, RESET_PASSWORD, RESTORE, SUSPEND, UNSUSPEND,
@@ -50,6 +51,7 @@ CONTACT_FIELDS = ("phone_number", *ADDRESS_FIELDS)
 # duplicate-name check) and never written to audit_log: only the field name is logged.
 PRIVATE_FIELDS = (*CONTACT_FIELDS, "gender")
 USER_DETAIL_FIELDS = (*IDENTITY_FIELDS, *PRIVATE_FIELDS)
+GENDER_REQUIRED_MESSAGE = "Choose a gender."
 MAX_BULK = 100
 MIN_PASSWORD_LENGTH = 8
 # No 0/O, 1/l/I: generated passwords get read aloud and typed by hand.
@@ -104,7 +106,7 @@ def default_password_row(actor, role):
     if actor.role == Role.SUPER_ADMIN:
         if role not in default_password_roles(actor):
             return None
-        return global_default_row(role)
+        return DefaultPassword.objects.filter(owner=actor, applies_to_role=role).first()
     if actor.role == Role.ADMIN:
         if role not in default_password_roles(actor):
             return None
@@ -270,6 +272,12 @@ def duplicate_message(data, *, exclude_pk=None):
     )
 
 
+def _require_gender(value):
+    """Raise ServiceError unless `value` is a real gender (a person cannot be saved without one)."""
+    if value not in Gender.values:
+        raise ServiceError(GENDER_REQUIRED_MESSAGE)
+
+
 def _refuse_duplicate(data, *, exclude_pk=None):
     message = duplicate_message(data, exclude_pk=exclude_pk)
     if message:
@@ -410,6 +418,9 @@ def create_user(actor, request, data, *, token):
     if role in ROLES_WITH_EXTENSION and wanted is None:
         raise ServiceError("Choose an extension for this role.")
     check_contact(data)
+    _require_gender(data.get("gender"))
+    if data.get("age_network") and data["age_network"] not in AgeNetwork.values:
+        raise ServiceError("Choose a valid age network.")
 
     with transaction.atomic():
         if not consume_submission_token(token):
@@ -433,7 +444,8 @@ def create_user(actor, request, data, *, token):
             last_name=data["last_name"],
             suffix=data.get("suffix", ""),
             birth_date=data.get("birth_date"),
-            gender=data.get("gender", ""),
+            gender=data["gender"],
+            age_network=data.get("age_network", ""),
             phone_number=data.get("phone_number", ""),
             **{name: data.get(name, "") for name in ADDRESS_FIELDS},
             role=role,
@@ -519,6 +531,9 @@ def update_user(actor, request, ref, data):
         for name in USER_DETAIL_FIELDS:
             if name in data:
                 setattr(person, name, data[name])
+        # Gender is required, but only checked here, on an edit: people saved before the rule stay
+        # blank until someone edits them, and then they must be given one.
+        _require_gender(person.gender)
         details_changed = [n for n in USER_DETAIL_FIELDS if before[n] != getattr(person, n)]
         if any(n in IDENTITY_FIELDS for n in details_changed):
             # Only a change to who they are can clash; fixing a phone number must never be blocked by one.

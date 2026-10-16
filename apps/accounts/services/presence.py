@@ -7,7 +7,7 @@ less recently present than they were. Attendance calls this at upload; `accounts
 """
 from django.db.models import Q
 
-from ..models import User
+from ..models import AgeNetwork, User
 
 
 def mark_attended(user_ids, on_date):
@@ -24,4 +24,22 @@ def mark_attended(user_ids, on_date):
         User.objects.filter(pk__in=ids)
         .filter(Q(last_attended_at__isnull=True) | Q(last_attended_at__lt=on_date))
         .update(last_attended_at=on_date)
+    )
+
+
+def remember_age_network(user_id, age_network):
+    """Keep `age_network` as this person's own age group, but only if they have no birth date.
+
+    The birth date always decides the age network when there is one, so a person with a birth date
+    is never touched. Called by attendance when the taker picks or changes a category, so the same
+    person is not asked again next Sunday. Returns True if a row changed. `updated_at` is not
+    touched (this is not an edit of the person's details) and nothing is written to audit_log.
+    A value that is not an `AgeNetwork` is ignored.
+    """
+    if age_network not in AgeNetwork.values:
+        return False
+    return bool(
+        User.objects.filter(pk=user_id, birth_date__isnull=True)
+        .exclude(age_network=age_network)
+        .update(age_network=age_network)
     )

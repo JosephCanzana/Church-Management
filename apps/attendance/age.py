@@ -1,20 +1,11 @@
 """attendance.age: which age network a person falls in on a given date.
 
-`AgeNetwork` lives here (not in models.py) so the attendance models can import it
-without a circular import. The functions are pure: no database, no clock. The
-sheet's date is always passed in, so a sheet is counted by the age people had ON
-that date, never by their age today.
+`AgeNetwork` is defined in `accounts.models` (a person can now store one, and `accounts` may not
+import `attendance`); it is re-exported here so `from .age import AgeNetwork` keeps working. The
+functions are pure: no database, no clock. The sheet's date is always passed in, so a sheet is
+counted by the age people had ON that date, never by their age today.
 """
-from django.db import models
-
-
-class AgeNetwork(models.TextChoices):
-    """The four age groups shown on the attendance summary."""
-
-    ADULT = "adult", "Adult"                    # 36 and above
-    YOUNG_ADULT = "young_adult", "Young adult"  # 25 to 35
-    YOUTH = "youth", "Youth"                    # 13 to 24
-    CHILDREN = "children", "Children"           # 0 to 12
+from apps.accounts.models import AgeNetwork  # noqa: F401  (re-export)
 
 
 # (lowest age, network), checked from the oldest group down.
@@ -53,3 +44,17 @@ def age_network_for(birth_date, on_date):
         if age >= lowest:
             return network
     return None  # unreachable: age is never negative here
+
+
+def effective_age_network(person, on_date):
+    """The `AgeNetwork` to use for `person` on `on_date`, or None.
+
+    The birth date decides when there is a usable one. Otherwise the age network stored on the
+    person (`User.age_network`, filled in from an earlier attendance sheet) is used. None means
+    the taker still has to pick one.
+    """
+    computed = age_network_for(person.birth_date, on_date)
+    if computed is not None:
+        return computed
+    stored = getattr(person, "age_network", "")
+    return AgeNetwork(stored) if stored in AgeNetwork.values else None

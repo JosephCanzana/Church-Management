@@ -46,7 +46,7 @@
       {% for error in form.birth_date.errors %}<p class="field-error">{{ error }}</p>{% endfor %}
     </div>
     <div>
-      <label for="{{ form.gender.id_for_label }}" class="label">Gender <span class="font-normal text-txt-secondary">(optional)</span></label>
+      <label for="{{ form.gender.id_for_label }}" class="label">Gender</label>
       {{ form.gender }}
       {% for error in form.gender.errors %}<p class="field-error">{{ error }}</p>{% endfor %}
     </div>
