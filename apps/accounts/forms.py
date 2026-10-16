@@ -570,7 +570,7 @@ class UserFilterForm(forms.Form):
 
 
 class DefaultPasswordsForm(forms.Form):
-    """The signed-in person's own default passwords: one optional password and one Remove tick per role.
+    """The signed-in person's own default passwords, with one optional password per role.
 
     roles -- the roles this person keeps a default for (permissions.default_password_roles).
     An empty password field leaves that default as it is. `changes` is what to save.
@@ -594,18 +594,11 @@ class DefaultPasswordsForm(forms.Form):
                     render_value=False,
                 ),
             )
-            self.fields[f"clear_{role}"] = forms.BooleanField(
-                required=False, label="Remove",
-                widget=forms.CheckboxInput(attrs={"class": "size-4 accent-accent"}),
-            )
-
     def clean(self):
         cleaned = super().clean()
         for role in self.roles:
             password = cleaned.get(f"password_{role}") or ""
-            if password and cleaned.get(f"clear_{role}"):
-                self.add_error(f"password_{role}", "Type a password or tick Remove, not both.")
-            elif password:
+            if password:
                 try:
                     validate_strong_password(password)
                 except ValidationError as e:
@@ -614,14 +607,12 @@ class DefaultPasswordsForm(forms.Form):
 
     @property
     def changes(self):
-        """{role: ("set", password) | ("clear", None)} for what the person filled in."""
+        """Return role/password pairs for defaults the person chose to replace."""
         out = {}
         for role in self.roles:
             password = self.cleaned_data.get(f"password_{role}") or ""
             if password:
                 out[role] = ("set", password)
-            elif self.cleaned_data.get(f"clear_{role}"):
-                out[role] = ("clear", None)
         return out
 
 # ============================================================ activation

@@ -40,7 +40,7 @@ def default_passwords(request):
     if request.method == "POST" and form.is_valid():
         changes = form.changes
         if not changes:
-            messages.info(request, "Nothing to save. Type a password or tick Remove first.")
+            messages.info(request, "Nothing to save. Type a password.")
             return redirect(here)
         try:
             changed = save_default_passwords(request.user, request, changes)
@@ -67,6 +67,5 @@ def default_passwords(request):
                 request.user.role == Role.ADMIN and record is None and global_default_row(role) is not None
             ),
             "password": form[f"password_{role}"],
-            "remove": form[f"clear_{role}"],
         })
     return render(request, "accounts/people/default_passwords.html", {"form": form, "rows": rows})

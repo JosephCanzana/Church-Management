@@ -18,10 +18,9 @@ from ..validators import validate_strong_password
 
 
 def save_default_passwords(actor, request, changes):
-    """Apply {role: ("set", password) | ("clear", None)} to `actor`'s own defaults.
+    """Set the supplied role passwords among `actor`'s own defaults.
 
-    Returns the roles that really changed (removing a default that was never
-    set changes nothing). Everything happens in one transaction.
+    Returns the roles that changed. Everything happens in one transaction.
     """
     allowed = default_password_roles(actor)
     if not allowed:
@@ -31,25 +30,22 @@ def save_default_passwords(actor, request, changes):
         for role, (kind, password) in changes.items():
             if role not in allowed:
                 raise PermissionDenied("You cannot set a default password for that role.")
-            if kind == "set":
-                try:
-                    validate_strong_password(password)
-                except ValidationError as exc:
-                    raise ServiceError(exc.messages[0])
-                row = (
-                    DefaultPassword.objects.select_for_update()
-                    .filter(owner=actor, applies_to_role=role).first()
-                    or DefaultPassword(owner=actor, applies_to_role=role)
-                )
-                row.set_plain(password)      # writes the hash and the encrypted copy together
-                row.save()
-            else:
-                deleted, _ = DefaultPassword.objects.filter(owner=actor, applies_to_role=role).delete()
-                if not deleted:
-                    continue
+            if kind != "set":
+                raise ServiceError("Default passwords can only be replaced.")
+            try:
+                validate_strong_password(password)
+            except ValidationError as exc:
+                raise ServiceError(exc.messages[0])
+            row = (
+                DefaultPassword.objects.select_for_update()
+                .filter(owner=actor, applies_to_role=role).first()
+                or DefaultPassword(owner=actor, applies_to_role=role)
+            )
+            row.set_plain(password)      # writes the hash and the encrypted copy together
+            row.save()
             changed.append(role)
             log_action(
-                f"account.default_password_{kind}", actor=actor, request=request,
+                "account.default_password_set", actor=actor, request=request,
                 entity_type="app_user", entity_id=actor.pk, entity_label=str(actor),
                 after={"role": role},          # the password itself is never logged
             )
