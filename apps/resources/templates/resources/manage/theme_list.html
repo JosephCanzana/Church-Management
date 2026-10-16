@@ -1,0 +1,76 @@
+<!--
+resources/manage/theme_list.html
+Manager list of monthly themes with search, status filters, sorting, and pagination.
+Extends base_app.html. Blocks filled: title, page_title, content.
+Context: form (ResourceFilterForm), page (Page of MonthlyTheme), total, status,
+querystring, and active_filters.
+-->
+{% extends "base_app.html" %}
+{% load ui_tags %}
+
+{% block title %}Monthly themes{% endblock %}
+{% block page_title %}Monthly themes{% endblock %}
+
+{% block content %}
+<div class="flex flex-wrap items-center justify-between gap-3">
+  <nav class="flex flex-wrap gap-2" aria-label="Resource management">
+    <a href="{% url 'resources:theme_list' %}" class="btn btn-secondary" aria-current="page">Monthly themes</a>
+    <a href="{% url 'resources:weekly_list' %}" class="btn btn-ghost">Weekly presentations</a>
+    <a href="{% url 'resources:general_list' %}" class="btn btn-ghost">General resources</a>
+  </nav>
+  <a href="{% url 'resources:theme_create' %}" class="btn btn-primary">
+    {% include 'includes/icon.html' with name='plus' class='size-4' %} New theme
+  </a>
+</div>
+
+<form method="get" action="{% url 'resources:theme_list' %}" class="mt-5 grid gap-3 rounded-lg border border-border bg-surface p-4 sm:grid-cols-[minmax(12rem,1fr)_10rem_12rem_auto_auto] sm:items-end">
+  <div>
+    <label for="{{ form.q.id_for_label }}" class="label">Search</label>
+    {{ form.q }}
+  </div>
+  <div>
+    <label for="{{ form.status.id_for_label }}" class="label">Status</label>
+    {{ form.status }}
+  </div>
+  <div>
+    <label for="{{ form.sort.id_for_label }}" class="label">{{ form.sort.label }}</label>
+    {{ form.sort }}
+  </div>
+  <button type="submit" class="btn btn-secondary">Apply</button>
+  {% if active_filters %}<a href="{% url 'resources:theme_list' %}" class="btn btn-ghost">Clear</a>{% endif %}
+</form>
+
+<div class="mt-5 flex items-center justify-between gap-3">
+  <p class="text-sm text-txt-secondary">{{ total }} theme{{ total|pluralize }}{% if status == 'archived' %} in archive{% endif %}</p>
+</div>
+
+{% if page.object_list %}
+<div class="mt-2 overflow-x-auto rounded-lg border border-border bg-surface">
+  <table class="w-full min-w-[38rem] text-left text-sm">
+    <thead class="border-b border-border bg-surface-alt text-xs uppercase text-txt-secondary">
+      <tr><th class="px-4 py-3 font-medium">Month</th><th class="px-4 py-3 font-medium">Theme</th><th class="px-4 py-3 font-medium">Status</th><th class="px-4 py-3 text-right font-medium">Action</th></tr>
+    </thead>
+    <tbody class="divide-y divide-border">
+      {% for theme in page.object_list %}
+      <tr class="hover:bg-surface-alt">
+        <td class="whitespace-nowrap px-4 py-3">{{ theme.month|date:"F Y" }}</td>
+        <td class="px-4 py-3"><a class="font-medium text-txt-primary hover:underline" href="{% url 'resources:theme_detail' theme.pk %}">{{ theme.title }}</a></td>
+        <td class="px-4 py-3">
+          {% if theme.archived_at %}<span class="text-txt-secondary">Archived</span>
+          {% elif theme.is_published %}<span class="text-success">Published</span>
+          {% else %}<span class="text-txt-secondary">Draft</span>{% endif %}
+        </td>
+        <td class="px-4 py-3 text-right"><a href="{% url 'resources:theme_detail' theme.pk %}" class="btn btn-ghost px-3 py-1.5">Open</a></td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+</div>
+{% include 'includes/pagination.html' with page=page querystring=querystring %}
+{% else %}
+<div class="mt-5 rounded-lg border border-border bg-surface px-5 py-10 text-center">
+  <p class="font-medium">No monthly themes found</p>
+  <p class="mt-1 text-sm text-txt-secondary">Adjust the search or filters, or create a theme.</p>
+</div>
+{% endif %}
+{% endblock %}

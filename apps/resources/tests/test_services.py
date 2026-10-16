@@ -144,7 +144,9 @@ class ResourceServiceTests(TestCase):
         self.assertTrue(services.archive_monthly_theme(self.admin, theme.pk))
         with self.assertRaises(ServiceError):
             services.update_monthly_theme(self.admin, theme.pk, title="Archived edit")
-        self.assertTrue(services.force_delete_monthly_theme(self.admin, theme.pk))
+        with self.assertRaises(PermissionDenied):
+            services.force_delete_monthly_theme(self.admin, theme.pk)
+        self.assertTrue(services.force_delete_monthly_theme(self.super_admin, theme.pk))
         self.assertFalse(resource.file.storage.exists(stored_name))
         self.assertFalse(MonthlyTheme.objects.filter(pk=theme.pk).exists())
         self.assertFalse(MonthlyResource.objects.filter(pk=resource.pk).exists())
@@ -166,7 +168,9 @@ class ResourceServiceTests(TestCase):
         self.assertTrue(services.archive_weekly_powerpoint(self.admin, powerpoint.pk))
         self.assertTrue(services.restore_weekly_powerpoint(self.admin, powerpoint.pk))
         self.assertTrue(services.archive_weekly_powerpoint(self.admin, powerpoint.pk))
-        self.assertTrue(services.force_delete_weekly_powerpoint(self.admin, powerpoint.pk))
+        with self.assertRaises(PermissionDenied):
+            services.force_delete_weekly_powerpoint(self.admin, powerpoint.pk)
+        self.assertTrue(services.force_delete_weekly_powerpoint(self.super_admin, powerpoint.pk))
         self.assertFalse(WeeklyPowerpoint.objects.filter(pk=powerpoint.pk).exists())
 
     def test_general_resource_create_update_archive_restore_and_delete(self):
@@ -188,6 +192,8 @@ class ResourceServiceTests(TestCase):
         self.assertTrue(services.restore_general_resource(self.admin, resource.pk))
         self.assertTrue(services.archive_general_resource(self.admin, resource.pk))
         stored_name = resource.file.name
-        self.assertTrue(services.force_delete_general_resource(self.admin, resource.pk))
+        with self.assertRaises(PermissionDenied):
+            services.force_delete_general_resource(self.admin, resource.pk)
+        self.assertTrue(services.force_delete_general_resource(self.super_admin, resource.pk))
         self.assertFalse(resource.file.storage.exists(stored_name))
         self.assertFalse(GeneralResource.objects.filter(pk=resource.pk).exists())

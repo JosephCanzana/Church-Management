@@ -68,6 +68,13 @@ class ResourcePermissionTests(TestCase):
         with self.assertRaises(PermissionDenied):
             permissions.require_resource_manager(self.coordinator)
 
+    def test_only_super_admin_can_force_delete_archived_resources(self):
+        self.assertTrue(permissions.can_force_delete_resources(self.super_admin))
+        for actor in (self.admin, self.coordinator, self.member, AnonymousUser(), None):
+            self.assertFalse(permissions.can_force_delete_resources(actor), actor)
+        with self.assertRaises(PermissionDenied):
+            permissions.require_resource_force_deleter(self.admin)
+
     def test_admins_can_view_drafts_and_archived_records(self):
         for actor in (self.super_admin, self.admin):
             self.assertTrue(permissions.can_view_monthly_theme(actor, self.draft))

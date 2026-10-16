@@ -29,6 +29,7 @@ urlpatterns = [
     path("bible/", include("apps.bible.urls")),
     path("audit/", include("apps.accounts.urls.audit_log")),
     path("notifications/", include("apps.notifications.urls")),
+    path("resources/", include("apps.resources.urls")),
     path("admin/", include("apps.accounts.urls.admin_area")),
     path("coordinator/", include("apps.accounts.urls.coordinator_area")),
     # Member root: attendance special members (the role areas mount the same sheet routes themselves).

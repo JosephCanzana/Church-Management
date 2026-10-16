@@ -143,8 +143,16 @@ with. Only create a new app if the answer is "none".
 - Monthly files are `MonthlyResource` rows. Weekly presentations and general
   resources each have one required file. Audit entries contain record ids and
   changed field names, never file names or contents.
-- Run `apps.resources.tests.test_permissions` and
-  `apps.resources.tests.test_services` when changing these rules.
+- The management screens are under `/resources/manage/` in the `resources`
+  namespace. Admin and super-admin share the screens; only the super-admin can
+  permanently delete archived records. Mutations are POST-only, use the global
+  confirmation dialog, and report results through Django messages/toasts.
+- Templates live in `apps/resources/templates/resources/manage/`; list screens
+  filter by title/status and paginate. The library route remains separate and
+  is built in the next brick.
+- Run `apps.resources.tests.test_permissions`,
+  `apps.resources.tests.test_services`, and `apps.resources.tests.test_views`
+  when changing these rules or screens.
 
 ### Dependency rules
 1. Direction: `core` <- `audit` <- `accounts` <- everything else. `theming`

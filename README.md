@@ -70,7 +70,8 @@ Photo uploads are limited to 10 MB and resource documents to 25 MB by default;
 adjust `PHOTO_UPLOAD_MAX_MB` and `RESOURCE_UPLOAD_MAX_MB` in `.env` as needed.
 Public landing/donation images are served from `/media/`. Resource documents are
 stored separately in the persistent `private_media_data` volume and must only be
-delivered through permission-checked Django download views.
+delivered through permission-checked Django download views. Admins and the
+super-admin manage themes and resource files under `/resources/manage/`.
 
 ## Project structure
 

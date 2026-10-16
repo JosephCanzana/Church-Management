@@ -24,6 +24,17 @@ def require_resource_manager(actor):
         raise PermissionDenied("Only an admin can manage resources.")
 
 
+def can_force_delete_resources(actor):
+    """Return whether the actor can permanently delete archived resource records."""
+    return _usable(actor) and actor.role == Role.SUPER_ADMIN
+
+
+def require_resource_force_deleter(actor):
+    """Raise PermissionDenied unless the actor is the super-admin."""
+    if not can_force_delete_resources(actor):
+        raise PermissionDenied("Only the super-admin can permanently delete resources.")
+
+
 def can_view_monthly_theme(actor, theme):
     """Allow managers to inspect all themes and others to view published active themes."""
     if not _usable(actor) or theme is None:

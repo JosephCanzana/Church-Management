@@ -1,0 +1,42 @@
+<!--
+resources/manage/theme_form.html
+Create or edit one monthly theme.
+Extends base_app.html. Blocks filled: title, page_title, content.
+Context: form (MonthlyThemeForm), theme (existing MonthlyTheme or None).
+-->
+{% extends "base_app.html" %}
+
+{% block title %}{% if theme %}Edit theme{% else %}New theme{% endif %}{% endblock %}
+{% block page_title %}{% if theme %}Edit monthly theme{% else %}New monthly theme{% endif %}{% endblock %}
+
+{% block content %}
+{% url 'resources:theme_list' as list_url %}
+{% if theme %}{% include 'includes/breadcrumb.html' with parent_label='Monthly themes' parent_url=list_url current='Edit theme' %}
+{% else %}{% include 'includes/breadcrumb.html' with parent_label='Monthly themes' parent_url=list_url current='New theme' %}{% endif %}
+
+<form method="post" class="card mt-5 max-w-2xl space-y-5"
+      {% if theme %}data-confirm="Save changes to this monthly theme?" data-confirm-title="Save theme changes?" data-confirm-text="Save changes"
+      {% else %}data-confirm="Create this monthly theme as a draft?" data-confirm-title="Create monthly theme?" data-confirm-text="Create theme"{% endif %}>
+  {% csrf_token %}
+  {% if form.non_field_errors %}<div class="rounded-md border border-error p-3 text-sm text-error" role="alert">{% for error in form.non_field_errors %}<p>{{ error }}</p>{% endfor %}</div>{% endif %}
+  <div>
+    <label class="label" for="{{ form.month.id_for_label }}">Month</label>
+    {{ form.month }}
+    {% for error in form.month.errors %}<p class="field-error">{{ error }}</p>{% endfor %}
+  </div>
+  <div>
+    <label class="label" for="{{ form.title.id_for_label }}">Theme title</label>
+    {{ form.title }}
+    {% for error in form.title.errors %}<p class="field-error">{{ error }}</p>{% endfor %}
+  </div>
+  <div>
+    <label class="label" for="{{ form.description.id_for_label }}">Description</label>
+    {{ form.description }}
+    {% for error in form.description.errors %}<p class="field-error">{{ error }}</p>{% endfor %}
+  </div>
+  <div class="flex flex-wrap gap-3">
+    <button type="submit" class="btn btn-primary">{% if theme %}Save changes{% else %}Create draft{% endif %}</button>
+    <a href="{% if theme %}{% url 'resources:theme_detail' theme.pk %}{% else %}{{ list_url }}{% endif %}" class="btn btn-ghost">Cancel</a>
+  </div>
+</form>
+{% endblock %}

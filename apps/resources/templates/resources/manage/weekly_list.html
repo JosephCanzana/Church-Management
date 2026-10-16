@@ -1,0 +1,58 @@
+<!--
+resources/manage/weekly_list.html
+Manager list of weekly presentations with search, status, sorting, and pagination.
+Extends base_app.html. Blocks filled: title, page_title, content.
+Context: form (ResourceFilterForm), page (Page of WeeklyPowerpoint), total, status,
+querystring, and active_filters.
+-->
+{% extends "base_app.html" %}
+{% load ui_tags %}
+
+{% block title %}Weekly presentations{% endblock %}
+{% block page_title %}Weekly presentations{% endblock %}
+
+{% block content %}
+<div class="flex flex-wrap items-center justify-between gap-3">
+  <nav class="flex flex-wrap gap-2" aria-label="Resource management">
+    <a href="{% url 'resources:theme_list' %}" class="btn btn-ghost">Monthly themes</a>
+    <a href="{% url 'resources:weekly_list' %}" class="btn btn-secondary" aria-current="page">Weekly presentations</a>
+    <a href="{% url 'resources:general_list' %}" class="btn btn-ghost">General resources</a>
+  </nav>
+  <a href="{% url 'resources:weekly_create' %}" class="btn btn-primary">{% include 'includes/icon.html' with name='plus' class='size-4' %} New presentation</a>
+</div>
+<form method="get" action="{% url 'resources:weekly_list' %}" class="mt-5 grid gap-3 rounded-lg border border-border bg-surface p-4 sm:grid-cols-[minmax(12rem,1fr)_10rem_12rem_auto_auto] sm:items-end">
+  <div><label for="{{ form.q.id_for_label }}" class="label">Search</label>{{ form.q }}</div>
+  <div><label for="{{ form.status.id_for_label }}" class="label">Status</label>{{ form.status }}</div>
+  <div><label for="{{ form.sort.id_for_label }}" class="label">{{ form.sort.label }}</label>{{ form.sort }}</div>
+  <button type="submit" class="btn btn-secondary">Apply</button>
+  {% if active_filters %}<a href="{% url 'resources:weekly_list' %}" class="btn btn-ghost">Clear</a>{% endif %}
+</form>
+<p class="mt-4 text-sm text-txt-secondary">{{ total }} presentation{{ total|pluralize }}{% if status == 'archived' %} in archive{% endif %}</p>
+{% if page.object_list %}
+<div class="mt-2 overflow-x-auto rounded-lg border border-border bg-surface">
+  <table class="w-full min-w-[48rem] text-left text-sm">
+    <thead class="border-b border-border bg-surface-alt text-xs uppercase text-txt-secondary"><tr><th class="px-4 py-3 font-medium">Week of</th><th class="px-4 py-3 font-medium">Title</th><th class="px-4 py-3 font-medium">File</th><th class="px-4 py-3 font-medium">Status</th><th class="px-4 py-3 text-right font-medium">Actions</th></tr></thead>
+    <tbody class="divide-y divide-border">
+      {% for item in page.object_list %}
+      <tr class="hover:bg-surface-alt">
+        <td class="whitespace-nowrap px-4 py-3">{{ item.week_start|date:"M j, Y" }}</td>
+        <td class="px-4 py-3"><span class="font-medium">{{ item.title }}</span>{% if item.monthly_theme %}<span class="mt-0.5 block text-xs text-txt-secondary">{{ item.monthly_theme.title }}</span>{% endif %}</td>
+        <td class="max-w-56 truncate px-4 py-3 text-txt-secondary">{{ item.original_filename }}</td>
+        <td class="px-4 py-3">{% if item.archived_at %}Archived{% else %}Active{% endif %}</td>
+        <td class="px-4 py-3"><div class="flex justify-end gap-2">
+          {% if item.archived_at %}
+            <form method="post" action="{% url 'resources:weekly_restore' item.pk %}" data-confirm="Restore {{ item.title }}?" data-confirm-title="Restore presentation?" data-confirm-text="Restore">{% csrf_token %}<button class="btn btn-ghost px-3 py-1.5" type="submit">Restore</button></form>
+            {% if request.user.role == 'super_admin' %}<form method="post" action="{% url 'resources:weekly_delete' item.pk %}" data-confirm="Permanently delete {{ item.title }} and its file?" data-confirm-title="Delete presentation?" data-confirm-text="Delete permanently" data-confirm-danger>{% csrf_token %}<button class="btn btn-ghost px-3 py-1.5 text-error" type="submit">Delete</button></form>{% endif %}
+          {% else %}
+            <a href="{% url 'resources:weekly_edit' item.pk %}" class="btn btn-ghost px-3 py-1.5">Edit</a>
+            <form method="post" action="{% url 'resources:weekly_archive' item.pk %}" data-confirm="Archive {{ item.title }}?" data-confirm-title="Archive presentation?" data-confirm-text="Archive">{% csrf_token %}<button class="btn btn-ghost px-3 py-1.5" type="submit">Archive</button></form>
+          {% endif %}
+        </div></td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+</div>
+{% include 'includes/pagination.html' with page=page querystring=querystring %}
+{% else %}<div class="mt-5 rounded-lg border border-border bg-surface px-5 py-10 text-center"><p class="font-medium">No weekly presentations found</p><p class="mt-1 text-sm text-txt-secondary">Adjust the search or filters, or add a presentation.</p></div>{% endif %}
+{% endblock %}

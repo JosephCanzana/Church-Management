@@ -1,0 +1,55 @@
+<!--
+resources/manage/resource_form.html
+Create or edit a monthly attachment, weekly presentation, or general resource.
+Extends base_app.html. Blocks filled: title, page_title, content.
+Context: form, resource_type (monthly, weekly, or general), resource, and theme for monthly files.
+-->
+{% extends "base_app.html" %}
+
+{% block title %}{% if resource %}Edit{% else %}New{% endif %} resource{% endblock %}
+{% block page_title %}{% if resource %}Edit{% else %}New{% endif %} {% if resource_type == 'monthly' %}theme file{% elif resource_type == 'weekly' %}weekly presentation{% else %}general resource{% endif %}{% endblock %}
+
+{% block content %}
+{% if resource_type == 'monthly' %}
+  {% url 'resources:theme_detail' theme.pk as back_url %}
+  {% include 'includes/breadcrumb.html' with parent_label=theme.title parent_url=back_url current='Theme file' %}
+{% elif resource_type == 'weekly' %}
+  {% url 'resources:weekly_list' as back_url %}
+  {% include 'includes/breadcrumb.html' with parent_label='Weekly presentations' parent_url=back_url current='Presentation' %}
+{% else %}
+  {% url 'resources:general_list' as back_url %}
+  {% include 'includes/breadcrumb.html' with parent_label='General resources' parent_url=back_url current='Resource' %}
+{% endif %}
+
+<form method="post" enctype="multipart/form-data" class="card mt-5 max-w-2xl space-y-5"
+      {% if resource %}data-confirm="Save changes to this resource?" data-confirm-title="Save resource changes?" data-confirm-text="Save changes"
+      {% else %}data-confirm="Add this resource?" data-confirm-title="Add resource?" data-confirm-text="Add resource"{% endif %}>
+  {% csrf_token %}
+  {% if form.non_field_errors %}<div class="rounded-md border border-error p-3 text-sm text-error" role="alert">{% for error in form.non_field_errors %}<p>{{ error }}</p>{% endfor %}</div>{% endif %}
+  {% if resource_type == 'monthly' %}
+    <div><label class="label" for="{{ form.kind.id_for_label }}">File type</label>{{ form.kind }}{% for error in form.kind.errors %}<p class="field-error">{{ error }}</p>{% endfor %}</div>
+    <div><label class="label" for="{{ form.title.id_for_label }}">Title</label>{{ form.title }}{% for error in form.title.errors %}<p class="field-error">{{ error }}</p>{% endfor %}</div>
+    <div><label class="label" for="{{ form.description.id_for_label }}">Description</label>{{ form.description }}{% for error in form.description.errors %}<p class="field-error">{{ error }}</p>{% endfor %}</div>
+  {% elif resource_type == 'weekly' %}
+    <div><label class="label" for="{{ form.title.id_for_label }}">Title</label>{{ form.title }}{% for error in form.title.errors %}<p class="field-error">{{ error }}</p>{% endfor %}</div>
+    <div><label class="label" for="{{ form.week_start.id_for_label }}">Week start</label>{{ form.week_start }}{% for error in form.week_start.errors %}<p class="field-error">{{ error }}</p>{% endfor %}</div>
+    <div><label class="label" for="{{ form.monthly_theme.id_for_label }}">Monthly theme</label>{{ form.monthly_theme }}{% for error in form.monthly_theme.errors %}<p class="field-error">{{ error }}</p>{% endfor %}</div>
+    <div><label class="label" for="{{ form.description.id_for_label }}">Description</label>{{ form.description }}{% for error in form.description.errors %}<p class="field-error">{{ error }}</p>{% endfor %}</div>
+  {% else %}
+    <div><label class="label" for="{{ form.title.id_for_label }}">Title</label>{{ form.title }}{% for error in form.title.errors %}<p class="field-error">{{ error }}</p>{% endfor %}</div>
+    <div><label class="label" for="{{ form.category.id_for_label }}">Category</label>{{ form.category }}{% for error in form.category.errors %}<p class="field-error">{{ error }}</p>{% endfor %}</div>
+    <div><label class="label" for="{{ form.description.id_for_label }}">Description</label>{{ form.description }}{% for error in form.description.errors %}<p class="field-error">{{ error }}</p>{% endfor %}</div>
+  {% endif %}
+  <div>
+    {% if resource and resource.original_filename %}<p class="mb-2 text-sm text-txt-secondary">Current file: {{ resource.original_filename }}</p>{% endif %}
+    <label class="label" for="{{ form.file.id_for_label }}">{% if resource %}Replace file{% else %}File{% endif %}</label>
+    {{ form.file }}
+    <p class="field-help">PDF, PPTX, DOCX or XLSX. Maximum size: {{ resource_limit_mb }} MB.</p>
+    {% for error in form.file.errors %}<p class="field-error">{{ error }}</p>{% endfor %}
+  </div>
+  <div class="flex flex-wrap gap-3">
+    <button type="submit" class="btn btn-primary">{% if resource %}Save changes{% else %}Add resource{% endif %}</button>
+    <a href="{{ back_url }}" class="btn btn-ghost">Cancel</a>
+  </div>
+</form>
+{% endblock %}

@@ -9,7 +9,7 @@ from apps.audit.services import log_action
 from apps.core.services import ServiceError, archive, force_delete, restore
 
 from .models import GeneralResource, MonthlyResource, MonthlyTheme, WeeklyPowerpoint
-from .permissions import require_resource_manager
+from .permissions import require_resource_force_deleter, require_resource_manager
 
 
 _UNSET = object()
@@ -199,7 +199,7 @@ def restore_monthly_theme(actor, theme_id, *, request=None):
 
 def force_delete_monthly_theme(actor, theme_id, *, request=None):
     """Permanently delete an archived theme and its monthly files."""
-    require_resource_manager(actor)
+    require_resource_force_deleter(actor)
     return _force_delete_record(actor, MonthlyTheme, theme_id, "monthly_theme", request)
 
 
@@ -354,7 +354,7 @@ def restore_weekly_powerpoint(actor, powerpoint_id, *, request=None):
 
 def force_delete_weekly_powerpoint(actor, powerpoint_id, *, request=None):
     """Permanently delete an archived weekly presentation and its file."""
-    require_resource_manager(actor)
+    require_resource_force_deleter(actor)
     return _force_delete_record(actor, WeeklyPowerpoint, powerpoint_id, "weekly_powerpoint", request)
 
 
@@ -418,5 +418,5 @@ def restore_general_resource(actor, resource_id, *, request=None):
 
 def force_delete_general_resource(actor, resource_id, *, request=None):
     """Permanently delete an archived general resource and its file."""
-    require_resource_manager(actor)
+    require_resource_force_deleter(actor)
     return _force_delete_record(actor, GeneralResource, resource_id, "general_resource", request)
