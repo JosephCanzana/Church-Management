@@ -15,10 +15,12 @@ import re
 import secrets
 from datetime import timedelta
 
-from django.db import connection
+from django.db import connection, router
+from django.db.models.deletion import Collector
 from django.utils import timezone
 
 from .models import SubmissionToken
+from .uploads import delete_files
 
 
 class ServiceError(Exception):
@@ -61,7 +63,16 @@ def force_delete(instance):
     """
     if not instance.is_archived:
         raise ServiceError("Only archived records can be deleted.")
-    instance.delete()
+    collector = Collector(using=router.db_for_write(type(instance), instance=instance))
+    collector.collect([instance])
+    for related_model, fields in collector.restricted_objects.items():
+        collected = collector.data.get(related_model, set())
+        if any(objects.difference(collected) for objects in fields.values()):
+            raise ServiceError("This record cannot be deleted while related records remain.")
+    for objects in collector.data.values():
+        for related_instance in objects:
+            delete_files(related_instance)
+    collector.delete()
 
 
 # ------------------------------------------------------- one-time form tokens

@@ -20,6 +20,8 @@ services:
     restart: unless-stopped
     volumes:
       - .:/app
+      - media_data:/app/media
+      - private_media_data:/app/private_media
     ports:
       # Exposed on localhost port 8002
       - "127.0.0.1:8002:8000"
@@ -51,3 +53,5 @@ services:
 volumes:
   postgres_data:
   pgadmin_data:
+  media_data:
+  private_media_data:

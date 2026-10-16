@@ -65,6 +65,13 @@ App: http://127.0.0.1:8001/  Admin: http://127.0.0.1:8001/admin/
 
 > Use `127.0.0.1`, not `localhost` (known IPv6/IPv4 quirk in local dev).
 
+### Upload storage
+Photo uploads are limited to 10 MB and resource documents to 25 MB by default;
+adjust `PHOTO_UPLOAD_MAX_MB` and `RESOURCE_UPLOAD_MAX_MB` in `.env` as needed.
+Public landing/donation images are served from `/media/`. Resource documents are
+stored separately in the persistent `private_media_data` volume and must only be
+delivered through permission-checked Django download views.
+
 ## Project structure
 
 ```

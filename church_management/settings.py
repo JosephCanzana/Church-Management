@@ -148,6 +148,13 @@ STATIC_ROOT = BASE_DIR / "staticfiles"  # collectstatic target (served by Caddy 
 
 MEDIA_URL = '/media/'
 MEDIA_ROOT = BASE_DIR / 'media'
+PRIVATE_MEDIA_ROOT = Path(config("PRIVATE_MEDIA_ROOT", default=str(BASE_DIR / "private_media")))
+PHOTO_UPLOAD_MAX_MB = config("PHOTO_UPLOAD_MAX_MB", default=10, cast=int)
+RESOURCE_UPLOAD_MAX_MB = config("RESOURCE_UPLOAD_MAX_MB", default=25, cast=int)
+if PHOTO_UPLOAD_MAX_MB < 1 or RESOURCE_UPLOAD_MAX_MB < 1:
+    raise ValueError("Upload size limits must be at least 1 MB.")
+PHOTO_UPLOAD_MAX_BYTES = PHOTO_UPLOAD_MAX_MB * 1024 * 1024
+RESOURCE_UPLOAD_MAX_BYTES = RESOURCE_UPLOAD_MAX_MB * 1024 * 1024
 
 DEFAULT_AUTO_FIELD = 'django.db.models.BigAutoField'
 

@@ -10,3 +10,4 @@ static/js/alpine.min.js
 /production/data/
 /production/.env
 /media/*
+/private_media/

@@ -3,6 +3,12 @@ latest JIL video)."""
 from django.conf import settings
 from django.db import models
 
+from apps.core.uploads import (
+    FileCleanupModel,
+    public_upload_to,
+    validate_photo_upload,
+)
+
 USER = settings.AUTH_USER_MODEL
 
 
@@ -33,8 +39,9 @@ class ChurchContent(models.Model):
         ]
 
 
-class LandingImage(models.Model):
-    image = models.ImageField(upload_to="landing/")
+class LandingImage(FileCleanupModel):
+    image = models.ImageField(upload_to=public_upload_to, validators=[validate_photo_upload])
+    original_filename = models.CharField(max_length=255, blank=True)
     caption = models.CharField(max_length=255, blank=True)
     sort_order = models.IntegerField(default=0)
     is_active = models.BooleanField(default=True)
@@ -46,15 +53,22 @@ class LandingImage(models.Model):
         db_table = "landing_image"
         ordering = ["sort_order", "id"]
 
+    FILE_ORIGINAL_NAME_FIELDS = {"image": "original_filename"}
 
-class DonationAccount(models.Model):
+
+class DonationAccount(FileCleanupModel):
     """Giving instructions only (GCash, Maya, PNB, BPI...). No transactions."""
     payment_app = models.CharField(max_length=100)
     account_name = models.CharField(max_length=255, blank=True)
     account_number = models.CharField(max_length=100, blank=True)
     swift_code = models.CharField(max_length=50, blank=True)
     instructions = models.TextField(blank=True)
-    qr_image = models.ImageField(upload_to="donation_qr/", blank=True)
+    qr_image = models.ImageField(
+        upload_to=public_upload_to,
+        blank=True,
+        validators=[validate_photo_upload],
+    )
+    qr_image_original_filename = models.CharField(max_length=255, blank=True)
     is_active = models.BooleanField(default=True)
     sort_order = models.IntegerField(default=0)
     updated_by = models.ForeignKey(USER, null=True, blank=True, on_delete=models.SET_NULL, related_name="+")
@@ -64,6 +78,8 @@ class DonationAccount(models.Model):
     class Meta:
         db_table = "donation_account"
         ordering = ["sort_order", "id"]
+
+    FILE_ORIGINAL_NAME_FIELDS = {"qr_image": "qr_image_original_filename"}
 
 
 class JilVideo(models.Model):

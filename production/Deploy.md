@@ -64,7 +64,7 @@ python3 -c "import secrets; print(secrets.token_urlsafe(64))"   # paste into SEC
 id -u; id -g                                                    # set APP_UID / APP_GID if not 1000
 nano .env                                                       # SECRET_KEY, POSTGRES_PASSWORD, hostname
 
-mkdir -p data/static data/media
+mkdir -p data/static data/media data/private
 docker compose -f docker-compose.prod.yml up -d --build
 docker compose -f docker-compose.prod.yml ps
 docker compose -f docker-compose.prod.yml logs -f web
@@ -179,11 +179,13 @@ Migrations and `collectstatic` run automatically on start.
 
 ## Things to know
 
-- **Media is public by URL.** Caddy serves `/media/*` without a login. If resources are members-only, downloads
-  should be gated through Django before real data goes in.
+- **Only public images are served by URL.** Caddy mounts `data/media` at `/media/`;
+   resource documents live in `data/private`, which is mounted into the app containers
+   but not Caddy. Deliver private resources only through permission-checked Django views.
 - **Pin versions later.** `requirements.txt` has `Django>=5.0` (unpinned) and Tailwind builds from `latest`
   (`TAILWIND_VERSION` build arg pins it).
-- **Backups are not set up yet.** The data lives in the `postgres_data` volume and `production/data/media`.
+- **Backups are not set up yet.** The data lives in the `postgres_data` volume,
+  `production/data/media`, and `production/data/private`.
 - **Database shell:** `docker compose -f docker-compose.prod.yml exec web python manage.py dbshell` (no port is published).
 - **Email** still uses the console backend; fine until forgot-password is built.
 - **Untested:** the image build was never run by the author's tooling (no Docker available there); the compose file,

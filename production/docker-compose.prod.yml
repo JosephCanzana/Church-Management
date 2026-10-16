@@ -16,9 +16,11 @@ x-app: &app
   restart: unless-stopped
   env_file: .env
   volumes:
-    # Bind mounts (production/data/...) so the host Caddy can serve them. Create them first: mkdir -p data/static data/media
+    # Public media is served by Caddy; private resources are mounted only in app containers.
+    # Create directories first: mkdir -p data/static data/media data/private
     - ./data/static:/app/staticfiles
     - ./data/media:/app/media
+    - ./data/private:/app/private_media
 
 services:
   db:

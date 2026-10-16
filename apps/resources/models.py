@@ -4,6 +4,12 @@ from django.db import models
 from django.db.models import Q
 
 from apps.core.models import ArchivableModel, TimestampedModel
+from apps.core.uploads import (
+    FileCleanupModel,
+    private_storage,
+    private_upload_to,
+    validate_resource_upload,
+)
 
 USER = settings.AUTH_USER_MODEL
 
@@ -25,7 +31,7 @@ class MonthlyTheme(TimestampedModel, ArchivableModel):
         return self.title
 
 
-class MonthlyResource(TimestampedModel):
+class MonthlyResource(TimestampedModel, FileCleanupModel):
     class Kind(models.TextChoices):
         BACKGROUND = "background", "Background"
         LOGO = "logo", "Logo"
@@ -36,28 +42,42 @@ class MonthlyResource(TimestampedModel):
     kind = models.CharField(max_length=20, choices=Kind.choices)
     title = models.CharField(max_length=255)
     description = models.TextField(blank=True)
-    file = models.FileField(upload_to="monthly_resources/")
+    file = models.FileField(
+        upload_to=private_upload_to,
+        storage=private_storage,
+        validators=[validate_resource_upload],
+    )
+    original_filename = models.CharField(max_length=255, blank=True)
     uploaded_by = models.ForeignKey(USER, null=True, blank=True, on_delete=models.SET_NULL, related_name="+")
 
     class Meta:
         db_table = "monthly_resource"
 
+    FILE_ORIGINAL_NAME_FIELDS = {"file": "original_filename"}
 
-class WeeklyPowerpoint(TimestampedModel, ArchivableModel):
+
+class WeeklyPowerpoint(TimestampedModel, ArchivableModel, FileCleanupModel):
     title = models.CharField(max_length=255)       # the week's topic
     description = models.TextField(blank=True)
     week_start = models.DateField()
     monthly_theme = models.ForeignKey(
         MonthlyTheme, null=True, blank=True, on_delete=models.SET_NULL, related_name="weekly_powerpoints",
     )
-    file = models.FileField(upload_to="weekly_ppt/")
+    file = models.FileField(
+        upload_to=private_upload_to,
+        storage=private_storage,
+        validators=[validate_resource_upload],
+    )
+    original_filename = models.CharField(max_length=255, blank=True)
     uploaded_by = models.ForeignKey(USER, null=True, blank=True, on_delete=models.SET_NULL, related_name="+")
 
     class Meta:
         db_table = "weekly_powerpoint"      # admin + coordinator only: checked in code
 
+    FILE_ORIGINAL_NAME_FIELDS = {"file": "original_filename"}
 
-class GeneralResource(TimestampedModel, ArchivableModel):
+
+class GeneralResource(TimestampedModel, ArchivableModel, FileCleanupModel):
     class Category(models.TextChoices):
         LOGO = "logo", "Logo"
         FONT = "font", "Font"
@@ -67,8 +87,15 @@ class GeneralResource(TimestampedModel, ArchivableModel):
     title = models.CharField(max_length=255)
     description = models.TextField(blank=True)
     category = models.CharField(max_length=20, choices=Category.choices)
-    file = models.FileField(upload_to="general_resources/")
+    file = models.FileField(
+        upload_to=private_upload_to,
+        storage=private_storage,
+        validators=[validate_resource_upload],
+    )
+    original_filename = models.CharField(max_length=255, blank=True)
     uploaded_by = models.ForeignKey(USER, null=True, blank=True, on_delete=models.SET_NULL, related_name="+")
 
     class Meta:
         db_table = "general_resource"
+
+    FILE_ORIGINAL_NAME_FIELDS = {"file": "original_filename"}

@@ -113,7 +113,7 @@ moving or reorganizing app code.
 
 | App | Tables | Logic that lives here |
 |---|---|---|
-| `core` | `site_setting`, `retention_policy`, `submission_token` | Abstract bases (`TimestampedModel`, `ArchivableModel`), `archived_matches_status()`, generic archive / restore / force-delete, nightly `purge_archived`, permission hierarchy helpers, retention screen. `site_setting` also holds the Bible switches and ESV state (keys `bible_api_enabled`, `bible_esv_enabled`, `bible_esv_state`, `bible_esv_cache_lock`) |
+| `core` | `site_setting`, `retention_policy`, `submission_token` | Abstract bases (`TimestampedModel`, `ArchivableModel`), `archived_matches_status()`, generic archive / restore / force-delete, upload validation and storage helpers (`uploads.py`), nightly `purge_archived`, permission hierarchy helpers, retention screen. `site_setting` also holds the Bible switches and ESV state (keys `bible_api_enabled`, `bible_esv_enabled`, `bible_esv_state`, `bible_esv_cache_lock`) |
 | `audit` | `audit_log` | `log_action()` in `audit/services.py` (strips sensitive keys, sends `action_logged` from `audit/signals.py`), log viewer, `cleanup_audit_log` |
 | `accounts` | `extension`, `app_user`, `special_role`, `user_special_role`, `extension_special_role_limit`, `default_password`, `email_token`, `user_extension_history` | Login/logout/activation, forgot + reset password, email verification, profile, create/manage accounts, extensions, special roles and limits, default passwords, `archive_inactive_users`, `auto_transfer_extension`, `cleanup_email_tokens`, `mark_attended()` |
 | `theming` | `theme`, `theme_palette`, `user_settings` | Theme CRUD (both palettes in one transaction), contrast warning (including `highlight` / `on_highlight`), CSS generation + cache, context processor; `UserSettings` row created by `signals.py` |
@@ -167,6 +167,17 @@ with. Only create a new app if the answer is "none".
   are frozen values, not recalculated.
 - Four join tables use a surrogate `id` plus a unique constraint instead of a
   composite primary key (Django limitation).
+- Uploads use `core.uploads`: photos accept JPG, PNG and WebP (10 MB by default);
+  resources accept PDF, PPTX, DOCX and XLSX (25 MB by default). The limits are
+  configured by `PHOTO_UPLOAD_MAX_MB` and `RESOURCE_UPLOAD_MAX_MB`.
+- Public photos live under `MEDIA_ROOT` and are served by Caddy at `/media/`.
+  Resource documents use `PRIVATE_MEDIA_ROOT`, outside that public tree, and
+  their storage deliberately has no `.url`; future downloads must pass through
+  permission-checked Django views. Keep the private volume off the Caddy mount.
+- Upload models retain an original basename for display/download while storage
+  paths use sanitized names. `FileCleanupModel` removes replaced/deleted files
+  after commit; generic force-delete and `purge_archived` remove cascade files
+  before deleting rows and tolerate missing files.
 - A table added in Django first (`bible_verse`, `bible_esv_cache`) must also be added to `docs/schema.sql`,
   A column added to an existing table (for example the contact
   fields on `app_user`) is added there too.
