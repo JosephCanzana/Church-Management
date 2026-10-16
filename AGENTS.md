@@ -1060,3 +1060,21 @@ still in use), `archive_inactive_users`, `auto_transfer_extension`,
 - Tests must not touch real external services (see Behaviour rules). A test that needs a logged-in user creates an
   activated one (see Activation).
 - Prefer the smallest relevant command or page load to verify a change.
+### Events (brick 10: services and permissions)
+- `event` gained `location`, `cancelled_at`, `cancelled_by` (migration `event_location_cancel`), a check that `end_at` is after
+  `start_at`, and an index on `start_at`. `extension` NULL = global event. Cancel is final: the row stays, marked cancelled
+  (`Event.is_cancelled`); it is not archived.
+- Who may do what lives only in `events/permissions.py`. Views use `visible_events(actor)` and answer 404 outside it. Global
+  events: everyone sees, admin and super-admin manage. Extension events: that extension's members and coordinator see, admin,
+  super-admin and that coordinator manage. Events tie to the extension, never the coordinator account.
+- `events/services.py`: `create_event`, `update_event`, `cancel_event`. Each checks permission, runs in `transaction.atomic()`,
+  locks the row, raises `ServiceError`, calls `log_action()` (`event.create`, `event.update`, `event.cancel`; descriptions never
+  reach the audit log, only a `description_changed` flag). The start of an event that already started cannot be moved; an
+  event that already ended cannot be cancelled; scope cannot change after creation.
+- Notices (`event_changed`, `event_cancelled`, declared in `events/services.py`): sent for a time or place change and for a
+  cancellation only (not for title or description). Recipients: every ACTIVE account for a global event, the extension's ACTIVE
+  members and coordinator for an extension event; never the actor, never suspended, archived or not-activated accounts, never
+  anyone with in-app alerts off for that type. `notification.data` holds only the title and what changed.
+- `notifications/services.py`: `notify()` (one person, optional `dedupe_key`) and `notify_many()` (ids, bulk insert). Both skip
+  people who turned off in-app alerts of that type and never import a feature app.
+- Tests: `apps.events.tests.test_permissions`, `apps.events.tests.test_services` (builders in `tests/helpers.py`).
