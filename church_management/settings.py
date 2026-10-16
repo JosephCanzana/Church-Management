@@ -85,6 +85,7 @@ TEMPLATES = [
                 'django.contrib.messages.context_processors.messages',
                 "apps.accounts.context_processors.navigation",
                 "apps.notifications.context_processors.bell",
+                "apps.notifications.push_context.push_config",
                 "apps.theming.context_processors.color_mode",
             ],
         },
@@ -229,3 +230,22 @@ DEFAULT_PASSWORD_KEY = config("DEFAULT_PASSWORD_KEY")
 SECURE_REFERRER_POLICY = "strict-origin-when-cross-origin"
 
 ESV_API_KEY = os.environ.get("ESV_API_KEY", "")
+
+# Web Push (Brick 12). All three VAPID values must be set or push stays hidden and the bell works alone.
+# Make keys with: docker compose exec web python manage.py generate_vapid_keys
+VAPID_PUBLIC_KEY = config("VAPID_PUBLIC_KEY", default="")
+VAPID_PRIVATE_KEY = config("VAPID_PRIVATE_KEY", default="")
+# "mailto:" plus an address you read, or an https URL. Push services use it to contact you about abuse.
+VAPID_SUBJECT = config("VAPID_SUBJECT", default="")
+# How long a push service keeps a message for a device that is offline.
+PUSH_TTL_SECONDS = config("PUSH_TTL_SECONDS", default=86400, cast=int)
+# Send pushes from a background thread (True). Tests turn this off so delivery is immediate.
+PUSH_ASYNC = config("PUSH_ASYNC", default=True, cast=bool)
+# The only hosts the server will push to. A leading dot allows any subdomain. This stops someone
+# registering an internal address as their "device" (SSRF). Add an entry if a new browser vendor appears.
+PUSH_ENDPOINT_HOSTS = (
+    "fcm.googleapis.com",            # Chrome, Edge, Opera, Samsung Internet, Brave (Android and desktop)
+    ".push.services.mozilla.com",    # Firefox
+    ".push.apple.com",              # Safari, iPhone and iPad web apps
+    ".notify.windows.com",          # legacy Edge
+)

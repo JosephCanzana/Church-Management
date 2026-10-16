@@ -18,6 +18,7 @@ from django.conf import settings
 from django.conf.urls.static import static
 from django.contrib import admin
 from django.urls import path, include
+from apps.notifications.push_views import service_worker
 
 urlpatterns = [
     path("", include("apps.pages.urls")),
@@ -28,6 +29,10 @@ urlpatterns = [
     path("superadmin/site-settings/", include("apps.bible.urls_superadmin")),
     path("bible/", include("apps.bible.urls")),
     path("audit/", include("apps.accounts.urls.audit_log")),
+    # Web Push endpoints come first so the bell routes below never see them.
+    path("notifications/push/", include("apps.notifications.push_urls")),
+    # The service worker must live at the site root so its scope is the whole site.
+    path("sw.js", service_worker, name="service_worker"),
     path("notifications/", include("apps.notifications.urls")),
     path("events/", include("apps.events.urls")),
     path("resources/", include("apps.resources.urls")),

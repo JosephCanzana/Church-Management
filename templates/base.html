@@ -44,12 +44,20 @@
     })();
   </script>
   <link rel="icon" type="image/png" href="{% static 'images/64x64_blue-logo.png' %}">
+  {# Installable app (Brick 12): the manifest and icons are what iPhone needs for Add to Home Screen. #}
+  <link rel="manifest" href="{% static 'manifest.webmanifest' %}">
+  <link rel="apple-touch-icon" href="{% static 'images/icon-192.png' %}">
+  <meta name="theme-color" content="#1e1c4d">
+  <meta name="mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-title" content="Church">
   <link rel="stylesheet" href="{% static 'css/output.css' %}">
   <link rel="stylesheet" href="{% static 'css/themes.css' %}">
   {# Active theme palette from the theming context processor; must come after the files above. #}
   {% if theme_css %}<style id="theme-vars">{{ theme_css|safe }}</style>{% endif %}
   {% block extra_head %}{% endblock %}
   <script defer src="{% static 'js/ui.js' %}"></script>
+  {% if push_enabled and user.is_authenticated %}<script defer src="{% static 'js/push.js' %}"></script>{% endif %}
   <script defer src="{% static 'js/alpine.min.js' %}"></script>
 </head>
 <body class="min-h-dvh bg-bg font-main text-txt-primary antialiased">

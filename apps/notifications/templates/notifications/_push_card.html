@@ -1,0 +1,75 @@
+{% comment %}
+_push_card.html: the "Notifications on this device" card for the Settings page (Brick 12).
+Rendered by the {% push_device_card %} tag (notifications/templatetags/push_tags.py); do not include it directly.
+Variables: enabled, devices (the person's own PushSubscription rows), public_key, max_devices, csrf_token, next_url.
+Behaviour lives in static/js/push.js (Alpine component pushDevice). Nothing is drawn when push is not set up.
+The status is always written as text, never by color alone. Subscription endpoints and keys are never in this page.
+{% endcomment %}
+{% if enabled %}
+<section class="card space-y-5 p-5 sm:p-6" aria-labelledby="push-heading"
+         x-data="pushDevice()"
+         data-public-key="{{ public_key }}" data-csrf="{{ csrf_token }}" data-device-count="{{ devices|length }}"
+         data-subscribe-url="{% url 'push:subscribe' %}" data-unsubscribe-url="{% url 'push:unsubscribe' %}"
+         data-status-url="{% url 'push:status' %}" data-test-url="{% url 'push:test' %}">
+
+  <div class="flex items-start gap-3">
+    <span class="mt-0.5 flex size-10 shrink-0 items-center justify-center rounded-full bg-txt-primary/5 text-txt-secondary">
+      {% include 'includes/icon.html' with name='bell' class='size-5' %}
+    </span>
+    <div class="min-w-0 flex-1">
+      <h2 id="push-heading" class="text-lg font-semibold text-txt-primary">Notifications on this device</h2>
+      <p class="mt-1 text-base text-txt-secondary">Get alerts such as event reminders on your phone or computer, even when the app is closed. You choose this per device.</p>
+    </div>
+  </div>
+
+  {# One line for the state of THIS device. x-cloak hides every line until the browser has been checked. #}
+  <div role="status" aria-live="polite" class="rounded-lg border border-border bg-bg px-4 py-3 text-base">
+    <p x-show="state === 'loading'" x-cloak class="text-txt-secondary">Checking this device…</p>
+    <p x-show="state === 'on'" x-cloak class="font-medium text-txt-primary">On: this device receives notifications.</p>
+    <p x-show="state === 'off'" x-cloak class="text-txt-secondary">Off: this device does not receive notifications.</p>
+    <p x-show="state === 'blocked'" x-cloak class="text-txt-primary">Blocked by your browser. Allow notifications for this site in the browser's site settings, then reload this page.</p>
+    <p x-show="state === 'unsupported'" x-cloak class="text-txt-secondary">Not supported: this browser cannot receive push notifications. The bell inside the app still works.</p>
+    <div x-show="state === 'needs_install'" x-cloak class="space-y-1 text-txt-primary">
+      <p class="font-medium">Install the app first.</p>
+      <p class="text-txt-secondary">On iPhone and iPad (iOS 16.4 or newer): open this site in Safari, tap the Share button, choose Add to Home Screen, then open the app from your home screen and come back to this page.</p>
+    </div>
+  </div>
+
+  <div class="flex flex-wrap gap-3">
+    <button type="button" class="btn btn-primary" x-show="state === 'off'" x-cloak x-bind:disabled="busy"
+            x-on:click="enable()">Turn on notifications</button>
+    <button type="button" class="btn btn-secondary" x-show="state === 'on'" x-cloak x-bind:disabled="busy"
+            x-on:click="disable()">Turn off for this device</button>
+    <button type="button" class="btn btn-secondary" x-show="state === 'on' || hasDevices" x-cloak x-bind:disabled="busy"
+            x-on:click="sendTest()">Send test notification</button>
+  </div>
+
+  <div>
+    <h3 class="text-base font-semibold text-txt-primary">Your devices</h3>
+    {% if devices %}
+    <ul class="mt-2 divide-y divide-border overflow-hidden rounded-xl border border-border">
+      {% for d in devices %}
+      <li class="flex min-h-14 items-center gap-3 px-4 py-3">
+        <div class="min-w-0 flex-1">
+          <p class="truncate text-base font-medium text-txt-primary">{{ d.label|default:"Unknown device" }}
+            <span class="ml-1 text-sm font-normal text-txt-secondary" x-show="thisHash === '{{ d.endpoint_hash }}'" x-cloak>(this device)</span>
+          </p>
+          <p class="text-sm text-txt-secondary">Added {{ d.created_at|date:"M j, Y" }}</p>
+        </div>
+        <form method="post" action="{% url 'push:remove_device' d.pk %}"
+              data-confirm="This device will stop receiving notifications until you turn them on again there."
+              data-confirm-title="Remove this device?" data-confirm-text="Remove" data-confirm-danger>
+          {% csrf_token %}
+          <input type="hidden" name="next" value="{{ next_url }}">
+          <button type="submit" class="btn btn-secondary min-h-11">Remove<span class="sr-only"> {{ d.label }}</span></button>
+        </form>
+      </li>
+      {% endfor %}
+    </ul>
+    {% else %}
+    <p class="mt-1 text-base text-txt-secondary">No devices yet. Turn on notifications on a phone or computer and it will appear here.</p>
+    {% endif %}
+    <p class="mt-2 text-sm text-txt-secondary">You can add up to {{ max_devices }} devices. Only you can see this list.</p>
+  </div>
+</section>
+{% endif %}

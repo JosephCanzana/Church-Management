@@ -1097,3 +1097,34 @@ still in use), `archive_inactive_users`, `auto_transfer_extension`,
 - **Form:** scope is chosen at creation only. A coordinator can pick only their own extension; admins also get "Everyone (global
   event)". The start is locked once the event has started. Save and Cancel ask for confirmation (`data-confirm`). Create carries
   a one-time token (`new_submission_token`).
+
+### Push notifications (brick 12: foundation)
+
+- **What:** Web Push on top of the bell, via the `pywebpush` package (the one extra Python dependency; everything else
+  outgoing still uses the standard library). The bell item is always created; a push is a best-effort extra.
+- **Table:** `push_subscription` (model `PushSubscription`): `user` (CASCADE), `endpoint`, `endpoint_hash` (SHA-256, unique),
+  `p256dh`, `auth`, `label` ("Chrome on Android", never the raw user agent), `created_at`, `last_success_at`. Endpoint and
+  keys are private: never in `audit_log`, `notification.data` or logs.
+- **Config (`.env`, in `.env.example`):** `VAPID_PUBLIC_KEY`, `VAPID_PRIVATE_KEY` (raw base64url), `VAPID_SUBJECT`
+  (`mailto:` or https). Make keys with `manage.py generate_vapid_keys`. With any of the three empty, `push.is_enabled()` is False,
+  every push control is hidden and the bell works alone. Also `PUSH_TTL_SECONDS`, `PUSH_ASYNC` and `PUSH_ENDPOINT_HOSTS`
+  (settings). Changing the keys later stops pushes to existing devices: people turn notifications off and on again.
+- **Code:** `notifications/push.py` (delivery, `is_enabled`, `endpoint_allowed`, `device_label`, `clean_message`,
+  `send_to_users`, `dispatch_after_commit`), device services in `notifications/services.py` (`register_device`,
+  `unregister_device`, `remove_device`, `is_registered`, `list_devices`), thin JSON views in `notifications/push_views.py`
+  (urls `notifications/push_urls.py`, namespace `push`, mounted at `/notifications/push/`), `push_context.push_config`
+  (`push_enabled`, `push_public_key`), the `{% push_device_card %}` tag (`templatetags/push_tags.py`,
+  `templates/notifications/_push_card.html`) for the Settings page, `static/js/push.js` (Alpine `pushDevice`, loaded before
+  Alpine by `base.html`), `static/js/sw.js` (served at `/sw.js` by `push_views.service_worker` so its scope is the whole site),
+  `static/manifest.webmanifest` and `static/images/icon-192.png` / `icon-512.png` (iPhone needs the manifest).
+- **`notify(..., push={"title", "body", "url"})`** and `notify_many(..., push=...)`: push goes out AFTER commit (a rollback
+  sends nothing), in a background thread when `PUSH_ASYNC` is on, only to people who got a bell item (so a muted type or a
+  duplicate `dedupe_key` never pushes). A push failure is logged (subscription id and HTTP status only) and never raises.
+  `push.send_to_users()` is the synchronous version for management jobs.
+- **Rules:** the payload is a title, a short body and a relative link; `clean_message` drops anything else and falls back to
+  `/notifications/` for a link that is not a path on this site. The server only pushes to hosts in `PUSH_ENDPOINT_HOSTS`
+  (stops a user registering an internal address as a device). Up to 10 devices per person. A 404 or 410 from the push
+  service deletes the device. The test button has a 10 second cooldown per person.
+- **Browsers:** desktop browsers and Android work. iPhone and iPad need iOS 16.4+ and Add to Home Screen first; the card
+  explains it. Needs HTTPS in production (`localhost` / `127.0.0.1` is fine for development).
+- **Tests:** `apps.notifications.test_push` (flat module: `notifications/tests.py` already exists, so no `tests/` package).

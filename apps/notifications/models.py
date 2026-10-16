@@ -1,4 +1,4 @@
-"""notifications: bell, per-type preferences, admin-alert rules.
+"""notifications: bell, per-type preferences, admin-alert rules, Web Push devices.
 NEVER put private text (prayer, goals, notes, tithe amounts) in `data`."""
 from django.conf import settings
 from django.contrib.postgres.fields import ArrayField
@@ -81,3 +81,25 @@ class NotificationRule(models.Model):
 
     class Meta:
         db_table = "notification_rule"
+
+class PushSubscription(models.Model):
+    """One browser or phone that agreed to receive Web Push for one person (Brick 12).
+
+    PRIVATE: `endpoint`, `p256dh` and `auth` are the keys to this device. Only the owner may list or
+    remove it, and none of them may ever reach `audit_log`, `notification.data` or a log line.
+    `endpoint_hash` (SHA-256 of the endpoint) is the lookup key: a long URL is a poor unique index.
+    A person's device that is no longer valid (404 or 410 from the push service) is deleted by `push.py`.
+    """
+
+    user = models.ForeignKey(USER, on_delete=models.CASCADE, related_name="push_subscriptions")  # personal: CASCADE
+    endpoint = models.TextField()
+    endpoint_hash = models.CharField(max_length=64, unique=True)
+    p256dh = models.CharField(max_length=255)
+    auth = models.CharField(max_length=255)
+    label = models.CharField(max_length=80, blank=True)   # "Chrome on Android"; never the raw user agent
+    created_at = models.DateTimeField(auto_now_add=True)
+    last_success_at = models.DateTimeField(null=True, blank=True)
+
+    class Meta:
+        db_table = "push_subscription"
+        indexes = [models.Index(fields=["user"], name="ix_push_subscription_user")]
