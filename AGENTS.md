@@ -121,7 +121,7 @@ moving or reorganizing app code.
 | `bible` | `bible_verse`, `bible_esv_cache`, `daily_verse`, `bible_chapter_read`, `bible_bookmark` | Reader (KJV, Ang Dating Biblia, ESV), `import_bible`, ESV client with limits, locks and cache, version picker, daily verse (`daily_verse.py`, `seed_daily_verses`), `record_chapter_read()`, `finish_chapter()`, bookmark |
 | `faith` | `goal`, `goal_checkin`, `user_daily_activity`, `user_streak` | Goals, check-ins, consistency, heatmap, streak rules, `complete_ended_goals` |
 | `events` | `event` | Event CRUD, change/cancel notices, `send_event_reminders` |
-| `resources` | `monthly_theme`, `monthly_resource`, `weekly_powerpoint`, `general_resource` | Monthly theme + files, weekly PPT (admin/coordinator only), general resources |
+| `resources` | `monthly_theme`, `monthly_resource`, `weekly_powerpoint`, `general_resource` | Resource permissions (`permissions.py`) and transactional create/edit/publish/archive/restore/delete services (`services.py`); monthly themes + files, weekly PPT, general resources |
 | `attendance` | `attendance`, `attendance_member`, `attendance_first_timer` | Sheets, draft services (ticks, first timers, search), summary, upload (freeze counts, update `last_attended_at`), reopen (admin) |
 | `tithes` | `tithes_offering`, `tithe_entry` | Entries, live totals, denomination count, finalize, reopen; members see only their own entries |
 | `buddy` | `user_buddy`, `buddy_request`, `buddy_note` | Request/accept (transactional one-partner check), notes/nudges, end partnership, view partner goals |
@@ -130,6 +130,21 @@ moving or reorganizing app code.
 
 Before adding a model, put it in the app whose data it shares a lifecycle
 with. Only create a new app if the answer is "none".
+
+### Resources
+- Management is admin and super-admin only. Every mutating function in
+  `apps/resources/services.py` calls `require_resource_manager`, runs inside
+  `transaction.atomic()`, and logs the change through `audit.log_action()`.
+- A monthly theme is dated on the first of a month and unique for that month.
+  Only active, published themes and their files are visible to coordinators
+  and members; managers can inspect drafts and archived records. Coordinators
+  can also view active weekly presentations and general resources; members
+  cannot.
+- Monthly files are `MonthlyResource` rows. Weekly presentations and general
+  resources each have one required file. Audit entries contain record ids and
+  changed field names, never file names or contents.
+- Run `apps.resources.tests.test_permissions` and
+  `apps.resources.tests.test_services` when changing these rules.
 
 ### Dependency rules
 1. Direction: `core` <- `audit` <- `accounts` <- everything else. `theming`

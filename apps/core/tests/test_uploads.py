@@ -110,7 +110,21 @@ class UploadedFileLifecycleTests(TransactionTestCase):
         WeeklyPowerpoint.objects.filter(pk=powerpoint.pk).update(archived_at=timezone.now())
         WeeklyPowerpoint.objects.filter(pk=powerpoint.pk).update(purge_at=timezone.now())
 
+        theme = MonthlyTheme.objects.create(title="Expired theme", month=date(2026, 12, 1))
+        monthly_resource = MonthlyResource.objects.create(
+            monthly_theme=theme,
+            kind=MonthlyResource.Kind.OTHER,
+            title="Attachment",
+            file=SimpleUploadedFile("attachment.pdf", b"document"),
+        )
+        child_file_name = monthly_resource.file.name
+        MonthlyTheme.objects.filter(pk=theme.pk).update(archived_at=timezone.now())
+        MonthlyTheme.objects.filter(pk=theme.pk).update(purge_at=timezone.now())
+
         call_command("purge_archived", stdout=StringIO())
 
         self.assertFalse(powerpoint.file.storage.exists(stored_name))
         self.assertFalse(WeeklyPowerpoint.objects.filter(pk=powerpoint.pk).exists())
+        self.assertFalse(monthly_resource.file.storage.exists(child_file_name))
+        self.assertFalse(MonthlyResource.objects.filter(pk=monthly_resource.pk).exists())
+        self.assertFalse(MonthlyTheme.objects.filter(pk=theme.pk).exists())

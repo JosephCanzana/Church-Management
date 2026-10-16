@@ -72,6 +72,9 @@ def force_delete(instance):
     for objects in collector.data.values():
         for related_instance in objects:
             delete_files(related_instance)
+    for queryset in collector.fast_deletes:
+        for related_instance in queryset.iterator():
+            delete_files(related_instance)
     collector.delete()
 
 

@@ -44,6 +44,9 @@ class Command(BaseCommand):
                 for objects in collector.data.values():
                     for instance in objects:
                         delete_files(instance)
+                for queryset in collector.fast_deletes:
+                    for instance in queryset.iterator():
+                        delete_files(instance)
                 collector.delete()
                 removed += 1
 
