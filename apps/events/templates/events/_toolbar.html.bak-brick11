@@ -1,0 +1,44 @@
+<!--
+events/_toolbar.html
+Top of the calendar and list pages: the Calendar / List switch, New event (managers only), the filter pills
+and, for admins, an extension picker. Switching view or filter is a plain link, so it applies immediately.
+Usage: include this file; it reads the context variable toolbar built by views._toolbar.
+-->
+{% load ui_tags %}
+<div class="space-y-3">
+  <div class="flex flex-wrap items-center justify-between gap-3">
+    <nav aria-label="Events view" class="flex gap-1 rounded-full border border-border bg-surface p-1">
+      <a href="{{ toolbar.calendar_url }}"
+         class="inline-flex min-h-10 items-center rounded-full px-4 text-base transition-colors focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-accent {% if toolbar.current == 'calendar' %}bg-primary font-medium text-on-primary{% else %}text-txt-secondary hover:text-txt-primary{% endif %}"
+         {% if toolbar.current == 'calendar' %}aria-current="page"{% endif %}>Calendar</a>
+      <a href="{{ toolbar.list_url }}"
+         class="inline-flex min-h-10 items-center rounded-full px-4 text-base transition-colors focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-accent {% if toolbar.current == 'list' %}bg-primary font-medium text-on-primary{% else %}text-txt-secondary hover:text-txt-primary{% endif %}"
+         {% if toolbar.current == 'list' %}aria-current="page"{% endif %}>List</a>
+    </nav>
+    {% if toolbar.new_url %}<a href="{{ toolbar.new_url }}" class="btn btn-primary">New event</a>{% endif %}
+  </div>
+
+  <div class="flex flex-wrap items-center gap-3">
+    <nav aria-label="Filter events" class="flex flex-wrap gap-2">
+      {% for pill in toolbar.pills %}
+      <a href="{{ pill.url }}"
+         class="inline-flex min-h-10 items-center rounded-full border px-4 text-sm transition-colors focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-accent {% if pill.active %}border-primary bg-primary font-medium text-on-primary{% else %}border-border bg-surface text-txt-secondary hover:text-txt-primary{% endif %}"
+         {% if pill.active %}aria-current="true"{% endif %}>{{ pill.label }}</a>
+      {% endfor %}
+    </nav>
+
+    {% if toolbar.extensions is not None %}
+    <form method="get" class="flex items-center gap-2">
+      {% for name, value in toolbar.hidden %}<input type="hidden" name="{{ name }}" value="{{ value }}">{% endfor %}
+      <label for="events-extension" class="sr-only">Show one extension</label>
+      <select id="events-extension" name="extension" class="input w-auto py-2">
+        <option value="">Choose an extension</option>
+        {% for ext in toolbar.extensions %}
+        <option value="{{ ext.pk }}" {% if ext.pk == toolbar.extension_id %}selected{% endif %}>{{ ext.name|title_case }}</option>
+        {% endfor %}
+      </select>
+      <button type="submit" class="btn btn-secondary">Show</button>
+    </form>
+    {% endif %}
+  </div>
+</div>

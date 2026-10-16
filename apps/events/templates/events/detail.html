@@ -1,0 +1,77 @@
+<!--
+events/detail.html
+One event. Fills the blocks title, page_title and content.
+Edit and Cancel show only when the person may use them (actions comes from permissions.available_actions).
+Context: event, actions, here.
+-->
+{% extends "base_app.html" %}
+{% load ui_tags %}
+
+{% block title %}{{ event.title }}{% endblock %}
+{% block page_title %}Event{% endblock %}
+
+{% block content %}
+<div class="mx-auto w-full max-w-3xl">
+  {% url 'events:index' as events_url %}
+  {% include 'includes/breadcrumb.html' with parent_label='Events' parent_url=events_url current=event.title %}
+
+  <article class="card space-y-5">
+    <header class="space-y-2">
+      <h2 class="text-2xl font-semibold tracking-tight text-txt-primary {% if event.is_cancelled %}line-through{% endif %}">{{ event.title }}</h2>
+      <p class="flex flex-wrap gap-2 text-sm">
+        {% if event.extension_id is None %}
+        <span class="rounded-full bg-highlight-soft px-2.5 py-0.5 font-medium text-on-highlight">Global event, for everyone</span>
+        {% else %}
+        <span class="rounded-full border border-border px-2.5 py-0.5 text-txt-secondary">{{ event.extension.name|title_case }}</span>
+        {% endif %}
+        {% if event.is_cancelled %}<span class="rounded-full bg-error/10 px-2.5 py-0.5 font-medium text-error">Cancelled</span>{% endif %}
+      </p>
+    </header>
+
+    {% if event.is_cancelled %}
+    <p role="status" class="rounded-lg border border-error bg-error/10 px-4 py-3 text-base text-error">This event was cancelled on {{ event.cancelled_at|date:"F j, Y" }} at {{ event.cancelled_at|date:"g:i A" }}.</p>
+    {% endif %}
+
+    <dl class="grid gap-4 sm:grid-cols-2">
+      <div>
+        <dt class="text-sm font-medium text-txt-secondary">Starts</dt>
+        <dd class="mt-0.5 text-base text-txt-primary">{{ event.start_at|date:"l, F j, Y" }}<br>{{ event.start_at|date:"g:i A" }}</dd>
+      </div>
+      {% if event.end_at %}
+      <div>
+        <dt class="text-sm font-medium text-txt-secondary">Ends</dt>
+        <dd class="mt-0.5 text-base text-txt-primary">{{ event.end_at|date:"l, F j, Y" }}<br>{{ event.end_at|date:"g:i A" }}</dd>
+      </div>
+      {% endif %}
+      {% if event.location %}
+      <div class="sm:col-span-2">
+        <dt class="text-sm font-medium text-txt-secondary">Location</dt>
+        <dd class="mt-0.5 text-base text-txt-primary">{{ event.location }}</dd>
+      </div>
+      {% endif %}
+    </dl>
+
+    {% if event.description %}
+    <div>
+      <h3 class="text-sm font-medium text-txt-secondary">About this event</h3>
+      <div class="mt-1 space-y-3 text-base text-txt-primary">{{ event.description|linebreaks }}</div>
+    </div>
+    {% endif %}
+
+    {% if 'edit' in actions or 'cancel' in actions %}
+    <footer class="flex flex-wrap items-center gap-3 border-t border-border pt-5">
+      {% if 'edit' in actions %}<a href="{% url 'events:edit' event.pk %}" class="btn btn-primary">Edit event</a>{% endif %}
+      {% if 'cancel' in actions %}
+      <form method="post" action="{% url 'events:cancel' event.pk %}"
+            data-confirm="Cancel {{ event.title }}? People will be told it was cancelled. This cannot be undone."
+            data-confirm-title="Cancel event" data-confirm-text="Cancel event" data-confirm-danger>
+        {% csrf_token %}
+        <input type="hidden" name="next" value="{{ here }}">
+        <button type="submit" class="btn btn-danger">Cancel event</button>
+      </form>
+      {% endif %}
+    </footer>
+    {% endif %}
+  </article>
+</div>
+{% endblock %}

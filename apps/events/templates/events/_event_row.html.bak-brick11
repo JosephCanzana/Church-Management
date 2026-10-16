@@ -1,0 +1,42 @@
+<!--
+events/_event_row.html
+One event as a row: used by the list page and by the calendar's day agenda.
+Shows time, title (link), place, who it is for, a Cancelled mark, and the Edit and Cancel buttons the person is allowed
+(event.actions, set by the view from permissions.available_actions; the services check again).
+Usage: include with event=event; the context variable here (the current address) is where Cancel returns to.
+-->
+{% load ui_tags %}
+<li class="flex flex-wrap items-start justify-between gap-3 py-4">
+  <div class="min-w-0 flex-1">
+    <a href="{% url 'events:detail' event.pk %}"
+       class="text-base font-semibold text-txt-primary hover:underline focus-visible:outline focus-visible:outline-2 focus-visible:outline-accent {% if event.is_cancelled %}line-through{% endif %}">{{ event.title }}</a>
+    {% with sd=event.start_at|date:"Y-m-d" ed=event.end_at|date:"Y-m-d" %}
+    <p class="mt-0.5 text-sm text-txt-secondary">
+      {{ event.start_at|date:"g:i A" }}{% if event.end_at %}{% if sd == ed %} to {{ event.end_at|date:"g:i A" }}{% else %} to {{ event.end_at|date:"M j, g:i A" }}{% endif %}{% endif %}{% if event.location %} · {{ event.location }}{% endif %}
+    </p>
+    {% endwith %}
+    <p class="mt-1.5 flex flex-wrap gap-2 text-sm">
+      {% if event.extension_id is None %}
+      <span class="rounded-full bg-highlight-soft px-2.5 py-0.5 font-medium text-on-highlight">Everyone</span>
+      {% else %}
+      <span class="rounded-full border border-border px-2.5 py-0.5 text-txt-secondary">{{ event.extension.name|title_case }}</span>
+      {% endif %}
+      {% if event.is_cancelled %}<span class="rounded-full bg-error/10 px-2.5 py-0.5 font-medium text-error">Cancelled</span>{% endif %}
+    </p>
+  </div>
+
+  {% if 'edit' in event.actions or 'cancel' in event.actions %}
+  <div class="flex shrink-0 items-center gap-2">
+    {% if 'edit' in event.actions %}<a href="{% url 'events:edit' event.pk %}" class="btn btn-secondary">Edit</a>{% endif %}
+    {% if 'cancel' in event.actions %}
+    <form method="post" action="{% url 'events:cancel' event.pk %}"
+          data-confirm="Cancel {{ event.title }}? People will be told it was cancelled. This cannot be undone."
+          data-confirm-title="Cancel event" data-confirm-text="Cancel event" data-confirm-danger>
+      {% csrf_token %}
+      <input type="hidden" name="next" value="{{ here }}">
+      <button type="submit" class="btn btn-secondary text-error">Cancel</button>
+    </form>
+    {% endif %}
+  </div>
+  {% endif %}
+</li>

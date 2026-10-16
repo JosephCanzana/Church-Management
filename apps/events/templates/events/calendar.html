@@ -1,0 +1,97 @@
+<!--
+events/calendar.html
+Month calendar in Manila time. Fills the blocks title, page_title and content.
+Desktop: chips in each day, "+N more" opens that day's agenda. Phones: dots, and tapping a day lists its events below.
+Managers: clicking an empty part of a day (desktop) or "Add an event" in the agenda opens the form with that date filled in.
+Context: weeks, weekdays, month_label, selected_iso, prev_url, next_url, today_url, here, can_create, toolbar.
+Server-rendered; Alpine only keeps track of which day is selected.
+-->
+{% extends "base_app.html" %}
+
+{% block title %}Events{% endblock %}
+{% block page_title %}Events{% endblock %}
+
+{% block content %}
+{% include 'events/_toolbar.html' %}
+
+<div class="mt-5 space-y-5" x-data="{ selected: '{{ selected_iso }}' }">
+
+  <div class="flex flex-wrap items-center justify-between gap-3">
+    <h2 class="text-xl font-semibold tracking-tight text-txt-primary">{{ month_label|date:"F Y" }}</h2>
+    <nav aria-label="Change month" class="flex items-center gap-2">
+      <a href="{{ prev_url }}" class="btn btn-secondary px-3" aria-label="Previous month">{% include 'includes/icon.html' with name='chevron-left' class='size-5' %}</a>
+      <a href="{{ today_url }}" class="btn btn-secondary">Today</a>
+      <a href="{{ next_url }}" class="btn btn-secondary px-3" aria-label="Next month">{% include 'includes/icon.html' with name='chevron-right' class='size-5' %}</a>
+    </nav>
+  </div>
+
+  <p class="flex flex-wrap items-center gap-x-5 gap-y-1 text-sm text-txt-secondary">
+    <span class="inline-flex items-center gap-2"><span class="h-3 w-5 rounded border-l-4 border-highlight bg-highlight-soft" aria-hidden="true"></span>Global event (everyone)</span>
+    <span class="inline-flex items-center gap-2"><span class="h-3 w-5 rounded border-l-4 border-accent bg-accent-soft" aria-hidden="true"></span>Extension event</span>
+    <span class="inline-flex items-center gap-2"><span class="text-txt-primary line-through">Struck through</span>Cancelled</span>
+  </p>
+
+  <div class="overflow-hidden rounded-xl border border-border bg-surface">
+    <table class="w-full table-fixed border-collapse">
+      <caption class="sr-only">{{ month_label|date:"F Y" }}</caption>
+      <thead>
+        <tr class="border-b border-border bg-surface-alt text-sm text-txt-secondary">
+          {% for name in weekdays %}<th scope="col" class="py-2 text-center font-medium">{{ name }}</th>{% endfor %}
+        </tr>
+      </thead>
+      <tbody>
+        {% for week in weeks %}
+        <tr class="border-b border-border last:border-b-0">
+          {% for day in week %}
+          <td class="relative h-16 border-r border-border p-1 align-top last:border-r-0 sm:h-32 sm:p-1.5 {% if not day.in_month %}bg-surface-alt{% endif %}">
+            {% if can_create %}
+            <a href="{% url 'events:create' %}?date={{ day.iso }}" class="absolute inset-0 hidden sm:block focus-visible:outline focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-accent"
+               aria-label="New event on {{ day.date|date:'l, F j' }}"></a>
+            {% endif %}
+
+            <button type="button" x-on:click="selected = '{{ day.iso }}'" x-bind:aria-pressed="selected === '{{ day.iso }}'"
+                    aria-label="{{ day.date|date:'l, F j' }}, {{ day.events|length }} event{{ day.events|length|pluralize }}"
+                    class="relative z-10 flex w-full flex-col items-center gap-1 rounded-md py-1 sm:w-auto sm:flex-row sm:items-center sm:gap-2 sm:py-0.5 focus-visible:outline focus-visible:outline-2 focus-visible:outline-accent"
+                    x-bind:class="selected === '{{ day.iso }}' && 'bg-accent-soft'">
+              <span class="inline-flex size-7 items-center justify-center rounded-full text-sm {% if day.is_today %}bg-primary font-semibold text-on-primary{% elif day.in_month %}font-medium text-txt-primary{% else %}text-txt-secondary{% endif %}">{{ day.date.day }}</span>
+              {% if day.events %}
+              <span class="flex gap-1 sm:hidden" aria-hidden="true">
+                {% for e in day.shown %}<span class="size-1.5 rounded-full {% if e.is_cancelled %}bg-border-strong{% elif e.extension_id is None %}bg-highlight{% else %}bg-accent{% endif %}"></span>{% endfor %}
+              </span>
+              {% endif %}
+            </button>
+
+            {% if day.events %}
+            <ul class="pointer-events-none relative z-10 mt-1 hidden space-y-1 sm:block">
+              {% for e in day.shown %}<li>{% include 'events/_event_chip.html' with event=e day=day %}</li>{% endfor %}
+              {% if day.more %}
+              <li><button type="button" x-on:click="selected = '{{ day.iso }}'; $nextTick(() => document.getElementById('day-agenda').scrollIntoView({ block: 'nearest' }))"
+                          class="pointer-events-auto rounded px-1.5 text-xs font-medium text-accent hover:underline focus-visible:outline focus-visible:outline-2 focus-visible:outline-accent">+{{ day.more }} more</button></li>
+              {% endif %}
+            </ul>
+            {% endif %}
+          </td>
+          {% endfor %}
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+
+  <section id="day-agenda" aria-label="Events on the selected day" class="rounded-xl border border-border bg-surface px-4 py-4 sm:px-6">
+    {% for week in weeks %}{% for day in week %}
+    <div x-show="selected === '{{ day.iso }}'" x-cloak style="display:none">
+      <h2 class="text-base font-semibold text-txt-primary">{{ day.date|date:"l, F j, Y" }}</h2>
+      {% if day.events %}
+      <ul class="mt-1 divide-y divide-border">
+        {% for e in day.events %}{% include 'events/_event_row.html' with event=e %}{% endfor %}
+      </ul>
+      {% else %}
+      <p class="mt-2 text-base text-txt-secondary">No events on this day.</p>
+      {% endif %}
+      {% if can_create %}<a href="{% url 'events:create' %}?date={{ day.iso }}" class="btn btn-secondary mt-3">Add an event on this day</a>{% endif %}
+    </div>
+    {% endfor %}{% endfor %}
+  </section>
+</div>
+{% endblock %}

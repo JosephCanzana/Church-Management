@@ -1,0 +1,57 @@
+<!--
+events/form.html
+Create or edit an event. Fills the blocks title, page_title and content.
+Saving asks for confirmation through the global confirm dialog (data-confirm, handled by static/js/ui.js);
+the server checks everything again. Times are Manila time.
+Context: form, event (None when creating), form_title, confirm_title, confirm_message.
+-->
+{% extends "base_app.html" %}
+{% load ui_tags %}
+
+{% block title %}{{ form_title }}{% endblock %}
+{% block page_title %}{{ form_title }}{% endblock %}
+
+{% block content %}
+<div class="mx-auto w-full max-w-2xl">
+  {% url 'events:index' as events_url %}
+  {% include 'includes/breadcrumb.html' with parent_label='Events' parent_url=events_url current=form_title %}
+
+  <form method="post" class="card space-y-5"
+        data-confirm="{{ confirm_message }}" data-confirm-title="{{ confirm_title }}" data-confirm-text="Save">
+    {% csrf_token %}
+    {{ form.token }}
+
+    {% if form.non_field_errors %}
+    <div role="alert" class="rounded-lg border border-error bg-error/10 px-4 py-3 text-base text-error">
+      {% for error in form.non_field_errors %}<p>{{ error }}</p>{% endfor %}
+    </div>
+    {% endif %}
+
+    {% if event %}
+    <div>
+      <p class="label">Who is it for?</p>
+      <p class="text-base text-txt-primary">{% if event.extension_id is None %}Everyone (global event){% else %}{{ event.extension.name|title_case }}{% endif %}</p>
+      <p class="field-help">This cannot be changed after the event is created.</p>
+    </div>
+    {% else %}
+    {% include 'events/_field.html' with field=form.extension %}
+    {% endif %}
+
+    {% include 'events/_field.html' with field=form.title %}
+
+    <div class="grid gap-5 sm:grid-cols-2">
+      {% include 'events/_field.html' with field=form.start_at %}
+      {% include 'events/_field.html' with field=form.end_at %}
+    </div>
+    <p class="field-help -mt-2">Times are Manila time.</p>
+
+    {% include 'events/_field.html' with field=form.location %}
+    {% include 'events/_field.html' with field=form.description %}
+
+    <div class="flex flex-wrap items-center gap-3 border-t border-border pt-5">
+      <button type="submit" class="btn btn-primary">Save event</button>
+      <a href="{% if event %}{% url 'events:detail' event.pk %}{% else %}{{ events_url }}{% endif %}" class="btn btn-secondary">Back</a>
+    </div>
+  </form>
+</div>
+{% endblock %}

@@ -1078,3 +1078,22 @@ still in use), `archive_inactive_users`, `auto_transfer_extension`,
 - `notifications/services.py`: `notify()` (one person, optional `dedupe_key`) and `notify_many()` (ids, bulk insert). Both skip
   people who turned off in-app alerts of that type and never import a feature app.
 - Tests: `apps.events.tests.test_permissions`, `apps.events.tests.test_services` (builders in `tests/helpers.py`).
+
+### Events screens (brick 11: calendar and list)
+
+- **Where:** `apps/events/` `calendar.py` (month grid, pure helpers), `forms.py` (`EventForm`), `views.py`, `urls.py` (namespace
+  `events`, mounted at `/events/`), templates in `apps/events/templates/events/`, tests `tests/test_calendar.py`, `tests/test_views.py`.
+- **Routes:** `index/` (redirects to the view used last on this device; the sidebar points here), `calendar/`, `list/`, `new/`,
+  `<pk>/`, `<pk>/edit/`, `<pk>/cancel/` (POST only). The chosen view is the `events_view` cookie (per device, one year).
+- **Every view** is `never_cache` + `role_required` (all four roles). Events are looked up through `visible_events(request.user)`,
+  so an event outside the person's reach is a 404. Buttons come from `available_actions`; the services still check again.
+- **Calendar:** Manila time, weeks start on Sunday, `?month=YYYY-MM` (bad value = this month). A multi-day event shows on each
+  day; one that ends exactly at midnight does not spill onto the next day. Desktop shows chips (3 per day, then "+N more");
+  phones show dots and tapping a day shows that day's agenda (Alpine keeps only the selected day). Global chips: gold edge;
+  extension chips: accent edge; cancelled: struck through. Managers: clicking a day opens `new/?date=YYYY-MM-DD` (start 9:00 AM).
+- **List:** grouped by local start date, 25 per page. Upcoming = not yet over (`Coalesce(end_at, start_at) >= now`, the same rule
+  as `cancel_event`), soonest first; Past = latest first. Filters: all, global, my extension (coordinator and member), and an
+  extension picker for admin and super-admin (`?scope=` and `?extension=`; bad values fall back to "all").
+- **Form:** scope is chosen at creation only. A coordinator can pick only their own extension; admins also get "Everyone (global
+  event)". The start is locked once the event has started. Save and Cancel ask for confirmation (`data-confirm`). Create carries
+  a one-time token (`new_submission_token`).

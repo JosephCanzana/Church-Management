@@ -1,0 +1,45 @@
+<!--
+events/list.html
+Events grouped by date. Upcoming (soonest first) or Past (latest first), with the same filters as the calendar.
+Fills the blocks title, page_title and content.
+Context: groups (date and events), page, querystring, when, tabs, here, toolbar.
+-->
+{% extends "base_app.html" %}
+
+{% block title %}Events{% endblock %}
+{% block page_title %}Events{% endblock %}
+
+{% block content %}
+{% include 'events/_toolbar.html' %}
+
+<div class="mt-5 space-y-5">
+  <nav aria-label="Upcoming or past" class="flex gap-1 rounded-full border border-border bg-surface p-1 sm:w-fit">
+    {% for tab in tabs %}
+    <a href="{{ tab.url }}"
+       class="inline-flex min-h-10 flex-1 items-center justify-center rounded-full px-5 text-base transition-colors focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-accent sm:flex-none {% if tab.active %}bg-primary font-medium text-on-primary{% else %}text-txt-secondary hover:text-txt-primary{% endif %}"
+       {% if tab.active %}aria-current="page"{% endif %}>{{ tab.label }}</a>
+    {% endfor %}
+  </nav>
+
+  {% for group in groups %}
+  <section aria-labelledby="day-{{ group.date|date:'Y-m-d' }}">
+    <h2 id="day-{{ group.date|date:'Y-m-d' }}" class="mb-2 text-base font-semibold text-txt-primary">{{ group.date|date:"l, F j, Y" }}</h2>
+    <ul class="divide-y divide-border overflow-hidden rounded-xl border border-border bg-surface px-4">
+      {% for e in group.events %}{% include 'events/_event_row.html' with event=e %}{% endfor %}
+    </ul>
+  </section>
+  {% empty %}
+  <div class="rounded-xl border border-border bg-surface px-6 py-14 text-center">
+    {% if when == 'past' %}
+    <p class="text-base font-medium text-txt-primary">No past events.</p>
+    <p class="mt-1 text-base text-txt-secondary">Events that already happened will show up here.</p>
+    {% else %}
+    <p class="text-base font-medium text-txt-primary">No upcoming events.</p>
+    <p class="mt-1 text-base text-txt-secondary">Nothing is scheduled with these filters.</p>
+    {% endif %}
+  </div>
+  {% endfor %}
+
+  {% if page.has_other_pages %}{% include 'includes/pagination.html' with page=page querystring=querystring %}{% endif %}
+</div>
+{% endblock %}

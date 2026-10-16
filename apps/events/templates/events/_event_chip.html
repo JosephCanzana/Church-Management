@@ -1,0 +1,12 @@
+{% comment %}
+events/_event_chip.html
+One event as a small chip inside a calendar day (desktop). Click opens the detail page.
+Global events have a gold edge and bold text, extension events an accent edge; the screen-reader text and the
+legend also say which is which, so color is never the only signal. Cancelled events are struck through.
+Usage: include with event=event and day=day (the Day it sits in).
+{% endcomment %}
+<a href="{% url 'events:detail' event.pk %}" title="{{ event.title }}"
+   class="pointer-events-auto block truncate rounded border-l-4 px-1.5 py-0.5 text-xs transition-colors hover:brightness-95 focus-visible:outline focus-visible:outline-2 focus-visible:outline-accent {% if event.extension_id is None %}border-highlight bg-highlight-soft font-semibold text-on-highlight{% else %}border-accent bg-accent-soft text-txt-primary{% endif %} {% if event.is_cancelled %}line-through opacity-70{% endif %}">
+  <span class="sr-only">{% if event.extension_id is None %}Global event. {% endif %}{% if event.is_cancelled %}Cancelled. {% endif %}</span>
+  {% if event.start_at|date:"Y-m-d" == day.iso %}{{ event.start_at|date:"g:i A" }} {% endif %}{{ event.title }}
+</a>

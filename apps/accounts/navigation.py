@@ -63,7 +63,7 @@ class NavItem:
 # ---------------------------------------------------------------------------
 NAV_ITEMS = [
     NavItem("Home", ROLE_HOME, "home", bottom=True, exact=True),
-    NavItem("Events", "events:list", "calendar-days", bottom=True),
+    NavItem("Events", "events:index", "calendar-days", bottom=True),
     NavItem("Bible", "bible:reader", "book-open", bottom=True),
     NavItem("Prayer", "prayer:list", "heart", roles=(COORDINATOR, MEMBER), bottom=True),
     NavItem("Goals", "faith:goals", "flag", roles=(COORDINATOR, MEMBER)),
