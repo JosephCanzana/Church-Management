@@ -10,12 +10,13 @@
   Note: this comment contains no template tags on purpose.
 -->
 {% extends "base_app.html" %}
+{% load push_tags %}
 
 {% block title %}Settings{% endblock %}
 {% block page_title %}Settings{% endblock %}
 
 {% block content %}
-<div class="w-full max-w-2xl">
+<div class="w-full max-w-2xl space-y-6">
   <form method="post" action="{% url 'theming:settings' %}" class="space-y-6" novalidate
         data-confirm="Save your settings?" data-confirm-title="Save settings" data-confirm-text="Save">
     {% csrf_token %}
@@ -57,7 +58,36 @@
         {% endif %}
       </fieldset>
     </section>
-    {% load push_tags %}  {% push_device_card %} 
+    {# ------------------------------------------------- event reminders #}
+    <section class="card" aria-labelledby="reminder-heading">
+      <h2 id="reminder-heading" class="text-lg font-semibold tracking-tight text-txt-primary">Event reminders</h2>
+      <p class="mt-1 text-base text-txt-secondary">How early you are reminded before an event starts. A reminder can arrive up to 15 minutes after that time. It always appears in the bell; to also get it on your phone or computer, turn on notifications for that device below.</p>
+
+      <fieldset class="mt-5">
+        <legend class="label text-base">Remind me</legend>
+        <div class="mt-2 grid gap-3 sm:grid-cols-2">
+          {% for opt in reminder_options %}
+          <div class="relative">
+            <input type="radio" name="event_reminder" id="id_event_reminder_{{ opt.value }}" value="{{ opt.value }}"
+                   class="peer sr-only" {% if opt.checked %}checked{% endif %}>
+            <label for="id_event_reminder_{{ opt.value }}"
+                   class="flex h-full min-h-14 cursor-pointer flex-col gap-1 rounded-2xl border border-border bg-surface p-4 pr-10 transition-colors hover:border-border-strong peer-checked:border-accent peer-checked:bg-accent/10 peer-focus-visible:outline peer-focus-visible:outline-2 peer-focus-visible:outline-offset-2 peer-focus-visible:outline-accent">
+              <span class="text-base font-medium text-txt-primary">{{ opt.label }}</span>
+              <span class="text-base text-txt-secondary">{{ opt.help }}</span>
+            </label>
+            <span class="pointer-events-none absolute right-3 top-3 hidden text-accent peer-checked:block" aria-hidden="true">
+              {% include "includes/icon.html" with name="check-circle" class="size-5" %}
+            </span>
+          </div>
+          {% endfor %}
+        </div>
+        {% if form.event_reminder.errors %}
+          <div class="mt-2 space-y-1 text-base text-error" role="alert">
+            {% for error in form.event_reminder.errors %}<p>{{ error }}</p>{% endfor %}
+          </div>
+        {% endif %}
+      </fieldset>
+    </section>
 
 
     {# ------------------------------------------------- mobile menu style #}
@@ -93,5 +123,8 @@
 
     <button type="submit" class="btn btn-primary">Save settings</button>
   </form>
+
+  {# Outside the settings form on purpose: the card has its own forms (Remove device), and forms cannot nest. #}
+  {% push_device_card %}
 </div>
 {% endblock %}

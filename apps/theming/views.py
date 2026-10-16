@@ -12,7 +12,7 @@ from django.views.decorators.http import require_http_methods
 
 from apps.core.services import ServiceError
 
-from .forms import UserSettingsForm
+from .forms import UserSettingsForm, reminder_initial
 from .services import get_user_settings, update_user_settings
 
 
@@ -39,9 +39,11 @@ def settings_view(request):
         form = UserSettingsForm(initial={
             "color_mode": row.color_mode,
             "mobile_nav_style": row.mobile_nav_style,
+            "event_reminder": reminder_initial(row),
         })
     return render(request, "theming/settings.html", {
         "form": form,
         "color_options": form.options("color_mode"),
         "nav_options": form.options("mobile_nav_style"),
+        "reminder_options": form.options("event_reminder"),
     })

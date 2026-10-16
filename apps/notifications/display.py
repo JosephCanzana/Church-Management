@@ -16,8 +16,8 @@ DEFAULT_ICON = "bell"
 
 # type slug -> (icon, text). The slugs are best guesses: rename them to match what notify() sends.
 TYPES = {
-    "event_reminder": ("calendar-days", "Reminder: {title} is coming up."),
-    "event_change": ("calendar-days", "{title} was updated."),
+    "event_reminder": ("calendar-days", "Reminder: {title} starts {lead}."),
+    "event_changed": ("calendar-days", "{title} has a new time or place."),
     "event_cancelled": ("calendar-days", "{title} was cancelled."),
     "prayer_request": ("chat-bubble-left-ellipsis", "{actor} sent a prayer request."),
     "email_taken_over": ("envelope", "Your email address was verified on another account and removed from yours."),
@@ -50,6 +50,16 @@ def _actor_name(notification):
     return title_case(f"{actor.first_name} {actor.last_name}".strip()) or "Someone"
 
 
+def _lead_text(minutes):
+    """'in about 1 day', 'in about 3 hours'... from a reminder's lead time in minutes."""
+    if not isinstance(minutes, int) or minutes <= 0:
+        return "soon"
+    for size, word in ((1440, "day"), (60, "hour"), (1, "minute")):
+        if minutes % size == 0:
+            count = minutes // size
+            return f"in about {count} {word}{'' if count == 1 else 's'}"
+
+
 def describe(notification):
     """Return (icon, text) for one notification."""
     icon, template = TYPES.get(notification.type, (DEFAULT_ICON, None))
@@ -58,6 +68,7 @@ def describe(notification):
     values = _Safe(
         actor=_actor_name(notification),
         title=notification.data.get("title", "An event"),
+        lead=_lead_text(notification.data.get("lead_minutes")),
         action=action_label(notification.data["action"]) if notification.data.get("action") else "An action",
     )
     return icon, template.format_map(values)

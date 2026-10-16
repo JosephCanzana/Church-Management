@@ -8,21 +8,32 @@ cancellation, sends the notices in the same transaction.
 Notification types declared here (the `type` column has no choices, the list keeps growing):
     event_changed    time or place changed (a title or description edit does not notify)
     event_cancelled  the event was cancelled (important)
+    event_reminder   an upcoming event, sent by the 15-minute job
 """
+from datetime import timedelta
+
 from django.db import transaction
 from django.utils import timezone
 
 from apps.accounts.models import Extension, Role, Status, User
+from apps.audit.models import AuditLog
 from apps.audit.services import log_action
 from apps.core.services import ServiceError, consume_submission_token
 from apps.notifications.models import Notification
 from apps.notifications.services import notify_many
+from apps.audit.models import AuditLog
 
 from . import permissions
-from .models import Event
+from .models import Event, EventReminder
+from datetime import timedelta
 
 EVENT_CHANGED = "event_changed"
 EVENT_CANCELLED = "event_cancelled"
+EVENT_REMINDER = "e255vent_reminder"
+REMINDER_MAX_MINUTES = 43200   # same ceiling as UserSettings.event_reminder_minutes
+REMINDER_KEEP_DAYS = 30        # EventReminder rows older than this are trimmed by send_reminders
+EVENT_REMINDER = "event_reminder"
+REMINDER_MAX_MINUTES = 43200
 
 TITLE_MAX = 255
 LOCATION_MAX = 255
@@ -91,6 +102,11 @@ def event_recipients(event, actor=None):
     if actor is not None:
         people = people.exclude(pk=actor.pk)
     return list(people.values_list("pk", flat=True))
+
+
+def _event_url(event):
+    """The event page, as a path on this site (used by push messages)."""
+    return f"/events/{event.pk}/"
 
 
 # ----------------------------------------------------------------- create
@@ -181,6 +197,11 @@ def update_event(
                 actor=actor, entity_type="event", entity_id=locked.pk,
                 data={"title": locked.title, "changes": changes},
                 audit_log_id=entry.pk,
+                push={
+                    "title": locked.title,
+                    "body": f"The {' and '.join(changes)} changed.",
+                    "url": _event_url(locked), "tag": f"event-{locked.pk}",
+                },
             )
     return locked
 
@@ -217,5 +238,128 @@ def cancel_event(actor, event, *, request=None):
             data={"title": locked.title},
             importance=Notification.Importance.IMPORTANT,
             audit_log_id=entry.pk,
+            push={
+                "title": locked.title, "body": "This event was cancelled.",
+                "url": _event_url(locked), "tag": f"event-{locked.pk}",
+            },
         )
     return locked
+
+
+# ----------------------------------------------------------------- reminders
+def _reminder_push(event):
+    """Push text: the event title and its start in Manila time. Nothing private."""
+    local = timezone.localtime(event.start_at)
+    return {
+        "title": event.title,
+        "body": f"Starts {local:%a, %b %d at %I:%M %p}",
+        "url": _event_url(event),
+        "tag": f"event-reminder-{event.pk}",
+    }
+
+
+def _pending_by_lead(event, now):
+    """{lead_minutes: [user ids]} still to be reminded about `event` right now.
+
+    Due means the person's lead time has been reached and the event has not started. "Reached"
+    (not "within this exact quarter hour") so a missed run catches up on the next one.
+    Already-sent reminders for this start time are left out.
+    """
+    ids = event_recipients(event)
+    if not ids:
+        return {}
+    due = {}
+    wanted = User.objects.filter(pk__in=ids, settings__event_reminders_enabled=True).values_list(
+        "pk", "settings__event_reminder_minutes",
+    )
+    for user_id, lead in wanted:
+        if event.start_at - timedelta(minutes=lead) <= now:
+            due.setdefault(lead, []).append(user_id)
+    if not due:
+        return {}
+    done = set(
+        EventReminder.objects.filter(
+            event=event, event_start=event.start_at, lead_minutes__in=list(due),
+        ).values_list("user_id", "lead_minutes")
+    )
+    pending = {}
+    for lead, user_ids in due.items():
+        left = [uid for uid in user_ids if (uid, lead) not in done]
+        if left:
+            pending[lead] = left
+    return pending
+
+
+def _upcoming_event_ids(now):
+    """Ids of live, not-cancelled events that have not started and start within the longest lead."""
+    return list(
+        Event.objects.filter(
+            archived_at__isnull=True, cancelled_at__isnull=True,
+            start_at__gt=now, start_at__lte=now + timedelta(minutes=REMINDER_MAX_MINUTES),
+        ).order_by("start_at").values_list("pk", flat=True)
+    )
+
+
+def due_reminders(now=None):
+    """What the job would send now, without sending: [(event_id, {lead_minutes: [user ids]})].
+
+    Read-only (no locks), for tests and dry runs. `send_reminders` re-checks under a lock.
+    """
+    now = now or timezone.now()
+    out = []
+    for event in Event.objects.filter(pk__in=_upcoming_event_ids(now)).order_by("start_at"):
+        pending = _pending_by_lead(event, now)
+        if pending:
+            out.append((event.pk, pending))
+    return out
+
+
+def send_reminders(now=None):
+    """Send every reminder that is due. Returns {"events": n, "reminders": n} (counts only).
+
+    One transaction per event: lock it, re-check it is still upcoming and not cancelled, record
+    an EventReminder row per person and send the bell items (and pushes, after commit). Running
+    it twice in a row sends nothing new. Writes ONE audit row (source system_job, counts only),
+    and only when something was sent, so the 15-minute job does not fill the trail.
+    """
+    now = now or timezone.now()
+    result = {"events": 0, "reminders": 0}
+    for event_id in _upcoming_event_ids(now):
+        try:
+            with transaction.atomic():
+                locked = _lock(event_id)
+                if locked.is_cancelled or locked.start_at <= now:
+                    continue
+                pending = _pending_by_lead(locked, now)
+                if not pending:
+                    continue
+                sent = 0
+                for lead, user_ids in pending.items():
+                    EventReminder.objects.bulk_create(
+                        [
+                            EventReminder(
+                                event=locked, user_id=uid, lead_minutes=lead,
+                                event_start=locked.start_at,
+                            )
+                            for uid in user_ids
+                        ],
+                        ignore_conflicts=True,
+                    )
+                    sent += notify_many(
+                        user_ids, EVENT_REMINDER,
+                        entity_type="event", entity_id=locked.pk,
+                        data={
+                            "title": locked.title, "lead_minutes": lead,
+                            "starts_at": locked.start_at.isoformat(),
+                        },
+                        push=_reminder_push(locked),
+                    )
+                result["events"] += 1
+                result["reminders"] += sent
+        except ServiceError:
+            continue   # the event vanished between the list and the lock
+    # tidy up: old reminder rows are no longer needed once the event is long past
+    EventReminder.objects.filter(event_start__lt=now - timedelta(days=REMINDER_KEEP_DAYS)).delete()
+    if result["reminders"]:
+        log_action("event.reminders_sent", source=AuditLog.Source.SYSTEM_JOB, after=result)
+    return result

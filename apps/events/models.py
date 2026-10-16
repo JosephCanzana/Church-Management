@@ -50,3 +50,24 @@ class Event(TimestampedModel, ArchivableModel):
 
     def __str__(self):
         return self.title
+
+class EventReminder(models.Model):
+    """One reminder already sent: a person, an event, a lead time and the start time it was for.
+
+    The unique row is what makes the job safe to run twice. A rescheduled event has a new
+    `event_start`, so it reminds again; a cancelled one is skipped by the job itself.
+    """
+    event = models.ForeignKey(Event, on_delete=models.CASCADE, related_name="reminders")
+    user = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.CASCADE, related_name="+")
+    lead_minutes = models.PositiveIntegerField()
+    event_start = models.DateTimeField()
+    sent_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        db_table = "event_reminder"
+        constraints = [
+            models.UniqueConstraint(
+                fields=["event", "user", "lead_minutes", "event_start"],
+                name="uq_event_reminder",
+            ),
+        ]
