@@ -11,6 +11,10 @@ Context: blocks (list of key, label, title, body, is_custom, and version diction
 
 {% block content %}
 <p class="mb-5 max-w-3xl text-sm text-txt-secondary">Text is shown on the public landing page. Leave a block empty to return it to its default.</p>
+<nav class="mb-5 flex flex-wrap gap-2" aria-label="Landing page management">
+  <a href="{% url 'pages:pages_manage:content_list' %}" class="btn btn-secondary" aria-current="page">Text blocks</a>
+  <a href="{% url 'pages:pages_manage:image_list' %}" class="btn btn-ghost">Photos</a>
+</nav>
 <div class="divide-y divide-border border-y border-border">
   {% for block in blocks %}
   <article class="py-5">

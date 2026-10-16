@@ -2,7 +2,7 @@
   Public landing page for logged-out visitors, served at "/".
   Extends base_public.html. Blocks filled: title, main_align, content.
   Context variables (built by apps/pages/services.py get_landing_context, every block has a default):
-    hero (title, intro), hero_images (list of {url, caption}, also used by the gallery),
+    hero (title, intro), hero_images and gallery_images (lists of {url, caption}),
     church_intro (title, body), church_points,
     about (mission, vision, values: each title and body), theme (month, title, description, url),
     video (youtube_video_id, title, thumbnail_url), give_accounts (list of active DonationAccount),
@@ -147,7 +147,7 @@
 
   </div>
 
-  {% comment %} COME AS YOU ARE: welcoming words about the church beside a photo gallery (the same photos as the hero). {% endcomment %}
+  {% comment %} COME AS YOU ARE: welcoming words about the church beside its own photo pool. {% endcomment %}
   <section id="church" class="border-t border-border bg-surface-alt py-16" aria-labelledby="church-heading">
     <div class="mx-auto grid w-full max-w-6xl items-center gap-12 px-4 sm:px-6 md:grid-cols-2 md:gap-14">
       <div>
@@ -168,7 +168,7 @@
       </div>
 
       <div class="grid grid-cols-2 gap-3" role="list" aria-label="Photos from our church">
-        {% for img in hero_images|slice:":5" %}
+        {% for img in gallery_images|slice:":5" %}
         <figure role="listitem" class="m-0 overflow-hidden rounded-xl border border-border bg-surface {% if forloop.first %}col-span-2 aspect-video{% else %}aspect-square{% endif %}">
           <img src="{{ img.url }}" alt="{{ img.caption|default:'Jesus Is Lord Church' }}" class="size-full object-cover" loading="lazy">
         </figure>

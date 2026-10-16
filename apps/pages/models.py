@@ -41,9 +41,14 @@ class ChurchContent(models.Model):
 
 
 class LandingImage(FileCleanupModel):
+    class Placement(models.TextChoices):
+        HERO = "hero", "Hero carousel"
+        GALLERY = "gallery", "Come as you are gallery"
+
     image = models.ImageField(upload_to=public_upload_to, validators=[validate_photo_upload])
     original_filename = models.CharField(max_length=255, blank=True)
     caption = models.CharField(max_length=255, blank=True)
+    placement = models.CharField(max_length=10, choices=Placement.choices, default=Placement.HERO)
     sort_order = models.IntegerField(default=0)
     is_active = models.BooleanField(default=True)
     uploaded_by = models.ForeignKey(USER, null=True, blank=True, on_delete=models.SET_NULL, related_name="+")
@@ -52,7 +57,7 @@ class LandingImage(FileCleanupModel):
 
     class Meta:
         db_table = "landing_image"
-        ordering = ["sort_order", "id"]
+        ordering = ["placement", "sort_order", "id"]
 
     FILE_ORIGINAL_NAME_FIELDS = {"image": "original_filename"}
 

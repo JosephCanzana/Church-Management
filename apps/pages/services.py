@@ -73,7 +73,11 @@ DEFAULT_THEME = {
     "url": "#",
 }
 
-DEFAULT_IMAGES = [
+DEFAULT_HERO_IMAGES = [
+    {"path": f"pages/images/landing/church-{n}.jpg", "caption": "Jesus Is Lord Church"}
+    for n in range(1, 6)
+]
+DEFAULT_GALLERY_IMAGES = [
     {"path": f"pages/images/landing/church-{n}.jpg", "caption": "Jesus Is Lord Church"}
     for n in range(1, 6)
 ]
@@ -198,19 +202,31 @@ def _hero():
     }
 
 
-def _hero_images():
-    """Church photos as {url, caption} dicts: active landing images, else the default photos."""
+def _landing_images(placement, defaults):
+    """Return one placement's active photos, falling back to its own default pool."""
     from apps.pages.models import LandingImage  # lazy, per your loader convention
 
     rows = (
-        LandingImage.objects.filter(is_active=True)
+        LandingImage.objects.filter(is_active=True, placement=placement)
         .exclude(image="")
         .order_by("sort_order", "id")
     )
     images = [{"url": r.image.url, "caption": r.caption} for r in rows]
-    return images or [
-        {"url": static(i["path"]), "caption": i["caption"]} for i in DEFAULT_IMAGES
-    ]
+    return images or [{"url": static(i["path"]), "caption": i["caption"]} for i in defaults]
+
+
+def _hero_images():
+    """Hero carousel photos, or the hero-specific defaults."""
+    from apps.pages.models import LandingImage
+
+    return _landing_images(LandingImage.Placement.HERO, DEFAULT_HERO_IMAGES)
+
+
+def _gallery_images():
+    """Come-as-you-are gallery photos, or the gallery-specific defaults."""
+    from apps.pages.models import LandingImage
+
+    return _landing_images(LandingImage.Placement.GALLERY, DEFAULT_GALLERY_IMAGES)
 
 
 def _about_block(key, default_key):
@@ -266,6 +282,7 @@ def get_landing_context():
     return {
         "hero": _hero(),
         "hero_images": _hero_images(),
+        "gallery_images": _gallery_images(),
         "about": {
             "mission": _about_block("mission", "mission"),
             "vision": _about_block("vision", "vision"),

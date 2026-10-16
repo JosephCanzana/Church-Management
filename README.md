@@ -76,6 +76,8 @@ active shared resources, while members see published monthly themes at
 `/resources/manage/`.
 Landing text blocks are managed by admins and the super-admin at
 `/manage/landing/`; blanking a block restores its built-in default.
+Landing photos are managed on the same screen in separate Hero and gallery
+placements, with independent ordering and fallback images.
 
 ## Project structure
 

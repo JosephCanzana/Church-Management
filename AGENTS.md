@@ -167,8 +167,12 @@ with. Only create a new app if the answer is "none".
 - Text is rendered escaped by Django, with line breaks preserved. Core values
   are entered one per line. Audits record the content key and version/state only,
   never the submitted text. The landing loader's language fallback is unchanged.
+- Landing photos have separate `hero` and `gallery` placements, each with its own
+  active list, ordering, and fallback defaults. Existing rows migrate to `hero`;
+  active photos are capped at 12 per placement. Upload, replace, toggle, and
+  delete ask for confirmation; ordering applies immediately.
 - Run `apps.pages.tests.test_manage_content` and `apps.pages.tests.test_landing`
-  when changing the management rules or landing lookup.
+  and `apps.pages.tests.test_manage_images` when changing landing management.
 
 ### Dependency rules
 1. Direction: `core` <- `audit` <- `accounts` <- everything else. `theming`

@@ -1,0 +1,84 @@
+<!--
+pages/manage/image_form.html
+Upload a new landing photo or edit its caption, placement, and image.
+Extends base_app.html. Blocks filled: title, page_title, content, extra_js.
+Context: form (LandingImageForm), image_record (existing row or None), active_image_limit.
+-->
+{% extends "base_app.html" %}
+
+{% block title %}{% if image_record %}Edit photo{% else %}Upload photo{% endif %}{% endblock %}
+{% block page_title %}{% if image_record %}Edit landing photo{% else %}Upload landing photo{% endif %}{% endblock %}
+
+{% block content %}
+{% url 'pages:pages_manage:image_list' as list_url %}
+{% include 'includes/breadcrumb.html' with parent_label='Landing photos' parent_url=list_url current='Photo' %}
+<div class="mt-5 max-w-2xl">
+  <p class="text-sm text-txt-secondary">JPG, PNG or WebP, up to 10 MB. Each placement allows {{ active_image_limit }} active photos.</p>
+  <form method="post" enctype="multipart/form-data" class="card mt-4 space-y-5"
+        {% if image_record %}data-confirm="Save changes to this landing photo? A placement change moves it between pools."
+          data-confirm-title="Save photo changes?" data-confirm-text="Save changes"
+        {% else %}data-confirm="Upload this photo to the selected landing placement?"
+          data-confirm-title="Upload landing photo?" data-confirm-text="Upload photo"{% endif %}>
+    {% csrf_token %}
+    {% if form.non_field_errors %}
+    <div class="rounded-md border border-error p-3 text-sm text-error" role="alert">
+      {% for error in form.non_field_errors %}<p>{{ error }}</p>{% endfor %}
+    </div>
+    {% endif %}
+    <div>
+      <label for="{{ form.placement.id_for_label }}" class="label">Placement</label>
+      {{ form.placement }}
+      {% for error in form.placement.errors %}<p class="field-error">{{ error }}</p>{% endfor %}
+    </div>
+    <div>
+      <label for="{{ form.caption.id_for_label }}" class="label">Caption</label>
+      {{ form.caption }}
+      {% for error in form.caption.errors %}<p class="field-error">{{ error }}</p>{% endfor %}
+    </div>
+    {% if image_record %}
+    <div>
+      <p class="label">Current photo</p>
+      <img src="{{ image_record.image.url }}" alt="{{ image_record.caption|default:'Current landing photo' }}" class="max-h-72 w-full rounded-md border border-border object-contain" id="image-preview">
+    </div>
+    {% else %}
+    <div>
+      <label for="{{ form.image.id_for_label }}" class="label">Photo file</label>
+      {{ form.image }}
+      {% for error in form.image.errors %}<p class="field-error">{{ error }}</p>{% endfor %}
+      <img id="image-preview" alt="Selected photo preview" class="mt-3 hidden max-h-72 w-full rounded-md border border-border object-contain">
+    </div>
+    {% endif %}
+    {% if image_record %}
+    <div>
+      <label for="{{ form.image.id_for_label }}" class="label">Replace photo (optional)</label>
+      {{ form.image }}
+      <p class="field-help">Choose a new file to replace the current photo.</p>
+      {% for error in form.image.errors %}<p class="field-error">{{ error }}</p>{% endfor %}
+    </div>
+    {% endif %}
+    <div class="flex flex-wrap gap-3">
+      <button type="submit" class="btn btn-primary">{% if image_record %}Save changes{% else %}Upload photo{% endif %}</button>
+      <a href="{{ list_url }}" class="btn btn-ghost">Cancel</a>
+    </div>
+  </form>
+</div>
+{% endblock %}
+
+{% block extra_js %}
+<script>
+document.addEventListener('DOMContentLoaded', () => {
+  const input = document.getElementById('id_image');
+  const preview = document.getElementById('image-preview');
+  if (!input || !preview) return;
+  input.addEventListener('change', () => {
+    const file = input.files && input.files[0];
+    if (!file) return;
+    if (preview.dataset.objectUrl) URL.revokeObjectURL(preview.dataset.objectUrl);
+    const objectUrl = URL.createObjectURL(file);
+    preview.dataset.objectUrl = objectUrl;
+    preview.src = objectUrl;
+    preview.classList.remove('hidden');
+  });
+});
+</script>
+{% endblock %}
