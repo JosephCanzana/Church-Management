@@ -29,6 +29,8 @@ buddies, prayer requests, events, resources, notifications and audit logging.
     summary, upload, reopen, the sheet screens for every role, A4 print page, first timer conversion, repeat-visitor
     auto-transfer, reset-to-activation, 58 mm welcome slip and personal history (see Attendance).
 - **Not built yet:**
+  - The access revamp: guest and no-account member types, public Register, approvals, "change password" replacing
+    activation (decided, see Access revamp).
   - Brute-force login throttling.
   - The `faith` listener that turns a chapter read into a streak, MBBTAG. The dashboards show "Coming soon"
     cards for the Bible streak, goals and events until those apps have views.
@@ -316,7 +318,107 @@ with. Only create a new app if the answer is "none".
 - **Tests never call outside services.** Mock `apps.bible.esv.esv_client.fetch_chapter`; tests that depend on ESV
   being locked or open set `ESV_API_KEY` with `override_settings`, so a real key in `.env` never changes them.
 
+## Access revamp: people types, registration, approvals (decided, NOT built yet)
+This section records decisions made before the work starts. The sections below it (Accounts, People screens, Attendance)
+describe the code as it is today; each bullet this section replaces is named here, and the older bullet is rewritten in the
+same change that implements it. Until a brick lands, do not apply a rule from here on its own: a half-applied rule breaks
+login. When a brick lands, move its rules into the right section above and delete them here.
+
+### People types and statuses
+- **Type vs status vs role are three separate things.** A new `User.person_type` (`accounts.models.PersonType`, a
+  `TextChoices` next to `Gender` and `AgeNetwork`): `guest` (a non-member who has attended), `member_record` (shown as
+  "Member (no account)": a member whose attendance and tithes are managed but who has no sign-in) and `member_account`
+  (shown as "Member": full access). `role` is unchanged and still means the four roles. Only `member_account` can sign in.
+- **Status shrinks to** `active`, `suspended`, `archived`. `not_activated` is removed (model choices, the
+  `archived_matches_status` rule and every check that mentions it). "Needs password change" is the existing
+  `must_change_password` flag, shown as a tag, never a status.
+- **Tags shown in the UI** (one helper builds them, templates never rebuild them): Needs password change, Guest,
+  Member (no account), Member, Suspended, Archived. "Deactivated" and "Activated / Not activated" no longer exist anywhere.
+- **Account id is still generated for every person** in `User.save()`, guests and no-account members included (the login
+  field stays non-null). Never reused, never edited.
+- **Sign-in:** `AccountIdOrEmailBackend` rejects anyone who is not `member_account` or who is archived or suspended.
+  Guests and no-account members get `set_unusable_password()`. Every place that asks "can this person sign in" (attendance
+  `permissions.py`, special-role assignment, coordinator seat, extension rules) must also check `person_type`. A guest or
+  no-account member never holds a seat, a special role, a buddy, goals, prayer requests or a notification.
+- Only a leader changes a type: guest to `member_record` (promotion), `member_record` to `member_account` (approval, or
+  `grant_account` from the person's detail page). Both change the EXISTING row; never create a second row for the same person.
+
+### Password change replaces "activation"
+- Rename everything: `services/activation.py` to `services/password_change.py` (`user_needs_password_change`,
+  `complete_password_change`), `ActivationRequiredMiddleware` to `PasswordChangeRequiredMiddleware`, the view, template, route
+  (`/accounts/change-password/`) and form. The profile page already has `ChangePasswordForm` (current + new password), so give
+  the forced form another name (for example `SetNewPasswordForm`) and grep for clashes first.
+- A person must change their password when `must_change_password=True`. It is set on approval, on a leader-created account,
+  and on reset. A reset NO LONGER touches `status`; restore and unsuspend always go back to `active`.
+- Audit: `account.activated` becomes `account.password_set`, and the logged flag `needs_activation` becomes
+  `needs_password_change`. Any `notification_rule` row or listener using the old names is updated in a NEW migration (never
+  edit an applied one).
+- "Deactivate" is removed: service, `_ACTOR_RULES`, `available_actions`, `BULK_APPLIES`, buttons, guards and tests.
+  "Skip activation" on create becomes "Skip password change" (still super-admin and admin only).
+- Tests that sign a user in create them with `must_change_password=False` and `person_type="member_account"`.
+
+### Registration (public Register page)
+- **Table `registration_request`** (`accounts` app): first, middle, last name, suffix, birth date, gender, email, extension,
+  the address parts (same as `app_user`), phone, `status` (`pending`, `approved`, `rejected`, `duplicate`), `matched_user`
+  (nullable), `decided_by`, `decided_at`, `created_at`. Everything is required on the form except the middle name and suffix
+  where the person has none. Names are stored lowercase (`core.text.clean_text`), phone as digits, address through
+  `check_address`, like the people screens.
+- **Privacy:** a request's personal data (name, birth date, email, phone, address) is NEVER written to `audit_log`,
+  `notification.data` or logs. Audit rows carry ids and counts only.
+- **Matching, in this order** (`accounts/services/registration.py`, one function, one transaction):
+  1. A suspended person who matches (same name, suffix and birth date) is refused with a neutral message.
+  2. A `member_record` match (name plus birth date) is approved at once only when the site setting
+     `registration_auto_approve` is on; otherwise it is pending.
+  3. A `guest` match, or no match at all, is always pending. Nobody is approved automatically without a match.
+  4. A match to an existing `member_account` shows the same neutral message as a refusal; the form never says who has an account.
+- **`registration_auto_approve`:** a `site_setting` key, default off, editable by the super-admin only (add it to Site
+  settings sections). Turning it on lets anyone who knows a record member's name and birth date claim that record: say so on
+  the settings screen.
+- **Duplicates:** same name and same email while a request is pending shows "You already have submitted your request." A
+  different email for the same name and birth date IS accepted (a person correcting a typo) and is grouped with the earlier one
+  as "possible duplicates"; at most 3 pending requests per name and birth date. A newer request never replaces an older one
+  (that would let a stranger swap the email).
+- **Spam:** honeypot field, a one-time `submission_token`, and a per-IP throttle on the POST. The Register route is public, so it
+  is `never_cache`, rejects anyone already signed in, and tests mock the mailer.
+- **Cleanup:** a nightly `cleanup_registration_requests` command deletes decided requests after a retention period.
+
+### Approval
+- **Who:** the coordinator of the requested extension, admins and the super-admin (`registration_requests_for(actor)` is the only
+  scoping helper; a request outside reach looks like one that no longer exists). A new request raises a bell item for them that
+  says only that a request exists (`notify_many`, no personal data in `notification.data`).
+- **Approve:** one transaction, one-time token, locks the request row, calls `create_user` (or `grant_account` for a matched
+  record) with `person_type=member_account`, the requested extension, the default MEMBER password under the existing default
+  password rules, `must_change_password=True`. It closes every other pending request in the same duplicate group as `duplicate`,
+  so one person never gets two accounts. Logs `registration.approve` with ids only. Reject logs `registration.reject`.
+- **Email:** after commit, one email to the registered address with the Account ID, the sign-in link and the password. This is
+  a deliberate exception to "passwords are shown once": the password is the shared default and must be changed at the first
+  sign-in. It is never logged, audited, stored on the request or put in the session. If sending fails, the approver gets the
+  existing show-once dialog instead. The approval screen shows the email address prominently so the approver can catch a typo.
+- **Wrong email already approved:** a leader edits the email, resets the password (this ends any session the wrong person
+  opened) and gives the new password through the show-once dialog.
+- The 58 mm welcome slip is removed (see Attendance below).
+
+### Guests and no-account members screen
+- One list shared by coordinator (own extension), admin and super-admin, built like the People screens (`for_user`-style scoping,
+  `{% role_url %}`, `available_actions`, services re-check permission on the locked row). Actions: suspend and unsuspend (a
+  suspended person is blocked from registering and from being ticked on a sheet), promote a guest to no-account member,
+  archive and restore. A coordinator never suspends, as on the People screens.
+- Guests and no-account members are archived by the inactivity job like everyone else and then purged by the existing retention
+  trigger. The People screens list `member_account` people by default and get a type filter.
+
+### Attendance and later work
+- Adding a first timer creates a `guest` person for that extension and links it to the first-timer row. The "same person?" prompt
+  uses `find_duplicate_people`, so a returning guest is ticked present instead of getting a second row.
+- `search_people` returns active people of every type. `AttendanceMember` also snapshots `person_type`, and the summary shows
+  guests separately; frozen summaries still never change after upload.
+- `convert_first_timer` becomes promotion (guest to member). The welcome slip (template, print code, any `convert_result`
+  slip section) is deleted. Accounts a leader creates keep the show-once dialog.
+- Tithes (not built) accept only `member_record` and `member_account`, never guests.
+- Update `docs/schema.sql`, `docs/flows.md`, `docs/verify.sql`, `README.md` and this file in each brick's change.
+
 ## Accounts: login, status, activation, profile
+> **Access revamp pending:** the Login, Status and Activation bullets below are replaced by the section above
+> (`not_activated`, "activation" and Deactivate go away). Follow the code as it is until each brick lands.
 - **Login:** account id + password, or a *verified* email. Wrong account and
   wrong password show the same message. Log failures. Archived accounts are
   denied; not-activated or `must_change_password` users go to activation.
@@ -518,6 +620,8 @@ with. Only create a new app if the answer is "none".
   stored as a hash plus an encrypted copy (`DefaultPassword.password_encrypted`, key `DEFAULT_PASSWORD_KEY`).
 
 ## Attendance
+> **Access revamp pending:** the Account reset, Welcome slip and First timer to member bullets below change (guests,
+> promotion, no slip); see Access revamp.
 Bricks 1 to 14 are implemented. In addition to the sheet workflow, first-timer conversion and "My attendance":
 - **Repeat visitors (brick 11):** after three distinct uploaded sheets at an extension, an active member whose home extension differs is transferred there. A draft or a single visit never changes their extension. The transfer is performed by `accounts.services.users.auto_transfer_visitor`, updates `user_extension_history` with reason `auto_transfer`, clears extension-specific roles, and logs extension ids only.
 - **Account reset (brick 12):** a reset sets `status=not_activated` and `must_change_password=True`; the account id remains the sign-in identifier and activation is required on the next login. The password hash change ends existing sessions.

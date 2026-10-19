@@ -7,6 +7,7 @@ from apps.core.uploads import validate_resource_upload
 
 from .models import GeneralResource, MonthlyResource, MonthlyTheme, WeeklyPowerpoint
 
+ALLOWED_ACCEPT = ".pdf,.pptx,.docx,.xlsx,.png,.jpg,.jpeg,.webp"
 
 class ResourceFilterForm(forms.Form):
     """Search, status, and sort controls shared by resource management lists."""
@@ -80,13 +81,15 @@ class _ResourceModelForm(forms.ModelForm):
             existing = field.widget.attrs.get("class", "")
             field.widget.attrs["class"] = f"{existing} input".strip()
 
-
 class MonthlyResourceForm(_ResourceModelForm):
     """Edit one optional file attached to a monthly theme."""
     file = forms.FileField(
         required=False,
         validators=[validate_resource_upload],
-        widget=forms.ClearableFileInput(attrs={"class": "input"}),
+        widget=forms.FileInput(attrs={
+            "class": "input",
+            "accept": ALLOWED_ACCEPT,
+        }),
     )
 
     class Meta:
@@ -97,7 +100,6 @@ class MonthlyResourceForm(_ResourceModelForm):
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
         self.fields["file"].required = self.instance.pk is None
-
 
 class WeeklyPowerpointForm(_ResourceModelForm):
     """Create or edit a weekly presentation and its optional theme link."""
