@@ -49,6 +49,7 @@ NAMES_IN_MESSAGE = 3      # how many names a toast lists before "and N more"
 LIST_PARAMS = ("q", "status", "sort", "page")
 
 super_admin_only = role_required(Role.SUPER_ADMIN)
+people_manager = role_required(Role.SUPER_ADMIN, Role.ADMIN)
 
 
 def _extension_or_none(pk):
@@ -78,7 +79,7 @@ def _list_url(source):
 
 
 # ------------------------------------------------------------------- list
-@super_admin_only
+@people_manager
 @require_http_methods(["GET"])
 def extension_list(request):
     """Extensions with search, a status filter, sorting and paging."""
@@ -128,7 +129,7 @@ def extension_list(request):
 
 
 # ----------------------------------------------------------- create / edit
-@super_admin_only
+@people_manager
 @require_http_methods(["GET", "POST"])
 def extension_create(request):
     """Show the new-extension form (GET) and save it (POST)."""
@@ -146,7 +147,7 @@ def extension_create(request):
     })
 
 
-@super_admin_only
+@people_manager
 @require_http_methods(["GET", "POST"])
 def extension_edit(request, pk):
     """Show the edit form (GET) and save it (POST)."""
@@ -177,7 +178,7 @@ def extension_edit(request, pk):
 
 
 # ----------------------------------------------------------------- detail
-@super_admin_only
+@people_manager
 @require_http_methods(["GET"])
 def extension_detail(request, pk):
     """One extension: details, coordinator, people (transfer in) and the action buttons."""
@@ -254,7 +255,7 @@ def _run_extension_action(request, pk, service, done, nothing, *, to_list=False)
     return redirect("superadmin:extension_detail", pk=pk)
 
 
-@super_admin_only
+@people_manager
 @require_POST
 def extension_archive(request, pk):
     """Archive an extension (blocked while people still belong to it)."""
@@ -264,7 +265,7 @@ def extension_archive(request, pk):
     )
 
 
-@super_admin_only
+@people_manager
 @require_POST
 def extension_restore(request, pk):
     """Restore an archived extension."""
@@ -274,7 +275,7 @@ def extension_restore(request, pk):
     )
 
 
-@super_admin_only
+@people_manager
 @require_POST
 def extension_delete(request, pk):
     """Permanently delete an archived extension."""
@@ -284,7 +285,7 @@ def extension_delete(request, pk):
     )
 
 
-@super_admin_only
+@people_manager
 @require_POST
 def extension_unassign_coordinator(request, pk):
     """Remove the coordinator (they stay in the extension as a member)."""
@@ -294,7 +295,7 @@ def extension_unassign_coordinator(request, pk):
     )
 
 
-@super_admin_only
+@people_manager
 @require_POST
 def extension_assign_coordinator(request, pk):
     """Set the coordinator chosen in the detail page's form (replaces the current one)."""
@@ -321,7 +322,7 @@ def extension_assign_coordinator(request, pk):
 
 
 # ------------------------------------------------- people of one extension
-@super_admin_only
+@people_manager
 @require_POST
 def extension_person_add(request, pk):
     """Transfer people INTO this extension (POST: people (ids), confirmed, submit_token).
@@ -386,7 +387,7 @@ def _names_sentence(names):
     return f"{shown} and {extra} more" if extra > 0 else shown
 
 
-@super_admin_only
+@people_manager
 @require_POST
 def extension_bulk(request):
     """Archive or delete the ticked extensions (POST: action, ids, qs).
