@@ -67,9 +67,7 @@ XHR search requests.
         <a href="{% role_url 'user_detail' person.pk %}"
            class="block truncate font-medium text-txt-primary after:absolute after:inset-0 after:content-[''] hover:underline focus-visible:outline-2 focus-visible:outline-accent">{{ person.full_name }}</a>
         <p class="font-mono text-sm text-txt-secondary">{{ person.account_id }}</p>
-        {% if person.special_role_codes %}
-        <p class="mt-1 flex flex-wrap gap-1.5">{% special_role_badges person %}</p>
-        {% endif %}
+        <p class="mt-1 flex flex-wrap gap-1.5">{% person_tags person with_status=False %}{% if person.special_role_codes %}{% special_role_badges person %}{% endif %}</p>
       </div>
       <button type="button" class="btn btn-ghost relative z-10 -mr-2 px-2 lg:order-last"
               @click.stop="openMenu($event, $el.closest('[data-row]'), true)"

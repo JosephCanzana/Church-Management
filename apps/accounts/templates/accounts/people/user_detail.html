@@ -14,6 +14,24 @@
   </a>
 
   <div class="flex flex-wrap items-center gap-2">
+    {% if 'promote' in can %}
+    <form method="post" action="{% role_url 'user_promote' person.pk %}">
+      {% csrf_token %}
+      <button type="submit" class="btn btn-secondary"
+              data-confirm="{{ person.full_name }} becomes a member without an account. Their record and attendance history stay as they are."
+              data-confirm-title="Promote this guest?" data-confirm-text="Promote">
+        {% include 'includes/icon.html' with name='user-plus' class='size-4' %}
+        Promote to member
+      </button>
+    </form>
+    {% endif %}
+    {% if 'grant_account' in can %}
+    <button type="button" class="btn btn-secondary" x-data @click="$store.ui.openModal('grant-account')"
+            aria-haspopup="dialog">
+      {% include 'includes/icon.html' with name='key' class='size-4' %}
+      Give an account
+    </button>
+    {% endif %}
     {% if 'restore' in can %}
     <form method="post" action="{% role_url 'user_restore' person.pk %}">
       {% csrf_token %}
@@ -82,20 +100,18 @@
   </div>
 </div>
 
-{% if person.special_role_codes %}
-<p class="mt-4 flex flex-wrap gap-1.5">{% special_role_badges person %}</p>
-{% endif %}
+<p class="mt-4 flex flex-wrap gap-1.5">{% person_tags person %}{% if person.special_role_codes %}{% special_role_badges person %}{% endif %}</p>
 
 {% if person.status == 'archived' %}
 <div class="card mt-4 bg-surface-alt" role="status">
   <p class="text-sm">
-    This person is archived and cannot log in{% if person.purge_at %}. They will be permanently deleted on {{ person.purge_at|date:"j F Y" }}{% endif %}.
+    This person is archived{% if person.person_type == 'member_account' %} and cannot log in{% endif %}{% if person.purge_at %}. They will be permanently deleted on {{ person.purge_at|date:"j F Y" }}{% endif %}.
     {% if 'restore' in can %}Restore them to edit or suspend them.{% endif %}
   </p>
 </div>
 {% elif person.status == 'suspended' %}
 <div class="card mt-4 bg-surface-alt" role="status">
-  <p class="text-sm">This person is suspended and cannot log in. Nothing has been removed.</p>
+  <p class="text-sm">This person is suspended{% if person.person_type == 'member_account' %} and cannot log in{% else %} and is blocked{% endif %}. Nothing has been removed.</p>
 </div>
 {% endif %}
 
@@ -104,6 +120,7 @@
     <h2 id="details-heading" class="text-base font-semibold">Details</h2>
     <dl class="mt-3 grid grid-cols-[auto_1fr] gap-x-6 gap-y-2 text-sm">
       <dt class="text-txt-secondary">Account ID</dt><dd class="font-mono">{{ person.account_id }}</dd>
+      <dt class="text-txt-secondary">Type</dt><dd>{{ person.get_person_type_display }}</dd>
       <dt class="text-txt-secondary">Role</dt><dd>{{ person.get_role_display }}</dd>
       <dt class="text-txt-secondary">Status</dt><dd>{{ person.get_status_display }}</dd>
       <dt class="text-txt-secondary">Extension</dt>
@@ -136,7 +153,7 @@
       <dt class="text-txt-secondary">Last login</dt><dd>{{ person.last_login|date:"j F Y, g:i a"|default:"Never" }}</dd>
       <dt class="text-txt-secondary">Created</dt><dd>{{ person.created_at|date:"j F Y" }}</dd>
       <dt class="text-txt-secondary">Password</dt>
-      <dd>{% if person.must_change_password %}Must be changed at next login{% else %}Set by the person{% endif %}</dd>
+      <dd>{% if person.person_type != 'member_account' %}No account, no password{% elif person.must_change_password %}Must be changed at next login{% else %}Set by the person{% endif %}</dd>
     </dl>
   </section>
 </div>
@@ -217,6 +234,33 @@
   {% endif %}
   <div class="flex justify-end">
     <button type="submit" class="btn btn-primary">Reset password</button>
+  </div>
+</form>
+{% endmodal %}
+{% endif %}
+
+{% if 'grant_account' in can %}
+{% modal "grant-account" title="Give this member an account?" %}
+<form method="post" action="{% role_url 'user_grant_account' person.pk %}" class="grid gap-4">
+  {% csrf_token %}
+  <input type="hidden" name="submit_token" value="{{ submit_token }}">
+  <p class="text-sm text-txt-secondary">
+    {{ person.full_name }} can then sign in with their Account ID and a password, shown once. They must change it
+    at their first sign-in.
+  </p>
+  {% may_type_password as may_type %}
+  {% if may_type %}
+  <div>
+    <label for="grant-account-password" class="label">Password <span class="font-normal text-txt-secondary">(optional)</span></label>
+    <input id="grant-account-password" type="password" name="password" class="input"
+           autocomplete="new-password" minlength="8">
+    <p class="field-help">Leave empty to use your default password for members, else a generated one.</p>
+  </div>
+  {% else %}
+  <p class="text-sm text-txt-secondary">They get the global member password.</p>
+  {% endif %}
+  <div class="flex justify-end">
+    <button type="submit" class="btn btn-primary">Give an account</button>
   </div>
 </form>
 {% endmodal %}

@@ -41,6 +41,10 @@ class PersonType(models.TextChoices):
     MEMBER_ACCOUNT = "member_account", "Member"               # full access
 
 
+#: The two types that never sign in. The guests screen lists exactly these.
+NO_ACCOUNT_TYPES = (PersonType.GUEST, PersonType.MEMBER_RECORD)
+
+
 class Gender(models.TextChoices):
     """A person's gender as the attendance summary counts it. Optional on a User (blank = not given).
 
@@ -260,6 +264,28 @@ class User(AbstractBaseUser, TimestampedModel, ArchivableModel):
             self.person_type == PersonType.MEMBER_ACCOUNT
             and self.status not in (Status.ARCHIVED, Status.SUSPENDED)
         )
+
+    @property
+    def is_blocked(self):
+        """True while a leader has suspended this person. A suspended guest or no-account member
+        cannot sign in (they never could) and, from brick 3 and 4, cannot be ticked on a sheet or register."""
+        return self.status == Status.SUSPENDED
+
+    @property
+    def tag_codes(self):
+        """The tags shown next to a person on the people screens, most important first.
+
+        "Needs password change" is the `must_change_password` flag, never a status; it only applies to
+        someone who can sign in. Exactly one of guest / member_record / member_account is always present.
+        Status tags (suspended, archived) come last. Labels live in `people_tags.TAG_LABELS`.
+        """
+        codes = []
+        if self.person_type == PersonType.MEMBER_ACCOUNT and self.must_change_password:
+            codes.append("needs_password_change")
+        codes.append(self.person_type)
+        if self.status in (Status.SUSPENDED, Status.ARCHIVED):
+            codes.append(self.status)
+        return codes
 
     @property
     def is_active(self):

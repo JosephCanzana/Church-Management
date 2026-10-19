@@ -32,8 +32,8 @@ from apps.core.text import name_case, suffix_case, title_case
 
 from ..address import ADDRESS_FIELDS, canonical_country
 from ..decorators import role_required
-from ..forms import UserCreateForm, UserFilterForm, UserForm
-from ..models import PersonType, Role, Status, User, UserExtensionHistory
+from ..forms import GuestFilterForm, UserCreateForm, UserFilterForm, UserForm
+from ..models import NO_ACCOUNT_TYPES, PersonType, Role, Status, User, UserExtensionHistory
 from ..permissions import (
     EDIT, allowed_bulk_actions, can_assign_special_roles, can_change_placement, require_can_act,
 )
@@ -42,6 +42,8 @@ from ..services.users import (
     archive_user,
     create_user,
     force_delete_user,
+    grant_account,
+    promote_guest,
     reset_password,
     restore_user,
     reveal_default_password,
@@ -93,6 +95,9 @@ BULK_BUTTONS = {
     "restore": dict(label="Restore", icon="arrow-uturn-left", past="restored", danger=False,
                     title="Restore {n} selected?",
                     message="They are brought back from the archive."),
+    "promote": dict(label="Promote", icon="user-plus", past="promoted", danger=False,
+                    title="Promote {n} selected?",
+                    message="Guests become members without an account. Anyone who is not an active guest is skipped."),
     "delete": dict(label="Delete", icon="trash", past="deleted", danger=True,
                    title="Delete {n} selected permanently?",
                    message="This cannot be undone. Only archived people can be deleted."),
@@ -110,6 +115,22 @@ BULK_APPLIES = {
     "restore": (Status.ARCHIVED,),
     "delete": (Status.ARCHIVED,),
 }
+
+
+# The bulk bar of the guests screen: single-purpose, so no reset password and no delete.
+GUEST_BULK_ORDER = ("promote", "suspend", "unsuspend", "restore", "archive")
+
+
+def _guest_bulk_buttons(status, viewer):
+    """The bulk buttons the guests screen offers `viewer` for the list being shown."""
+    allowed = allowed_bulk_actions(viewer)
+    names = [n for n in GUEST_BULK_ORDER if n in allowed]
+    if status == "archived":
+        names = [n for n in names if n == "restore"]
+    elif status != "all":
+        names = [n for n in names if n != "restore"]
+    applies = {**BULK_APPLIES, "promote": (Status.ACTIVE,)}
+    return [{"value": n, "applies": " ".join(applies[n]), **BULK_BUTTONS[n]} for n in names]
 
 
 def _bulk_buttons(status, viewer):
@@ -200,8 +221,15 @@ def _list_context(params, viewer):
     extension = data.get("extension")
     sort = data.get("sort") or "last_name"
     special_role = data.get("special_role") or ""
+    person_type = data.get("person_type") or ""
+    needs_change = data.get("needs_change") == "yes"
 
     queryset = User.objects.for_user(viewer).select_related("extension").exclude(pk=viewer.pk)
+    if needs_change:
+        queryset = queryset.filter(person_type=PersonType.MEMBER_ACCOUNT, must_change_password=True)
+    # The People screens list people with an account unless the Type filter says otherwise.
+    if person_type != "all":
+        queryset = queryset.filter(person_type=person_type or PersonType.MEMBER_ACCOUNT)
     if status == "current":
         queryset = queryset.exclude(status=Status.ARCHIVED)
     elif status != "all":
@@ -237,7 +265,7 @@ def _list_context(params, viewer):
         # How many filters differ from the defaults (badge on the Filters button).
         "active_filters": sum([
             bool(data.get("q")), status != "current", bool(role),
-            extension is not None, bool(special_role), sort != "last_name",
+            extension is not None, bool(special_role), bool(person_type), needs_change, sort != "last_name",
         ]),
     }
 
@@ -252,6 +280,107 @@ def user_list(request):
     if request.headers.get("X-Requested-With") == "XMLHttpRequest":
         return render(request, LIST_RESULTS_TEMPLATE, context)
     return render(request, LIST_TEMPLATE, context)
+
+
+# ------------------------------------------------------ guests and no-account members
+GUESTS_TEMPLATE = "accounts/people/guest_list.html"
+
+
+def _guest_context(params, viewer):
+    """Everything the guests screen needs: guests and members without an account `viewer` may see.
+
+    Same scoping as the People screens (`for_user`), so a coordinator only sees their own extension.
+    `viewer` is never a guest, but is left out anyway, like on the People list.
+    """
+    form = GuestFilterForm(params)
+    show_extension = viewer.role != Role.COORDINATOR
+    if not show_extension:
+        del form.fields["extension"]
+    form.is_valid()
+    data = getattr(form, "cleaned_data", {})
+    status = data.get("status") or "current"
+    person_type = data.get("person_type") or ""
+    extension = data.get("extension")
+    sort = data.get("sort") or "last_name"
+
+    queryset = (
+        User.objects.for_user(viewer).select_related("extension").exclude(pk=viewer.pk)
+        .filter(person_type__in=[person_type] if person_type else NO_ACCOUNT_TYPES)
+    )
+    if status == "current":
+        queryset = queryset.exclude(status=Status.ARCHIVED)
+    elif status != "all":
+        queryset = queryset.filter(status=status)
+    if extension is not None:
+        queryset = queryset.filter(extension=extension)
+    for term in (data.get("q") or "").split():
+        queryset = queryset.filter(
+            Q(first_name__icontains=term) | Q(middle_name__icontains=term)
+            | Q(last_name__icontains=term) | Q(account_id__icontains=term)
+        )
+    queryset = queryset.order_by(*SORTS[sort], "pk")
+
+    paginator = Paginator(queryset, PAGE_SIZE)
+    page = paginator.get_page(params.get("page"))
+    without_page = params.copy()
+    without_page.pop("page", None)
+    return {
+        "form": form,
+        "page": page,
+        "total": paginator.count,
+        "status": status,
+        "show_extension_filter": show_extension,
+        "bulk_buttons": _guest_bulk_buttons(status, viewer),
+        "querystring": without_page.urlencode(),
+        "full_querystring": params.urlencode(),
+        "active_filters": sum([
+            bool(data.get("q")), status != "current", bool(person_type),
+            extension is not None, sort != "last_name",
+        ]),
+    }
+
+
+@people_manager
+@never_cache
+@require_http_methods(["GET"])
+def guest_list(request):
+    """Guests and members without an account: search, filters, paging and the per-person buttons."""
+    context = _guest_context(request.GET, request.user)
+    context["submit_token"] = new_submission_token()
+    return render(request, GUESTS_TEMPLATE, context)
+
+
+@people_manager
+@require_POST
+def user_promote(request, pk):
+    """Promote a guest to a member without an account."""
+    return _run_user_action(request, pk, promote_guest,
+                            "{name} is now a member (no account).", "{name} is not a guest.")
+
+
+@people_manager
+@never_cache
+@require_POST
+def user_grant_account(request, pk):
+    """Give a member without an account a sign-in and show the password once."""
+    person = _person_or_none(request.user, pk)
+    if person is None:
+        return _gone(request)
+    try:
+        result = grant_account(
+            request.user, request, person, token=request.POST.get("submit_token", ""),
+            typed=request.POST.get("password", ""),
+        )
+    except ServiceError as exc:
+        messages.error(request, str(exc))
+        return _to(request, "user_detail", pk=pk)
+    if result.duplicate:
+        messages.info(request, "That form was already submitted, so nothing was changed a second time.")
+        return _to(request, "user_detail", pk=pk)
+    messages.success(request, f"{person.full_name} now has an account. Account ID {person.account_id}.")
+    return _render_detail(request, _person_or_none(request.user, pk), secrets=_secrets(
+        [[person.full_name, person.account_id, result.password.display]], "Account created",
+    ))
 
 
 # -------------------------------------------------------------- create / edit
@@ -506,9 +635,11 @@ def user_bulk(request):
     raw_ids = request.POST.getlist("ids")
     ids = [i for i in raw_ids if i.isdigit()]
     return_to = QueryDict(request.POST.get("qs", "")[:RETURN_QS_MAX])
+    # The guests screen posts here too and comes back to itself (a fixed whitelist, never a posted url).
+    back_name = "guest_list" if request.POST.get("back") == "guests" else "user_list"
 
     def back():
-        url = _url(request, "user_list")
+        url = _url(request, back_name)
         query = return_to.urlencode()
         return redirect(f"{url}?{query}" if query else url)
 

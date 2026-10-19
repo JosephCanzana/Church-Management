@@ -1,0 +1,193 @@
+<!--
+guest_list.html: guests and members without an account, for the coordinator (own extension), admin and super-admin.
+Blocks filled: title, page_title, content.
+Context: form (GuestFilterForm), page, total, status, show_extension_filter, bulk_buttons, querystring, full_querystring,
+active_filters, submit_token.
+Built like the People list: scoping is User.objects.for_user, links go through role_url, buttons follow
+available_actions (hiding a button is not access control; the services check again).
+-->
+{% extends "base_app.html" %}
+{% load ui_tags people_tags %}
+
+{% block title %}Guests and members without an account{% endblock %}
+{% block page_title %}Guests{% endblock %}
+
+{% block content %}
+<div x-data="guestSelect()">
+<div class="flex flex-wrap items-center justify-between gap-3">
+  <form method="get" action="{% role_url 'guest_list' %}" role="search" class="w-full min-w-0 sm:max-w-md">
+    <label for="{{ form.q.id_for_label }}" class="sr-only">{{ form.q.label }}</label>
+    {{ form.q }}
+  </form>
+  <div class="flex flex-wrap items-center gap-2">
+    {% if active_filters %}<a href="{% role_url 'guest_list' %}" class="btn btn-ghost">Clear filters</a>{% endif %}
+    <button type="button" class="btn btn-secondary" x-data @click="$store.ui.openModal('filters')" aria-haspopup="dialog">
+      {% include 'includes/icon.html' with name='funnel' class='size-4' %}
+      Filters
+      {% if active_filters %}<span class="rounded-full bg-primary px-2 py-0.5 text-xs font-medium text-on-primary" aria-label="{{ active_filters }} active">{{ active_filters }}</span>{% endif %}
+    </button>
+    <a href="{% role_url 'user_list' %}" class="btn btn-secondary">
+      {% include 'includes/icon.html' with name='user-group' class='size-4' %}
+      All people
+    </a>
+  </div>
+</div>
+
+<p class="mt-4 text-sm text-txt-secondary">
+  {{ total }} {% if total == 1 %}person{% else %}people{% endif %}.
+  Guests have attended but are not members. Members without an account are kept on record but cannot sign in.
+</p>
+
+{% if page.object_list %}
+{% if bulk_buttons %}
+<form id="guest-bulk" method="post" action="{% role_url 'user_bulk' %}" class="mt-4 flex flex-wrap items-center gap-3">
+  {% csrf_token %}
+  <input type="hidden" name="submit_token" value="{{ submit_token }}">
+  <input type="hidden" name="back" value="guests">
+  <input type="hidden" name="qs" value="{{ full_querystring }}">
+  <input type="hidden" name="action" x-ref="action">
+  <template x-for="id in selected" :key="id"><input type="hidden" name="ids" :value="id"></template>
+  <label class="flex min-h-11 items-center gap-2 text-sm">
+    <input type="checkbox" class="size-5" :checked="allSelected" @change="toggleAll($event.target.checked)">
+    Select all on this page
+  </label>
+  <span class="text-sm text-txt-secondary" x-show="selected.length" x-cloak style="display:none"
+        x-text="selected.length + ' selected'" aria-live="polite"></span>
+  {% for b in bulk_buttons %}
+  <button type="button" class="btn btn-secondary" x-show="count('{{ b.applies }}') > 0" x-cloak style="display:none"
+          @click="run('{{ b.value }}', '{{ b.applies }}', '{{ b.title|escapejs }}', '{{ b.message|escapejs }}', '{{ b.label|escapejs }}')">
+    {% include 'includes/icon.html' with name=b.icon class='size-4' %}
+    {{ b.label }}
+  </button>
+  {% endfor %}
+</form>
+{% endif %}
+<ul class="card mt-4 divide-y divide-border p-0">
+  {% for person in page.object_list %}
+  {% person_actions person as can %}
+  <li class="flex flex-wrap items-center justify-between gap-3 px-4 py-3" data-row data-id="{{ person.pk }}" data-status="{{ person.status }}">
+    {% if bulk_buttons %}
+    <label class="flex min-h-11 min-w-11 items-center justify-center">
+      <input type="checkbox" class="size-5" value="{{ person.pk }}" x-model="selected"
+             aria-label="Select {{ person.full_name }}">
+    </label>
+    {% endif %}
+    <div class="min-w-0 flex-1">
+      <p class="truncate font-medium"><a href="{% role_url 'user_detail' person.pk %}" class="hover:underline">{{ person.full_name }}</a></p>
+      <p class="mt-0.5 text-sm text-txt-secondary">
+        {% if person.extension %}{{ person.extension.name|title_case }}{% else %}No extension{% endif %}
+        <span aria-hidden="true">&middot;</span> <span class="font-mono">{{ person.account_id }}</span>
+        {% if person.last_attended_at %}<span aria-hidden="true">&middot;</span> Last attended {{ person.last_attended_at|date:"j M Y" }}{% endif %}
+      </p>
+      <p class="mt-1.5 flex flex-wrap gap-1.5">{% person_tags person %}</p>
+    </div>
+    <div class="flex flex-wrap items-center gap-2">
+      {% if 'promote' in can %}
+      <form method="post" action="{% role_url 'user_promote' person.pk %}">
+        {% csrf_token %}
+        <button type="submit" class="btn btn-secondary"
+                data-confirm="{{ person.full_name }} becomes a member without an account."
+                data-confirm-title="Promote this guest?" data-confirm-text="Promote">Promote</button>
+      </form>
+      {% endif %}
+      {% if 'grant_account' in can %}
+      <a href="{% role_url 'user_detail' person.pk %}" class="btn btn-secondary">Give an account</a>
+      {% endif %}
+      {% if 'unsuspend' in can %}
+      <form method="post" action="{% role_url 'user_unsuspend' person.pk %}">
+        {% csrf_token %}
+        <button type="submit" class="btn btn-secondary">Unsuspend</button>
+      </form>
+      {% endif %}
+      {% if 'suspend' in can %}
+      <form method="post" action="{% role_url 'user_suspend' person.pk %}">
+        {% csrf_token %}
+        <button type="submit" class="btn btn-secondary"
+                data-confirm="{{ person.full_name }} will be blocked. Nothing is deleted."
+                data-confirm-title="Suspend this person?" data-confirm-text="Suspend">Suspend</button>
+      </form>
+      {% endif %}
+      {% if 'restore' in can %}
+      <form method="post" action="{% role_url 'user_restore' person.pk %}">
+        {% csrf_token %}
+        <button type="submit" class="btn btn-secondary">Restore</button>
+      </form>
+      {% endif %}
+      {% if 'archive' in can %}
+      <form method="post" action="{% role_url 'user_archive' person.pk %}">
+        {% csrf_token %}
+        <button type="submit" class="btn btn-secondary"
+                data-confirm="{{ person.full_name }} will be archived. You can restore them later."
+                data-confirm-title="Archive this person?" data-confirm-text="Archive">Archive</button>
+      </form>
+      {% endif %}
+    </div>
+  </li>
+  {% endfor %}
+</ul>
+
+{% include 'includes/pagination.html' with page=page querystring=querystring %}
+{% else %}
+<div class="card mt-4 text-center">
+  <p class="text-sm text-txt-secondary">No guests or members without an account match.</p>
+</div>
+{% endif %}
+
+{% modal "filters" title="Filter guests" %}
+<form method="get" class="grid gap-4">
+  <div class="grid gap-4 sm:grid-cols-2">
+    <div>
+      <label for="{{ form.person_type.id_for_label }}" class="label">{{ form.person_type.label }}</label>
+      {{ form.person_type }}
+    </div>
+    <div>
+      <label for="{{ form.status.id_for_label }}" class="label">{{ form.status.label }}</label>
+      {{ form.status }}
+    </div>
+    {% if show_extension_filter %}
+    <div>
+      <label for="{{ form.extension.id_for_label }}" class="label">Extension</label>
+      {{ form.extension }}
+    </div>
+    {% endif %}
+    <div>
+      <label for="{{ form.sort.id_for_label }}" class="label">{{ form.sort.label }}</label>
+      {{ form.sort }}
+    </div>
+  </div>
+  <div class="mt-2 flex flex-wrap items-center justify-between gap-3">
+    <a href="{% role_url 'guest_list' %}" class="btn btn-ghost">Clear all</a>
+    <button type="submit" class="btn btn-primary">Apply filters</button>
+  </div>
+</form>
+{% endmodal %}
+</div>
+{% endblock %}
+
+{% block extra_js %}
+<script>
+document.addEventListener('alpine:init', () => {
+  Alpine.data('guestSelect', () => ({
+    selected: [],          // ids (strings) of the ticked rows
+    get rows() { return [...this.$root.querySelectorAll('[data-row]')]; },
+    get allSelected() { return this.rows.length > 0 && this.selected.length === this.rows.length; },
+    toggleAll(on) { this.selected = on ? this.rows.map(r => r.dataset.id) : []; },
+    // How many ticked rows are in one of these statuses (space separated): who a button can do something for.
+    count(statuses) {
+      const wanted = statuses.split(' ');
+      return this.rows.filter(r => this.selected.includes(r.dataset.id) && wanted.includes(r.dataset.status)).length;
+    },
+    // Ask first (the number is the people it applies to), then post the form with the chosen action.
+    async run(action, statuses, title, message, label) {
+      const n = this.count(statuses);
+      const ok = await Alpine.store('ui').confirm({
+        title: title.replace('{n}', n), message, confirmText: label, danger: false,
+      });
+      if (!ok) return;
+      this.$refs.action.value = action;
+      document.getElementById('guest-bulk').requestSubmit();
+    },
+  }));
+});
+</script>
+{% endblock %}

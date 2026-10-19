@@ -9,9 +9,9 @@ Who manages whom
     super-admin  everyone (except: nobody can hand out the super-admin role)
     admin        coordinators and members, anywhere; never super-admins or other
                  admins; cannot force delete
-    coordinator  members of their OWN extension only: create, edit details,
-                 reset password, archive and restore. No role or extension
-                 changes, no suspend, no delete.
+    coordinator  members of their OWN extension only (members with an account, members without one
+                 and guests): create, edit details, reset password, archive, restore, promote a guest,
+                 give a no-account member an account. No role or extension changes, no suspend, no delete.
 Only a `member_account` can sign in (`User.can_sign_in`); `_usable` below asks `is_active`, which
 already includes the person type, so a guest or a no-account member is never an actor.
 The people matrix lives in `_ACTOR_RULES` below; `available_actions()` reads the
@@ -77,10 +77,12 @@ RESTORE = "restore"
 SUSPEND = "suspend"
 UNSUSPEND = "unsuspend"
 DELETE = "delete"                   # force delete (archived people only)
+PROMOTE = "promote"                 # guest -> member without an account
+GRANT_ACCOUNT = "grant_account"     # member without an account -> member with an account
 
 PERSON_ACTIONS = (
     VIEW, EDIT, CHANGE_PLACEMENT, RESET_PASSWORD, ARCHIVE, RESTORE,
-    SUSPEND, UNSUSPEND, DELETE,
+    SUSPEND, UNSUSPEND, DELETE, PROMOTE, GRANT_ACCOUNT,
 )
 
 # role -> (roles of people they may act on, actions allowed). A coordinator is also
@@ -88,7 +90,9 @@ PERSON_ACTIONS = (
 _ACTOR_RULES = {
     Role.SUPER_ADMIN: ((Role.SUPER_ADMIN, Role.ADMIN, Role.COORDINATOR, Role.MEMBER), set(PERSON_ACTIONS)),
     Role.ADMIN: ((Role.COORDINATOR, Role.MEMBER), set(PERSON_ACTIONS) - {DELETE}),
-    Role.COORDINATOR: ((Role.MEMBER,), {VIEW, EDIT, RESET_PASSWORD, }),
+    Role.COORDINATOR: (
+        (Role.MEMBER,), {VIEW, EDIT, RESET_PASSWORD, ARCHIVE, RESTORE, PROMOTE, GRANT_ACCOUNT},
+    ),
 }
 
 #: Roles that may open the people screens at all.
@@ -151,6 +155,9 @@ def available_actions(actor, person):
         return allowed
     offer(EDIT)
     offer(RESET_PASSWORD, person.person_type == PersonType.MEMBER_ACCOUNT)   # no account, no password
+    # Promotion and an account are for people in good standing: lift a suspension first.
+    offer(PROMOTE, person.person_type == PersonType.GUEST and person.status == Status.ACTIVE)
+    offer(GRANT_ACCOUNT, person.person_type == PersonType.MEMBER_RECORD and person.status == Status.ACTIVE)
     offer(ARCHIVE)
     offer(SUSPEND, person.status != Status.SUSPENDED)
     offer(UNSUSPEND, person.status == Status.SUSPENDED)
@@ -165,7 +172,7 @@ def allowed_bulk_actions(actor):
     _, actions = _ACTOR_RULES[actor.role]
     names = {
         "archive": ARCHIVE, "restore": RESTORE, "suspend": SUSPEND, "unsuspend": UNSUSPEND,
-        "reset_password": RESET_PASSWORD, "delete": DELETE,
+        "reset_password": RESET_PASSWORD, "delete": DELETE, "promote": PROMOTE,
     }
     return [name for name, action in names.items() if action in actions]
 

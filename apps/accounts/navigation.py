@@ -84,6 +84,10 @@ NAV_ITEMS = [
     NavItem("People", "superadmin:user_list", "users", roles=(SUPER_ADMIN,), group="Manage"),
     NavItem("People", "admin_area:user_list", "users", roles=(ADMIN,), group="Manage"),
     NavItem("People", "coordinator_area:user_list", "users", roles=(COORDINATOR,), group="Manage"),
+    # Guests and members without an account (brick 2): same role split as People.
+    NavItem("Guests", "superadmin:guest_list", "user-plus", roles=(SUPER_ADMIN,), group="Manage"),
+    NavItem("Guests", "admin_area:guest_list", "user-plus", roles=(ADMIN,), group="Manage"),
+    NavItem("Guests", "coordinator_area:guest_list", "user-plus", roles=(COORDINATOR,), group="Manage"),
     NavItem("Site settings", "bible_superadmin:site_settings", "adjustments-horizontal", roles=(SUPER_ADMIN,), group="Manage"),
     NavItem("Manage resources", "resources:theme_list", "folder-open", roles=(SUPER_ADMIN, ADMIN), group="Manage"),
     NavItem("Landing content", "pages:pages_manage:content_list", "document-text", roles=(SUPER_ADMIN, ADMIN), group="Manage"),

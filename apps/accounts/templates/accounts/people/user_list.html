@@ -98,6 +98,14 @@
     </div>
     {% endif %}
     <div>
+      <label for="{{ form.person_type.id_for_label }}" class="label">{{ form.person_type.label }}</label>
+      {{ form.person_type }}
+    </div>
+    <div>
+      <label for="{{ form.needs_change.id_for_label }}" class="label">{{ form.needs_change.label }}</label>
+      {{ form.needs_change }}
+    </div>
+    <div>
       <label for="{{ form.special_role.id_for_label }}" class="label">{{ form.special_role.label }}</label>
       {{ form.special_role }}
     </div>

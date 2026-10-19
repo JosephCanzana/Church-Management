@@ -318,9 +318,10 @@ with. Only create a new app if the answer is "none".
 - **Tests never call outside services.** Mock `apps.bible.esv.esv_client.fetch_chapter`; tests that depend on ESV
   being locked or open set `ESV_API_KEY` with `override_settings`, so a real key in `.env` never changes them.
 
-## Access revamp: people types, registration, approvals (brick 1 built; the rest decided, NOT built yet)
+## Access revamp: people types, registration, approvals (bricks 1 and 2 built; the rest decided, NOT built yet)
 This section records decisions made before the work starts. Brick 1 (types, statuses, password change, sign-in rules) is
-built and its rules now live under Accounts. The sections below it (People screens, Attendance) still describe the code as it is
+built and its rules now live under Accounts. Brick 2 (people screens and the guests list) is built and its rules now live under
+People screens for admin and coordinator. The sections below it (Attendance) still describe the code as it is
 today where a bullet here replaces them; the older bullet is rewritten in the same change that implements it. Until a brick
 lands, do not apply a rule from here on its own: a half-applied rule breaks login. When a brick lands, move its rules into the
 right section above and delete them here.
@@ -366,14 +367,6 @@ right section above and delete them here.
   opened) and gives the new password through the show-once dialog.
 - The 58 mm welcome slip is removed (see Attendance below).
 
-### Guests and no-account members screen
-- One list shared by coordinator (own extension), admin and super-admin, built like the People screens (`for_user`-style scoping,
-  `{% role_url %}`, `available_actions`, services re-check permission on the locked row). Actions: suspend and unsuspend (a
-  suspended person is blocked from registering and from being ticked on a sheet), promote a guest to no-account member,
-  archive and restore. A coordinator never suspends, as on the People screens.
-- Guests and no-account members are archived by the inactivity job like everyone else and then purged by the existing retention
-  trigger. The People screens list `member_account` people by default and get a type filter.
-
 ### Attendance and later work
 - Adding a first timer creates a `guest` person for that extension and links it to the first-timer row. The "same person?" prompt
   uses `find_duplicate_people`, so a returning guest is ticked present instead of getting a second row.
@@ -390,7 +383,7 @@ right section above and delete them here.
   attendance and tithes are managed but who has no sign-in) and `member_account` (shown as "Member": full access; the default).
   `role` still means the four roles; a database check (`app_user_non_account_is_member`) says only `member` can be a guest or
   a no-account member. `status` is `active`, `suspended` or `archived`. "Needs password change" is the `must_change_password`
-  flag, shown as a tag (brick 2), never a status. "Deactivated" and "Not activated" no longer exist anywhere.
+  flag, shown as a tag (`User.tag_codes`, see People screens), never a status. "Deactivated" and "Not activated" no longer exist anywhere.
 - **Account id is generated for every person** in `User.save()`, guests and no-account members included (the login field stays
   non-null). Never reused, never edited. Guests and no-account members get `set_unusable_password()` (`UserManager.create_user`,
   `_set_initial_password` returns `PasswordInfo("none")`), and a reset refuses them.
@@ -398,8 +391,8 @@ right section above and delete them here.
   so every check built on `is_active` (`permissions._usable`, attendance `_signed_in` / `_can_sign_in`, Django sessions) also
   looks at the type. Never write a fresh "active" test from `status` alone. A guest or no-account member never holds a seat, a
   special role (`assign_special_role` refuses them; `member_counts` leaves them out), a buddy, goals, prayer requests or a
-  notification. Only a leader changes a type: guest to `member_record` (promotion, brick 2), `member_record` to `member_account`
-  (approval, or `grant_account`, bricks 2 and 4). Both change the EXISTING row; never create a second row for the same person.
+  notification. Only a leader changes a type: guest to `member_record` (`promote_guest`), `member_record` to `member_account`
+  (`grant_account`, or approval in brick 4). Both change the EXISTING row; never create a second row for the same person.
 - **Login:** account id + password, or a *verified* email. Wrong account and
   wrong password show the same message. Log failures. Archived and suspended accounts, guests and no-account members are
   denied; `must_change_password` users go to the change-password page.
@@ -544,8 +537,9 @@ right section above and delete them here.
   - Super-admin: everything.
   - Admin: acts on coordinators and members anywhere (create, edit, move, reset password, archive, restore, suspend,
     unsuspend). Never force delete; never super-admins or other admins.
-  - Coordinator: acts on members of their OWN extension only (create, edit details, reset password, archive, restore).
-    No role or extension change, no suspend, no delete, no typed passwords.
+  - Coordinator: acts on members of their OWN extension only, of every type (create, edit details, reset password,
+    archive, restore, promote a guest, give a no-account member an account). No role or extension change, no suspend,
+    no delete, no typed passwords. (Brick 1 had dropped archive and restore from `_ACTOR_RULES`; brick 2 puts them back.)
   - `assignable_roles`: super-admin admin/coordinator/member; admin coordinator/member; coordinator member.
     `require_can_create` also pins a coordinator's new people to their own extension. `require_placement_manager`
     (move people, change role or extension) is super-admin and admin only. Every service calls these on the LOCKED
@@ -580,6 +574,30 @@ right section above and delete them here.
   and writes one `extension.main_church_change` audit row. Unticking removes it (no main church is allowed). A key that is
   absent changes nothing. The main church cannot be archived until another one (or none) holds the tag. `ExtensionForm`
   keeps the field out of the model's constraint check on purpose (the service moves the tag).
+- **Tags and types on the People screens (brick 2):** `User.tag_codes` gives the tags in order (Needs password change, then
+  Guest / Member (no account) / Member, then Suspended or Archived); `{% person_tags person %}`
+  (`people_tags.TAG_LABELS`, template `_person_tags.html`) draws them. "Needs password change" is only for people who can sign
+  in. Every badge carries its words, so colour is never the only signal. `User.is_blocked` is true for a suspended person. The
+  People list has a Type filter (`person_type`): blank means Members (`member_account`), then Members (no account), Guests, All
+  types. Anyone out of the actor's reach stays out whatever the filter says (`for_user` runs first).
+- **Guests and no-account members screen:** `/superadmin/guests/`, `/admin/guests/`, `/coordinator/guests/` (`guest_list`,
+  template `guest_list.html`, `GuestFilterForm`). It lists `NO_ACCOUNT_TYPES` through `for_user` (a coordinator sees their own
+  extension only) with search, a type, status and extension filter, and per-row buttons from `available_actions`. Rows open the
+  normal detail page (`user_detail`), which serves every type. Rows have checkboxes and a bulk bar (`guestSelect()`
+  in the template, buttons from `_guest_bulk_buttons`: promote, suspend, unsuspend, restore, archive; no reset password or
+  delete). It posts to the same `user_bulk` view and `run_bulk` service as the People list (`promote` is a bulk action next to
+  the others; people it does not apply to are skipped with a reason) with `back=guests`, a whitelisted flag that returns to
+  the guests screen.
+- **Promote and give an account:** `PROMOTE` (`promote_guest`, route `users/<pk>/promote/`) turns a guest into a
+  `member_record`; `GRANT_ACCOUNT` (`grant_account`, route `users/<pk>/grant-account/`) turns a `member_record` into a
+  `member_account` with `must_change_password=True` and shows the password once (same rules as a new account: typed by an admin,
+  else the actor's default, else generated; one-time token). Both change the EXISTING row (same Account ID and history),
+  only for an ACTIVE person (a suspended person is unsuspended first, an archived one restored first), lock the person row, and
+  log `account.promote` / `account.grant_account` (type before and after, never a password). Offering a button needs the
+  type and status (`available_actions`); a guest is never offered Reset password. Suspend and unsuspend work on guests and
+  no-account members for the super-admin and admin; a suspended person is blocked (brick 3 stops them being ticked on a sheet,
+  brick 4 stops them registering). Guests and no-account members are archived by the inactivity job like everyone else (brick 4
+  makes sure the job includes them) and purged by the existing retention trigger.
 - **Special roles** (`services/special_roles.py`, `views/special_roles.py`): `tithes_offering` and `attendance`. The
   super-admin and admins (any extension) and a coordinator (their own) give or take them on a member's detail page. Only a
   member who can sign in (not archived, not suspended) can hold one. `assign_special_role` locks the extension row, then
@@ -1143,6 +1161,7 @@ still in use), `archive_inactive_users`, `auto_transfer_extension`,
   Each template starts with a header comment (see Template comments). When
   you change structure, commands or behaviour, update `README.md` and this file
   in the same change.
+- Use {% comment %} because the templating raises error
 - Tests must not touch real external services (see Behaviour rules). A test that needs a logged-in user creates an
   one with `must_change_password=False` and `person_type="member_account"` (see Password change).
 - Prefer the smallest relevant command or page load to verify a change.

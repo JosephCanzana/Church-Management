@@ -1,0 +1,7 @@
+<!--
+_person_tags.html: the tag badges for one person (Needs password change, Guest, Member (no account), Member, Suspended, Archived).
+Context: tags, a list of {label, look} from the person_tags template tag (accounts/templatetags/people_tags.py).
+Usage:    (do not include this file directly)
+Colour is never the only signal: every badge says what it means in words. Uses only existing colour tokens.
+-->
+{% for tag in tags %}<span class="inline-flex items-center rounded-full border px-2 py-0.5 text-xs font-medium {% if tag.look == 'danger' %}border-error text-error{% elif tag.look == 'warning' %}border-warning text-warning{% elif tag.look == 'muted' %}border-border bg-surface-alt text-txt-secondary{% else %}border-border text-txt-secondary{% endif %}">{{ tag.label }}</span>{% endfor %}

@@ -21,7 +21,7 @@ from apps.core.text import clean_suffix as normalize_suffix, clean_text, title_c
 
 from .address import ADDRESS_FIELDS, COUNTRIES, HIERARCHY, PHILIPPINES, canonical_country, check_address
 from .contact import PHONE_MESSAGE, clean_phone, is_valid_phone
-from .models import Extension, Gender, Role, Status, User
+from .models import Extension, Gender, PersonType, Role, Status, User
 from .permissions import assignable_roles, can_type_password
 from .validators import validate_strong_password, STRONG_PASSWORD_MESSAGE
 
@@ -562,10 +562,42 @@ class UserFilterForm(forms.Form):
         choices=[("", "Anyone"), ("tithes_offering", "Tithes member"), ("attendance", "Attendance member")],
         widget=forms.Select(attrs={"class": "input"}),
     )
+    # Blank means "Members" (people with an account): the People screens list them by default. The
+    # guests and no-account members are also reachable from here, and have their own screen (GuestFilterForm).
+    person_type = forms.ChoiceField(
+        required=False, label="Type", initial="",
+        choices=[
+            ("", "Members"), (PersonType.MEMBER_RECORD, "Members (no account)"),
+            (PersonType.GUEST, "Guests"), ("all", "All types"),
+        ],
+        widget=forms.Select(attrs={"class": "input"}),
+    )
+    # The "Needs password change" tag as a filter (`must_change_password`; only people with an account have it).
+    needs_change = forms.ChoiceField(
+        required=False, label="Password",
+        choices=[("", "Any"), ("yes", "Needs password change")],
+        widget=forms.Select(attrs={"class": "input"}),
+    )
     sort = forms.ChoiceField(
         required=False, choices=SORT_CHOICES, label="Sort by",
         widget=forms.Select(attrs={"class": "input"}),
     )
+
+
+class GuestFilterForm(UserFilterForm):
+    """Search, filters and sort for the guests and no-account members screen (GET parameters).
+
+    Same fields as the people list, minus the role (they are all members) and the special role (they
+    hold none); the type choices are the two types that never sign in.
+    """
+
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        del self.fields["role"], self.fields["special_role"], self.fields["needs_change"]
+        self.fields["person_type"].choices = [
+            ("", "Guests and members (no account)"), (PersonType.GUEST, "Guests"),
+            (PersonType.MEMBER_RECORD, "Members (no account)"),
+        ]
 
 
 class DefaultPasswordsForm(forms.Form):

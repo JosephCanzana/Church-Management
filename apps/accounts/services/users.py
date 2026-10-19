@@ -36,7 +36,8 @@ from ..models import (
     UserExtensionHistory,
 )
 from ..permissions import (
-    ARCHIVE, CHANGE_PLACEMENT, DELETE, EDIT, RESET_PASSWORD, RESTORE, SUSPEND, UNSUSPEND,
+    ARCHIVE, CHANGE_PLACEMENT, DELETE, EDIT, GRANT_ACCOUNT, PROMOTE, RESET_PASSWORD, RESTORE, SUSPEND,
+    UNSUSPEND,
     allowed_bulk_actions, assignable_roles, can_type_password, default_password_roles,
     default_password_view_roles, require_can_act,
     require_can_create, require_password_typer, require_placement_manager, require_user_manager,
@@ -711,6 +712,79 @@ def unsuspend_user(actor, request, ref):
     return person, True
 
 
+# ------------------------------------------------------- promote / grant account
+def promote_guest(actor, request, ref):
+    """Turn a guest into a member without an account. Returns (person, changed).
+
+    Changes the EXISTING row (never a second one for the same person), so the Account ID, the
+    attendance history and the extension stay. Only an active guest can be promoted: a suspended
+    one is blocked until a leader lifts that, and an archived one must be restored first. Someone who
+    is already a member (with or without an account) is left alone (`changed=False`).
+    """
+    require_user_manager(actor)
+    with transaction.atomic():
+        locked = _lock_person(ref.pk)
+        person = locked.person
+        require_can_act(actor, person, PROMOTE)
+        if person.person_type != PersonType.GUEST:
+            return person, False
+        if person.status == Status.ARCHIVED:
+            raise ServiceError("Restore this person before promoting them.")
+        if person.status == Status.SUSPENDED:
+            raise ServiceError("Unsuspend this person before promoting them.")
+        person.person_type = PersonType.MEMBER_RECORD
+        person.save(update_fields=["person_type", "updated_at"])
+        _log_person("account.promote", actor, request, person,
+                    before={"person_type": PersonType.GUEST},
+                    after={"person_type": PersonType.MEMBER_RECORD})
+    return person, True
+
+
+@dataclass
+class GrantResult:
+    user: object = None
+    password: PasswordInfo = None
+    duplicate: bool = False
+
+
+def grant_account(actor, request, ref, *, token, typed=""):
+    """Give a member without an account a sign-in. Returns a GrantResult (password shown once).
+
+    Same password rules as a new account (`_set_initial_password`: typed by an admin, else the actor's
+    default, else generated) and the person must change it at first sign-in. Changes the EXISTING
+    row from `member_record` to `member_account`. A guest is promoted first; someone who already has
+    an account is refused with a plain message, since a second click should not look like a success.
+    A replayed token returns duplicate=True and changes nothing.
+    """
+    require_user_manager(actor)
+    with transaction.atomic():
+        if not consume_submission_token(token):
+            return GrantResult(duplicate=True)
+        locked = _lock_person(ref.pk)
+        person = locked.person
+        require_can_act(actor, person, GRANT_ACCOUNT)
+        if person.status == Status.ARCHIVED:
+            raise ServiceError("Restore this person before giving them an account.")
+        if person.status == Status.SUSPENDED:
+            raise ServiceError("Unsuspend this person before giving them an account.")
+        if person.person_type == PersonType.MEMBER_ACCOUNT:
+            raise ServiceError("This person already has an account.")
+        if person.person_type == PersonType.GUEST:
+            raise ServiceError("Promote this guest to a member first.")
+        ext = locked.extension
+        if ext is None or ext.is_archived:
+            raise ServiceError("Put this person in an extension that is not archived first.")
+        person.person_type = PersonType.MEMBER_ACCOUNT        # before the password: guests get none
+        info = _set_initial_password(actor, person, typed)
+        person.must_change_password = True
+        person.save(update_fields=["person_type", "password", "must_change_password", "updated_at"])
+        _log_person("account.grant_account", actor, request, person,
+                    before={"person_type": PersonType.MEMBER_RECORD},
+                    after={"person_type": PersonType.MEMBER_ACCOUNT, "needs_change": True,
+                           "how_set": info.kind})
+    return GrantResult(user=person, password=info)
+
+
 # ---------------------------------------------------------------- reset password
 @dataclass
 class ResetResult:
@@ -958,6 +1032,7 @@ BULK_ACTIONS = {
     "suspend": suspend_user,
     "unsuspend": unsuspend_user,
     "delete": force_delete_user,
+    "promote": promote_guest,
 }
 BULK_ACTION_NAMES = (*BULK_ACTIONS, "reset_password")
 # Shown when an action had nothing to do for a person.
@@ -966,6 +1041,7 @@ NOTHING_TO_DO = {
     "restore": "not archived",
     "suspend": "already suspended",
     "unsuspend": "not suspended",
+    "promote": "not a guest",
 }
 
 
