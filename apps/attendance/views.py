@@ -43,6 +43,7 @@ from .age import AgeNetwork
 from .forms import FirstTimerForm, SheetCreateForm, SheetFilterForm
 from .models import Attendance, AttendanceFirstTimer, AttendanceMember
 from .summary import incomplete_rows, summary_for, summary_table
+from .permissions import creatable_extensions
 
 CONVERT_RESULT_TEMPLATE = "attendance/convert_result.html"
 MINE_TEMPLATE = "attendance/mine.html"
@@ -168,7 +169,9 @@ def _list_context(params, viewer):
         "show_extension": show_extension,
         "show_extension_filter": show_extension,
         "show_status_filter": show_status,
-        "can_create": permissions.creatable_extensions(viewer).exists(),
+        "can_create": viewer.role in (Role.SUPER_ADMIN, Role.ADMIN) or (
+            viewer.role == Role.COORDINATOR and viewer.extension_id is not None
+        ),
         # How many filters differ from the defaults (badge on the Filters button).
         "active_filters": sum([
             show_status and status != "current", extension is not None, bool(date_from), bool(date_to),
