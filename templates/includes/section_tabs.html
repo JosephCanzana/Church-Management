@@ -1,0 +1,29 @@
+{% comment %}
+section_tabs.html: the page-level tab row of a navigation hub (My journey, People, Website).
+The sidebar shows one link per hub; these tabs move between its pages.
+Drawn as a compact frosted-glass strip that sticks directly under the header (see base_app.html).
+Wide rows scroll sideways inside their own container, so the page itself never scrolls sideways.
+A tab whose page is not built yet is dimmed and not clickable. The active tab carries aria-current,
+a tinted pill, bold text and an indicator bar, so colour is never the only signal.
+Variables: tabs (from the section_tabs tag in accounts/templatetags/nav_tags.py).
+Usage: {% load nav_tags %}{% section_tabs "journey" %}
+{% endcomment %}
+{% if tabs|length > 1 %}
+<nav class="px-4 sm:px-6 lg:px-8" aria-label="Section">
+  <div class="-mb-px overflow-x-auto [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
+    <ul class="flex min-w-max items-center gap-6">
+      {% for tab in tabs %}
+      <li>
+        {% if tab.disabled %}
+        <span class="flex h-10 items-center border-b-2 border-transparent text-sm font-medium text-txt-muted opacity-50" aria-disabled="true">{{ tab.label }}</span>
+        {% else %}
+        <a href="{{ tab.href }}"
+           class="flex h-10 items-center border-b-2 text-sm font-medium transition-colors focus-visible:rounded-sm focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-accent {% if tab.active %}border-accent font-semibold text-txt-primary{% else %}border-transparent text-txt-secondary hover:text-txt-primary{% endif %}"
+           {% if tab.active %}aria-current="page"{% endif %}>{{ tab.label }}</a>
+        {% endif %}
+      </li>
+      {% endfor %}
+    </ul>
+  </div>
+</nav>
+{% endif %}

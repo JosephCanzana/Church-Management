@@ -2,16 +2,17 @@
 resources/manage/general_list.html
 Manager list of general resources with search, status, sorting, and pagination.
 Extends base_app.html. Blocks filled: title, page_title, content.
+The Website hub tab row (Landing | Give page | Resources) sits on top; the row below switches between the three resource lists.
 Context: form (ResourceFilterForm), page (Page of GeneralResource), total, status,
 querystring, and active_filters.
 -->
 {% extends "base_app.html" %}
-{% load ui_tags %}
 
 {% block title %}General resources{% endblock %}
 {% block page_title %}General resources{% endblock %}
 
 {% block content %}
+
 <div class="flex flex-wrap items-center justify-between gap-3">
   <nav class="flex flex-wrap gap-2" aria-label="Resource management">
     <a href="{% url 'resources:theme_list' %}" class="btn btn-ghost">Monthly themes</a>

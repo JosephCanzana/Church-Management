@@ -2,11 +2,12 @@
 resources/manage/weekly_list.html
 Manager list of weekly presentations with search, status, sorting, and pagination.
 Extends base_app.html. Blocks filled: title, page_title, content.
+The Website hub tab row (Landing | Give page | Resources) sits on top; the row below switches between the three resource lists.
 Context: form (ResourceFilterForm), page (Page of WeeklyPowerpoint), total, status,
 querystring, and active_filters.
 -->
 {% extends "base_app.html" %}
-{% load ui_tags %}
+
 
 {% block title %}Weekly presentations{% endblock %}
 {% block page_title %}Weekly presentations{% endblock %}

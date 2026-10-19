@@ -60,7 +60,7 @@ standard library, so there is no extra Python package for it.
   `permissions.py`, `management/commands/` (jobs).
 - `templates/` (project-level: `base.html`, `base_public.html`, `base_app.html`,
   `includes/` with `public_navbar.html`, `footer.html`, `logo.html`, `icon.html`,
-  `sidebar.html`, `sidebar_rail.html`, `sidebar_utilities.html`, `nav_link.html`, `brand_mark.html`, `topbar.html`, `bottom_nav.html`, `messages.html`, `modal.html`, `breadcrumb.html`).
+  `sidebar.html`, `sidebar_rail.html`, `sidebar_utilities.html`, `nav_link.html`, `section_tabs.html`, `brand_mark.html`, `topbar.html`, `bottom_nav.html`, `messages.html`, `modal.html`, `breadcrumb.html`).
   Page templates that belong to one app go in that app's `templates/<app>/` folder
   (e.g. `apps/pages/templates/pages/landing.html`, `apps/accounts/templates/accounts/login.html`,
   `apps/bible/templates/bible/chapter.html`).
@@ -133,7 +133,8 @@ Before adding a model, put it in the app whose data it shares a lifecycle
 with. Only create a new app if the answer is "none".
 
 ### Resources
-- Management is admin and super-admin only. Every mutating function in
+- Management is admin and super-admin only, shown as the "Resources" tab of the Website hub (monthly, weekly and
+  general lists keep their own switcher under it). Every mutating function in
   `apps/resources/services.py` calls `require_resource_manager`, runs inside
   `transaction.atomic()`, and logs the change through `audit.log_action()`.
 - A monthly theme is dated on the first of a month and unique for that month.
@@ -159,7 +160,7 @@ with. Only create a new app if the answer is "none".
   `apps.resources.tests.test_downloads` when changing these rules or screens.
 
 ### Landing management
-- Admin and super-admin manage landing text under `/manage/landing/`.
+- Admin and super-admin manage landing text under `/manage/landing/` (the "Landing" tab of the Website hub).
   `apps/pages/views.py` remains the public landing view; management logic is in
   `manage_services.py`, `manage_views.py`, and `manage_urls.py`.
 - Editable English keys are `landing_description`, `mission`, `vision`,
@@ -177,7 +178,9 @@ with. Only create a new app if the answer is "none".
 
 ### Donation accounts and footer links
 - Admin and super-admin manage both under `/manage/landing/` (namespace `pages:pages_manage`):
-  `donation-accounts/` and `footer-links/`. Same two guards as the rest of landing management:
+  `donation-accounts/` and `footer-links/`. In the Website hub the donation accounts are the "Give page" tab (it also
+  owns the public `/give/` page) and are NOT part of the "Landing" tab, even though the path sits under `/manage/landing/`:
+  the Give page tab matches the longer path, so it wins. Same two guards as the rest of landing management:
   `landing_manager_required` on the view, `require_landing_manager` at the top of every service.
 - **Donation accounts** are public giving details only (GCash, Maya, a bank): `payment_app`, account
   name, account number, optional SWIFT code, a note (`instructions`), an optional QR image, an
@@ -217,11 +220,10 @@ with. Only create a new app if the answer is "none".
   Context comes from `get_give_context()` in `pages/services.py`.
 - The landing page no longer holds giving details. Its `#give` block is an invitation with a button to
   `/give/`; the `#about` and `#give` anchors still exist. Giving instructions and accounts are managed from
-  the "Give page" screen (`donation_accounts.html`, Manage group in the sidebar), not from "Landing content".
+  the "Give page" tab of the Website hub (`donation_accounts.html`, reached from Manage > Website), not from the "Landing" tab.
 - `/about/` (`pages:about`, `about_view`) is in-app for every role (`role_required` with all four roles). It
   shows mission, vision and core values from `get_about_context()` (managed content, else `DEFAULT_ABOUT`; core
-  values are one per line) plus a Give section that links to `/give/`. About is its own nav item, not part of
-  Settings.
+  values are one per line) plus a Give section that links to `/give/`. About is its own link in the account menu in `topbar.html` (next to Settings), not part of Settings and not in `NAV_ITEMS`.
 - The public navbar links to `{{ landing_url }}#about` and the real `/give/` URL, and shows "Open app" instead
   of "Login" for a signed-in visitor. The shared footer is in normal flow and links to `/give/`.
 - Run `apps.pages.tests.test_give` and `apps.pages.tests.test_about` when changing these pages.
@@ -879,7 +881,7 @@ The source plan `docs/attendance.md` is not present in this checkout; the defaul
 - **Shared sections:** greeting (device clock, "Welcome" without JavaScript); verse of the day in the version from the
   `bible_version` cookie (`VERSION_COOKIE` in `services.py`, must match the reader); continue reading (newest
   `BibleChapterRead`, suggests the next chapter, crosses book ends); quick links taken from `NAV_ITEMS` through
-  `build_nav()` (so they always match the sidebar; Home and Django admin are left out; routes that do not exist yet
+  `build_nav()` (so they always match the sidebar; Home is left out; routes that do not exist yet
   show "Soon"); "Coming soon" cards for the Bible streak, goals and events (replace each with the real widget when
   its app has views).
 - **Leader overview:** headline tiles, people by role (not archived) and by status (everyone), people per extension
@@ -996,8 +998,19 @@ still in use), `archive_inactive_users`, `auto_transfer_extension`,
   (`user_settings.mobile_nav_style`, default `bottom`). The context processor
   `accounts.context_processors.navigation` supplies `nav` and `mobile_nav_style` and must be in `TEMPLATES`.
   To change a menu edit `NAV_ITEMS` in `accounts/navigation.py` (order = list order, `roles=`, `bottom=True`,
-  `group=`, `exact=True` for home pages); `icon` must exist in `static/icons/sprite.svg`. Unresolvable url
-  names render as disabled placeholders, never `NoReverseMatch`. `NAV_ITEMS` holds only strings (no imports
+  `short=` for a shorter label on the mobile bottom bar only, `group=`, `exact=True` for home pages); `icon` must
+  exist in `static/icons/sprite.svg`. Unresolvable url
+  names render as disabled placeholders, never `NoReverseMatch`.
+  **Hubs and page tabs:** a `NavItem` with `tabs="key"` is ONE sidebar link (to the first visible tab that resolves,
+  lit on every tab's pages) whose sub-pages are `TabItem`s in `SECTION_TABS["key"]`. Never put sub-pages in the
+  sidebar; add a `TabItem`. Hubs: `journey` (Goals | Attendance | Tithes), `people` (People | Guests | Approvals) and
+  `website` (Landing | Give page | Resources). `base_app.html` draws the tab row above `content` for every page whose
+  path belongs to a hub (`{% block hub_tabs %}{% hub_tabs %}{% endblock %}`, tag in `accounts/templatetags/nav_tags.py`,
+  markup in `includes/section_tabs.html`); a page hides it by overriding that block with an empty one, and
+  `{% section_tabs "key" %}` places a row by hand. A tab owns sibling pages with `TabItem.also` (url names) and whole
+  areas with `TabItem.prefixes` (literal path prefixes); the longest match wins. Sidebar groups: no heading (personal)
+  and "Manage" (leaders). Django admin is in the account menu in `topbar.html` for the super-admin only, not in
+  `NAV_ITEMS`. Tests: `apps.accounts.tests.test_navigation`. `NAV_ITEMS` holds only strings (no imports
   from feature apps). Hiding a link is not access control. Nav markup uses utility classes only (state
   classes are chosen in `nav_link.html`; nothing is added to `input.css`). The closed panel and the rail/content
   behind an open panel are `inert`. Rail tooltips are `position: fixed` via Alpine so the scrolling rail never

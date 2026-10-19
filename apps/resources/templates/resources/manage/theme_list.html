@@ -2,11 +2,11 @@
 resources/manage/theme_list.html
 Manager list of monthly themes with search, status filters, sorting, and pagination.
 Extends base_app.html. Blocks filled: title, page_title, content.
+The Website hub tab row (Landing | Give page | Resources) sits on top; the row below switches between the three resource lists.
 Context: form (ResourceFilterForm), page (Page of MonthlyTheme), total, status,
 querystring, and active_filters.
 -->
 {% extends "base_app.html" %}
-{% load ui_tags %}
 
 {% block title %}Monthly themes{% endblock %}
 {% block page_title %}Monthly themes{% endblock %}
