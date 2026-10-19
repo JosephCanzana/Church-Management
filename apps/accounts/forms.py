@@ -74,8 +74,8 @@ class RegistrationForm(forms.Form):
     municipality = forms.CharField(max_length=150)
     barangay = forms.CharField(max_length=150)
     postal_code = forms.CharField(max_length=10)
-    street = forms.CharField(max_length=150)
-    building_number = forms.CharField(max_length=50)
+    street = forms.CharField(max_length=150, required=False)
+    building_number = forms.CharField(max_length=50, required=False)
     submission_token = forms.CharField(widget=forms.HiddenInput)
     website = forms.CharField(required=False, widget=forms.HiddenInput)
 
@@ -83,7 +83,7 @@ class RegistrationForm(forms.Form):
         super().__init__(*args, **kwargs)
         self.fields["extension"].queryset = Extension.objects.filter(archived_at__isnull=True).order_by("name")
         self.fields["country"].choices = [("", "Choose a country")] + [(c, c) for c in COUNTRIES]
-        for name, field in self.fields.items():
+        for field in self.fields.values():
             if not isinstance(field.widget, forms.HiddenInput):
                 field.widget.attrs.setdefault("class", "input")
         self.fields["phone_number"].widget.attrs.update({"autocomplete": "tel", "inputmode": "tel"})
@@ -164,7 +164,7 @@ class ExtensionForm(forms.ModelForm):
 
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
-        for name, field in self.fields.items():
+        for field in self.fields.values():
             field.required = name not in self.OPTIONAL_FIELDS
 
         choices = [("", "Choose a country")] + [(c, c) for c in COUNTRIES]

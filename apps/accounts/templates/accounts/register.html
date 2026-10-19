@@ -1,5 +1,5 @@
 {% extends "base_public.html" %}
-{% load static %}
+{% load static ui_tags %}
 {% block title %}Request an account{% endblock %}
 {% block main_align %}items-start{% endblock %}
 {% block content %}
@@ -10,7 +10,8 @@
     <p class="mx-auto mt-3 max-w-xl text-base leading-relaxed text-txt-secondary">Share a few details and a church leader will review your request.</p>
   </header>
   {{ form.address_state|json_script:"address-state" }}
-  <form method="post" class="rounded-2xl border border-border bg-surface p-5 shadow-sm sm:p-8" x-data="addressForm('{% static 'data/ph_address.json' %}')">
+  <form method="post" class="rounded-2xl border border-border bg-surface p-5 shadow-sm sm:p-8" x-data="addressForm('{% static 'data/ph_address.json' %}')"
+        @submit="if (!confirmed) { $event.preventDefault(); $store.ui.openModal('confirm-request') }">
     {% csrf_token %}{{ form.submission_token }}<div class="hidden" aria-hidden="true">{{ form.website }}</div>
     {% if form.non_field_errors %}
     <div class="mb-6 rounded-lg border border-error/30 bg-error/5 p-3 text-sm text-error" role="alert">
@@ -66,7 +67,10 @@
       </div>
       <div>
         <label for="{{ form.street.id_for_label }}" class="label">{{ form.street.label }}<span class="font-normal text-txt-secondary"> (optional)</span></label>
-        {{ form.street }}
+        <div :class="usePicker && !barangay ? 'opacity-60' : ''"
+             x-effect="$el.querySelector('input, select, textarea').disabled = usePicker && !barangay">
+          {{ form.street }}
+        </div>
         {% for error in form.street.errors %}<p class="field-error" role="alert">{{ error }}</p>{% endfor %}
       </div>
       <div>
@@ -90,6 +94,31 @@
       <p class="text-sm text-txt-secondary">Your details are only used to review this account request.</p>
       <button class="btn btn-primary w-full sm:w-auto" type="submit">Submit request</button>
     </div>
+
+    {% modal "confirm-request" title="Submit your request?" width="max-w-md" %}
+      <p class="text-sm leading-relaxed text-txt-secondary">
+        A church leader will review your account request. Please check your details before submitting.
+      </p>
+      <dl class="mt-4 divide-y divide-border rounded-lg border border-border text-sm">
+        <template x-for="row in summary" :key="row.label">
+          <div class="flex gap-3 px-3 py-2" x-show="row.value">
+            <dt class="w-24 shrink-0 text-txt-secondary" x-text="row.label"></dt>
+            <dd class="min-w-0 break-words text-txt-primary" x-text="row.value"></dd>
+          </div>
+        </template>
+      </dl>
+      <div class="mt-6 flex flex-col-reverse gap-3 sm:flex-row sm:justify-end">
+        <button type="button" class="btn w-full sm:w-auto" @click="$store.ui.closeModal()">
+          Go back and edit
+        </button>
+        <button type="button" class="btn btn-primary w-full sm:w-auto"
+                :disabled="submitting"
+                @click="confirmSubmit($el.closest('form'))">
+          <span x-show="!submitting">Yes, submit</span>
+          <span x-show="submitting" x-cloak style="display:none">Submitting…</span>
+        </button>
+      </div>
+    {% endmodal %}
   </form>
 </main>
 {% endblock %}
@@ -105,13 +134,76 @@ document.addEventListener('alpine:init', () => {
     const start = JSON.parse(document.getElementById('address-state').textContent);
     return {
       country: start.country, province: start.province, municipality: start.municipality, barangay: start.barangay,
+      confirmed: false, submitting: false, summary: [],
       data: null, loading: false, failed: false,
       get isPH() { return lower(this.country) === 'philippines'; },
       get usePicker() { return this.isPH && !this.failed; },
       get provinceOptions() { return withCurrent(this.data ? Object.keys(this.data) : [], this.province); },
       get municipalityOptions() { const province = this.data?.[findKey(this.data, this.province)]; return withCurrent(province ? Object.keys(province) : [], this.municipality); },
       get barangayOptions() { const province = this.data?.[findKey(this.data, this.province)]; const list = province?.[findKey(province, this.municipality)]; return withCurrent(list || [], this.barangay); },
-      init() { if (this.isPH) this.load(); },
+      init() {
+        this.$nextTick(() => {
+          this.lockNumeric('phone_number', () => ({ plus: true, max: 16 }), 'tel');
+          this.lockNumeric('postal_code', () => this.isPH ? { max: 4 } : null, 'postal-code');
+        });
+        if (this.isPH) this.load();
+      },
+      lockNumeric(name, rule, autocomplete) {
+        const input = this.$root.querySelector(`[name="${name}"]`);
+        if (!input) return;
+        input.setAttribute('autocomplete', autocomplete);
+        const clean = () => {
+          const r = rule();
+          if (!r) { input.removeAttribute('maxlength'); input.inputMode = 'text'; return; }
+          input.inputMode = r.plus ? 'tel' : 'numeric';
+          if (r.max) input.maxLength = r.max;
+          const lead = r.plus && input.value.trim().startsWith('+') ? '+' : '';
+          const next = lead + input.value.replace(/\D/g, '');
+          if (next !== input.value) input.value = next;
+        };
+        input.addEventListener('input', clean);
+        this.$watch('country', clean);
+        clean();
+      },
+      openConfirm() {
+        const form = this.$root;
+        form.querySelectorAll('[data-client-error]').forEach(el => el.remove());
+        form.querySelectorAll('[aria-invalid]').forEach(el => el.removeAttribute('aria-invalid'));
+        const invalid = [...form.querySelectorAll(':invalid')];
+        if (invalid.length) {
+          invalid.forEach(el => {
+            el.setAttribute('aria-invalid', 'true');
+            const msg = document.createElement('p');
+            msg.className = 'field-error';
+            msg.setAttribute('role', 'alert');
+            msg.setAttribute('data-client-error', '');
+            msg.textContent = el.validity.valueMissing ? 'This field is required.' : el.validationMessage;
+            el.closest('div').appendChild(msg);
+            el.addEventListener('input', () => { msg.remove(); el.removeAttribute('aria-invalid'); }, { once: true });
+          });
+          invalid[0].focus();
+          return;
+        }
+        const fd = new FormData(form);
+        const val = key => String(fd.get(key) || '').trim();
+        const ext = form.querySelector('[name="extension"]');
+        const parts = keys => keys.map(val).filter(Boolean).join(', ');
+        this.summary = [
+          { label: 'Name', value: ['first_name', 'middle_name', 'last_name', 'suffix'].map(val).filter(Boolean).join(' ') },
+          { label: 'Email', value: val('email') },
+          { label: 'Phone', value: val('phone_number') },
+          { label: 'Address', value: parts(['building_number', 'street', 'barangay', 'municipality', 'province', 'postal_code', 'country']) },
+          { label: 'Extension', value: ext?.selectedOptions?.[0]?.textContent.trim() || val('extension') },
+        ];
+        this.$store.ui.openModal('confirm-request');
+      },
+      confirmSubmit(form) {
+        if (this.submitting) return;
+        if (!form.checkValidity()) return;
+        this.submitting = true; this.confirmed = true;
+        this.$store.ui.closeModal();
+        form.requestSubmit();
+      },
       async load() {
         if (this.data || this.loading) return;
         this.loading = true; this.failed = false;

@@ -122,12 +122,16 @@ def submit_registration(data, *, token):
     data["phone_number"] = clean_phone(data.get("phone_number", ""))
     if not data["phone_number"] or not is_valid_phone(data["phone_number"]):
         raise ServiceError(PHONE_MESSAGE)
+    optional_address = {"street", "building_number"}
     for field in ADDRESS_FIELDS:
         if field == "postal_code":
             data[field] = " ".join(str(data.get(field, "")).split())
         else:
             data[field] = clean_text(data.get(field, ""))
-    missing = [field.replace("_", " ") for field in ADDRESS_FIELDS if not data.get(field)]
+    missing = [
+        field.replace("_", " ") for field in ADDRESS_FIELDS
+        if field not in optional_address and not data.get(field)
+    ]
     if missing:
         raise ServiceError("Please complete the address: " + ", ".join(missing) + ".")
     address_errors = check_address({field: data[field] for field in ADDRESS_FIELDS})
