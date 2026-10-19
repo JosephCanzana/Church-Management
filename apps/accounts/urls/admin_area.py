@@ -11,10 +11,15 @@ from django.urls import include, path
 from ..views import default_passwords as defaults
 from ..views import special_roles as special
 from ..views import users as people
+from ..views import registration
 
 app_name = "admin_area"
 
 urlpatterns = [
+    path("registration-approvals/", registration.approval_list, name="registration_approvals"),
+    path("registration-approvals/<int:pk>/", registration.approval_detail, name="registration_detail"),
+    path("registration-approvals/<int:pk>/approve/", registration.approve, name="registration_approve"),
+    path("registration-approvals/<int:pk>/reject/", registration.reject, name="registration_reject"),
     path("default-passwords/", defaults.default_passwords, name="default_passwords"),
     path("users/", people.user_list, name="user_list"),
     path("users/new/", people.user_create, name="user_create"),

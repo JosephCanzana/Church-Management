@@ -79,6 +79,22 @@ Landing text blocks are managed by admins and the super-admin at
 Landing photos are managed on the same screen in separate Hero and gallery
 placements, with independent ordering and fallback images.
 
+### Public registration and approvals
+Visitors can request an account at `/accounts/register/`. Leaders review requests at
+`/superadmin/registration-approvals/`, `/admin/registration-approvals/` or
+`/coordinator/registration-approvals/`; coordinators see requests for their extension only.
+Approving creates or grants a member account, sends the account ID and temporary password by email,
+and requires a password change at first sign-in. If email delivery fails, the approver gets a
+one-page show-once credential view. Registration requests are retained for 90 days after a decision
+by the nightly `cleanup_registration_requests` job. Public POSTs are protected by a honeypot,
+single-use token and per-IP throttle; tune the `REGISTRATION_*` values in `.env` as needed.
+
+The super-admin's Site settings > Registration switch enables immediate approval only for a matching
+`member_record`. Anyone who knows that member's name and birth date can claim the record when this
+switch is on; guest matches and unmatched requests still go to leader review.
+Auto approval requires a configured non-console email backend; otherwise the request stays pending
+so a leader can use the secure show-once fallback.
+
 ## Project structure
 
 ```

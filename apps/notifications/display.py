@@ -22,6 +22,8 @@ TYPES = {
     "prayer_request": ("chat-bubble-left-ellipsis", "{actor} sent a prayer request."),
     "email_taken_over": ("envelope", "Your email address was verified on another account and removed from yours."),
     "admin_alert": ("exclamation-triangle", "{action} was recorded by {actor}."),
+    "registration_request": ("user-plus", "A registration request is waiting for review."),
+    "registration_email_failed": ("envelope", "An account email could not be sent. Review the account and issue a new password."),
 }
 
 # entity_type -> url name taking the entity id. A name that does not resolve yet falls back to the list page.
@@ -30,6 +32,8 @@ ENTITY_ROUTES = {
     "prayer_request": "prayer:detail",
     "attendance": "attendance:detail",
     "tithes_offering": "tithes:detail",
+    "registration_request": "superadmin:registration_detail",
+    "app_user": "superadmin:user_detail",
 }
 
 

@@ -432,3 +432,45 @@ class UserExtensionHistory(models.Model):
 
     class Meta:
         db_table = "user_extension_history"
+
+
+class RegistrationRequest(models.Model):
+    """A public request to join. Keep this record private; never copy its details to logs/notices."""
+
+    class Status(models.TextChoices):
+        PENDING = "pending", "Pending"
+        APPROVED = "approved", "Approved"
+        REJECTED = "rejected", "Rejected"
+        DUPLICATE = "duplicate", "Duplicate"
+
+    first_name = models.CharField(max_length=150)
+    middle_name = models.CharField(max_length=150, blank=True)
+    last_name = models.CharField(max_length=150)
+    suffix = models.CharField(max_length=10, blank=True)
+    birth_date = models.DateField()
+    gender = models.CharField(max_length=10, choices=Gender.choices)
+    email = models.EmailField()
+    extension = models.ForeignKey(Extension, on_delete=models.PROTECT, related_name="registration_requests")
+    phone_number = models.CharField(max_length=20)
+    building_number = models.CharField(max_length=50, blank=True)
+    street = models.CharField(max_length=150, blank=True)
+    barangay = models.CharField(max_length=150)
+    municipality = models.CharField(max_length=150)
+    province = models.CharField(max_length=150)
+    country = models.CharField(max_length=150)
+    postal_code = models.CharField(max_length=10)
+    status = models.CharField(max_length=20, choices=Status.choices, default=Status.PENDING)
+    matched_user = models.ForeignKey(User, null=True, blank=True, on_delete=models.SET_NULL, related_name="registration_requests")
+    decided_by = models.ForeignKey(User, null=True, blank=True, on_delete=models.SET_NULL, related_name="decided_registration_requests")
+    decided_at = models.DateTimeField(null=True, blank=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        db_table = "registration_request"
+        indexes = [
+            models.Index(fields=["status", "created_at"], name="ix_reg_request_status"),
+            models.Index(fields=["first_name", "last_name", "birth_date"], name="ix_reg_request_match"),
+        ]
+
+    def __str__(self):
+        return f"Registration request {self.pk}"

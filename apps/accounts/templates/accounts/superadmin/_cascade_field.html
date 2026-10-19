@@ -17,15 +17,16 @@ optional (pass True when the field may stay empty: no asterisk, no `required`; t
     {% if optional %}<span class="font-normal text-txt-secondary">(optional)</span>{% else %}<span class="text-error" aria-hidden="true">*</span>{% endif %}
   </label>
 
-  <select id="id_{{ key }}_select" name="{{ key }}" class="input" {% if not optional %}required{% endif %} disabled
-          style="display:none" x-show="usePicker" x-cloak
-          :disabled="!usePicker || {{ parent }}"
-          @change="{{ on_change }}">
-    <option value="" :selected="!{{ key }}">{{ placeholder }}</option>
-    <template x-for="opt in {{ options }}" :key="opt">
-      <option :value="opt" x-text="opt" :selected="opt === {{ key }}"></option>
-    </template>
-  </select>
+<select id="id_{{ key }}_select" name="{{ key }}" class="input disabled:cursor-not-allowed disabled:opacity-60" {% if not optional %}required{% endif %} disabled
+        style="display:none" x-show="usePicker" x-cloak
+        :disabled="!usePicker || {{ parent }}"
+        @change="{{ on_change }}">
+  <option value="" :selected="!{{ key }}"
+          x-text="({{ parent }}) ? 'Choose the area above first' : '{{ placeholder }}'">{{ placeholder }}</option>
+  <template x-for="opt in {{ options }}" :key="opt">
+    <option :value="opt" x-text="opt" :selected="opt === {{ key }}"></option>
+  </template>
+</select>
 
   {# A disabled fieldset disables (and skips) the input inside it; "contents" keeps the layout unchanged. #}
   <fieldset class="contents" :disabled="usePicker" x-show="!usePicker">

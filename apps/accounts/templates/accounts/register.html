@@ -1,0 +1,139 @@
+{% extends "base_public.html" %}
+{% load static %}
+{% block title %}Request an account{% endblock %}
+{% block main_align %}items-start{% endblock %}
+{% block content %}
+<main class="w-full max-w-4xl px-4 py-8 sm:py-12">
+  <header class="mx-auto mb-7 max-w-2xl text-center">
+    <p class="text-sm font-semibold uppercase tracking-[0.16em] text-accent">Church community</p>
+    <h1 class="mt-2 text-3xl font-bold tracking-tight text-txt-primary sm:text-4xl">Request an account</h1>
+    <p class="mx-auto mt-3 max-w-xl text-base leading-relaxed text-txt-secondary">Share a few details and a church leader will review your request.</p>
+  </header>
+  {{ form.address_state|json_script:"address-state" }}
+  <form method="post" class="rounded-2xl border border-border bg-surface p-5 shadow-sm sm:p-8" x-data="addressForm('{% static 'data/ph_address.json' %}')">
+    {% csrf_token %}{{ form.submission_token }}<div class="hidden" aria-hidden="true">{{ form.website }}</div>
+    {% if form.non_field_errors %}
+    <div class="mb-6 rounded-lg border border-error/30 bg-error/5 p-3 text-sm text-error" role="alert">
+      {% for error in form.non_field_errors %}<p>{{ error }}</p>{% endfor %}
+    </div>
+    {% endif %}
+    <p class="mb-6 text-sm text-txt-secondary">Fields marked <span class="text-error" aria-hidden="true">*</span> are required.</p>
+
+    <section aria-labelledby="personal-heading">
+      <h2 id="personal-heading" class="text-lg font-semibold text-txt-primary">Personal details</h2>
+      <p class="mt-1 text-sm text-txt-secondary">Tell us what to call you and how to reach you.</p>
+      <div class="mt-4 grid gap-4 sm:grid-cols-2">
+        {% for field in form %}{% if field.name == 'first_name' or field.name == 'middle_name' or field.name == 'last_name' or field.name == 'suffix' or field.name == 'birth_date' or field.name == 'gender' or field.name == 'email' or field.name == 'phone_number' %}
+        <div>
+          <label class="label" for="{{ field.id_for_label }}">{{ field.label }}{% if not field.field.required %}<span class="font-normal text-txt-secondary"> (optional)</span>{% else %}<span class="text-error" aria-hidden="true"> *</span>{% endif %}</label>
+          {{ field }}
+          {% for error in field.errors %}<p class="field-error" role="alert">{{ error }}</p>{% endfor %}
+        </div>
+        {% endif %}{% endfor %}
+      </div>
+    </section>
+
+  <section class="mt-8 border-t border-border pt-6" aria-labelledby="address-heading">
+    <h2 id="address-heading" class="text-lg font-semibold text-txt-primary">Home address</h2>
+    <p class="mt-1 text-sm text-txt-secondary" x-show="usePicker" x-cloak style="display:none">
+      Choose from the widest area down to the smallest. Each list follows the one above it.
+      <span x-show="loading">Loading the Philippine address list…</span>
+    </p>
+    <p class="field-error" x-show="failed" x-cloak style="display:none" role="alert">
+      The address list could not be loaded, so type the values instead. Reload the page to try again.
+    </p>
+
+    <div class="mt-4 grid gap-4 sm:grid-cols-2">
+      <div class="sm:col-span-2">
+        <label for="id_country" class="label">{{ form.country.label }}<span class="text-error" aria-hidden="true"> *</span></label>
+        <select id="id_country" name="country" class="input" required x-model="country" @change="onCountry($event)"
+                {% if form.country.errors %}aria-invalid="true"{% endif %}>
+          {% for value, label in form.country.field.choices %}
+          <option value="{{ value }}"{% if form.country.value == value %} selected{% endif %}>{{ label }}</option>
+          {% endfor %}
+        </select>
+        {% for error in form.country.errors %}<p class="field-error" role="alert">{{ error }}</p>{% endfor %}
+      </div>
+
+      {% include 'accounts/superadmin/_cascade_field.html' with field=form.province key='province' placeholder='Choose a province' options='provinceOptions' parent='false' on_change="province = $event.target.value; municipality = ''; barangay = ''" %}
+      {% include 'accounts/superadmin/_cascade_field.html' with field=form.municipality key='municipality' placeholder='Choose a municipality' options='municipalityOptions' parent='!province' on_change="municipality = $event.target.value; barangay = ''" %}
+      {% include 'accounts/superadmin/_cascade_field.html' with field=form.barangay key='barangay' placeholder='Choose a barangay' options='barangayOptions' parent='!municipality' on_change="barangay = $event.target.value" %}
+
+      <div>
+        <label for="{{ form.postal_code.id_for_label }}" class="label">{{ form.postal_code.label }}<span class="text-error" aria-hidden="true"> *</span></label>
+        {{ form.postal_code }}
+        {% for error in form.postal_code.errors %}<p class="field-error" role="alert">{{ error }}</p>{% endfor %}
+      </div>
+      <div>
+        <label for="{{ form.street.id_for_label }}" class="label">{{ form.street.label }}<span class="font-normal text-txt-secondary"> (optional)</span></label>
+        {{ form.street }}
+        {% for error in form.street.errors %}<p class="field-error" role="alert">{{ error }}</p>{% endfor %}
+      </div>
+      <div>
+        <label for="{{ form.building_number.id_for_label }}" class="label">{{ form.building_number.label }}<span class="font-normal text-txt-secondary"> (optional)</span></label>
+        {{ form.building_number }}
+        {% for error in form.building_number.errors %}<p class="field-error" role="alert">{{ error }}</p>{% endfor %}
+      </div>
+    </div>
+  </section>
+    <section class="mt-8 border-t border-border pt-6" aria-labelledby="church-heading">
+      <h2 id="church-heading" class="text-lg font-semibold text-txt-primary">Church</h2>
+      <p class="mt-1 text-sm text-txt-secondary">Choose the extension you attend.</p>
+      <div class="mt-4 sm:max-w-md">
+        <label class="label" for="{{ form.extension.id_for_label }}">{{ form.extension.label }}<span class="text-error" aria-hidden="true"> *</span></label>
+        {{ form.extension }}
+        {% for error in form.extension.errors %}<p class="field-error" role="alert">{{ error }}</p>{% endfor %}
+      </div>
+    </section>
+
+    <div class="mt-8 flex flex-col-reverse gap-3 border-t border-border pt-6 sm:flex-row sm:items-center sm:justify-between">
+      <p class="text-sm text-txt-secondary">Your details are only used to review this account request.</p>
+      <button class="btn btn-primary w-full sm:w-auto" type="submit">Submit request</button>
+    </div>
+  </form>
+</main>
+{% endblock %}
+
+{% block extra_js %}
+<script>
+document.addEventListener('alpine:init', () => {
+  let phData = null;
+  const lower = value => (value || '').toLowerCase();
+  const findKey = (obj, name) => (obj && name) ? (Object.keys(obj).find(key => lower(key) === lower(name)) ?? null) : null;
+  const withCurrent = (names, current) => current && !names.some(name => lower(name) === lower(current)) ? [current, ...names] : names;
+  Alpine.data('addressForm', dataUrl => {
+    const start = JSON.parse(document.getElementById('address-state').textContent);
+    return {
+      country: start.country, province: start.province, municipality: start.municipality, barangay: start.barangay,
+      data: null, loading: false, failed: false,
+      get isPH() { return lower(this.country) === 'philippines'; },
+      get usePicker() { return this.isPH && !this.failed; },
+      get provinceOptions() { return withCurrent(this.data ? Object.keys(this.data) : [], this.province); },
+      get municipalityOptions() { const province = this.data?.[findKey(this.data, this.province)]; return withCurrent(province ? Object.keys(province) : [], this.municipality); },
+      get barangayOptions() { const province = this.data?.[findKey(this.data, this.province)]; const list = province?.[findKey(province, this.municipality)]; return withCurrent(list || [], this.barangay); },
+      init() { if (this.isPH) this.load(); },
+      async load() {
+        if (this.data || this.loading) return;
+        this.loading = true; this.failed = false;
+        try {
+          if (!phData) { const response = await fetch(dataUrl); if (!response.ok) throw new Error(response.status); phData = await response.json(); }
+          this.data = phData;
+          const p = findKey(this.data, this.province);
+          if (p) {
+            this.province = p;
+            const m = findKey(this.data[p], this.municipality);
+            if (m) { this.municipality = m; const b = (this.data[p][m] || []).find(item => lower(item) === lower(this.barangay)); if (b) this.barangay = b; }
+          }
+        } catch (error) { this.failed = true; }
+        finally { this.loading = false; }
+      },
+      onCountry() {
+        this.province = ''; this.municipality = ''; this.barangay = '';
+        this.$root.querySelectorAll('fieldset input').forEach(input => { input.value = ''; });
+        if (this.isPH) this.load();
+      },
+    };
+  });
+});
+</script>
+{% endblock %}

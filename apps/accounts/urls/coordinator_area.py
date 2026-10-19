@@ -11,10 +11,15 @@ from django.urls import include, path
 
 from ..views import special_roles as special
 from ..views import users as people
+from ..views import registration
 
 app_name = "coordinator_area"
 
 urlpatterns = [
+    path("registration-approvals/", registration.approval_list, name="registration_approvals"),
+    path("registration-approvals/<int:pk>/", registration.approval_detail, name="registration_detail"),
+    path("registration-approvals/<int:pk>/approve/", registration.approve, name="registration_approve"),
+    path("registration-approvals/<int:pk>/reject/", registration.reject, name="registration_reject"),
     # A coordinator keeps no default password of their own: the button shows the global member one.
     path("default-password/", people.default_password_show, name="default_password_show"),
     path("users/", people.user_list, name="user_list"),

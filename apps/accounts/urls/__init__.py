@@ -8,10 +8,12 @@ from django.urls import path
 
 from .. import views
 from ..views import password_reset, profile
+from ..views import registration
 
 app_name = "accounts"
 
 urlpatterns = [
+    path("register/", registration.register, name="register"),
     path("login/", views.login_view, name="login"),
     path("logout/", views.logout_view, name="logout"),
     path("change-password/", views.change_password_view, name="change_password"),

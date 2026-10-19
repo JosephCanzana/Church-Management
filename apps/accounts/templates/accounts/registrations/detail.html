@@ -1,0 +1,21 @@
+{% extends "base_app.html" %}
+{% block title %}Registration request{% endblock %}
+{% block page_title %}Registration request{% endblock %}
+{% block content %}
+<section class="max-w-3xl space-y-6 rounded-2xl border border-border bg-surface p-6">
+  <div><h2 class="text-xl font-semibold">{{ registration.first_name|title }} {{ registration.middle_name|title }} {{ registration.last_name|title }} {{ registration.suffix|upper }}</h2>
+    <p class="mt-1 text-lg font-medium text-accent">{{ registration.email }}</p>
+    <p class="text-sm text-txt-secondary">Check the email address carefully before approving.</p></div>
+  <dl class="grid gap-3 sm:grid-cols-2 text-sm">
+    <div><dt class="text-txt-secondary">Birth date</dt><dd>{{ registration.birth_date }}</dd></div>
+    <div><dt class="text-txt-secondary">Gender</dt><dd>{{ registration.get_gender_display }}</dd></div>
+    <div><dt class="text-txt-secondary">Extension</dt><dd>{{ registration.extension.name|title }}</dd></div>
+    <div><dt class="text-txt-secondary">Phone</dt><dd>{{ registration.phone_number }}</dd></div>
+    <div class="sm:col-span-2"><dt class="text-txt-secondary">Address</dt><dd>{{ registration.building_number }} {{ registration.street }}, {{ registration.barangay|title }}, {{ registration.municipality|title }}, {{ registration.province|title }}, {{ registration.country|title }} {{ registration.postal_code }}</dd></div>
+  </dl>
+  <div class="flex flex-wrap gap-3">
+    <form method="post" action="{% url request.resolver_match.namespace|add:':registration_approve' registration.pk %}" class="w-full max-w-md space-y-3">{% csrf_token %}<input type="hidden" name="submission_token" value="{{ token }}"><label class="label" for="approval-email">Email for the account and password</label><input class="input" id="approval-email" type="email" name="email" maxlength="254" required value="{{ registration.email }}"><p class="text-sm text-txt-secondary">Correct a typo here before approving if needed.</p><button class="btn btn-primary" type="submit">Approve and email account details</button></form>
+    <form method="post" action="{% url request.resolver_match.namespace|add:':registration_reject' registration.pk %}">{% csrf_token %}<input type="hidden" name="submission_token" value="{{ token }}"><button class="btn btn-danger" type="submit">Reject request</button></form>
+  </div>
+</section>
+{% endblock %}

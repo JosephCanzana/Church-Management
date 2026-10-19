@@ -10,10 +10,18 @@ from ..views import default_passwords as defaults
 from ..views import special_roles as special
 from ..views import superadmin as views
 from ..views import users as people
+from ..views import registration
+from .. import registration_site_section  # noqa: F401 (registers site setting section)
+from ..views.site_settings import registration_auto_approve_toggle
 
 app_name = "superadmin"
 
 urlpatterns = [
+    path("site-settings/registration-auto-approve/", registration_auto_approve_toggle, name="registration_auto_approve"),
+    path("registration-approvals/", registration.approval_list, name="registration_approvals"),
+    path("registration-approvals/<int:pk>/", registration.approval_detail, name="registration_detail"),
+    path("registration-approvals/<int:pk>/approve/", registration.approve, name="registration_approve"),
+    path("registration-approvals/<int:pk>/reject/", registration.reject, name="registration_reject"),
     path("extensions/", views.extension_list, name="extension_list"),
     path("extensions/new/", views.extension_create, name="extension_create"),
     path("extensions/bulk/", views.extension_bulk, name="extension_bulk"),

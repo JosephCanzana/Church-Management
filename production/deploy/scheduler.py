@@ -30,6 +30,7 @@ NIGHTLY = [
     "auto_transfer_extension",
     "complete_ended_goals",
     "cleanup_email_tokens",
+    "cleanup_registration_requests",
     "cleanup_notifications",
     "cleanup_audit_log",
     "purge_archived",

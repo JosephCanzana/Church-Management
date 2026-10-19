@@ -58,6 +58,60 @@ class LoginForm(forms.Form):
         return value
 
 
+class RegistrationForm(forms.Form):
+    """Public registration form. The token and honeypot are handled by the view/service."""
+    first_name = forms.CharField(max_length=150)
+    middle_name = forms.CharField(max_length=150, required=False)
+    last_name = forms.CharField(max_length=150)
+    suffix = forms.CharField(max_length=10, required=False)
+    birth_date = forms.DateField(widget=forms.DateInput(attrs={"type": "date"}))
+    gender = forms.ChoiceField(choices=Gender.choices)
+    email = forms.EmailField(max_length=254)
+    extension = forms.ModelChoiceField(queryset=Extension.objects.none())
+    phone_number = forms.CharField(max_length=20)
+    country = forms.ChoiceField(choices=[], initial="Philippines")
+    province = forms.CharField(max_length=150)
+    municipality = forms.CharField(max_length=150)
+    barangay = forms.CharField(max_length=150)
+    postal_code = forms.CharField(max_length=10)
+    street = forms.CharField(max_length=150)
+    building_number = forms.CharField(max_length=50)
+    submission_token = forms.CharField(widget=forms.HiddenInput)
+    website = forms.CharField(required=False, widget=forms.HiddenInput)
+
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        self.fields["extension"].queryset = Extension.objects.filter(archived_at__isnull=True).order_by("name")
+        self.fields["country"].choices = [("", "Choose a country")] + [(c, c) for c in COUNTRIES]
+        for name, field in self.fields.items():
+            if not isinstance(field.widget, forms.HiddenInput):
+                field.widget.attrs.setdefault("class", "input")
+        self.fields["phone_number"].widget.attrs.update({"autocomplete": "tel", "inputmode": "tel"})
+        self.fields["email"].widget.attrs["autocomplete"] = "email"
+        self.fields["country"].widget.attrs.update({"x-model": "country", "@change": "onCountry()"})
+
+    @property
+    def address_state(self):
+        """Current address values used to initialize the cascading address picker."""
+        return {name: self[name].value() or "" for name in HIERARCHY}
+
+    def clean(self):
+        cleaned = super().clean()
+        for name in ("first_name", "middle_name", "last_name", "suffix", "province", "municipality", "barangay", "street", "building_number", "country"):
+            if name in cleaned:
+                cleaned[name] = clean_text(cleaned[name])
+        if "phone_number" in cleaned:
+            phone = clean_phone(cleaned["phone_number"])
+            if not is_valid_phone(phone):
+                self.add_error("phone_number", PHONE_MESSAGE)
+            cleaned["phone_number"] = phone
+        if all(cleaned.get(k) is not None for k in ("country", "province", "municipality", "barangay", "postal_code")):
+            address = {key: cleaned.get(key, "") for key in ADDRESS_FIELDS}
+            for field, message in check_address(address).items():
+                self.add_error(field, message)
+        return cleaned
+
+
 # ============================================================ extensions
 class ExtensionForm(forms.ModelForm):
     """Create or edit an extension. The view passes `cleaned_data` to the service.

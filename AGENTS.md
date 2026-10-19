@@ -19,6 +19,7 @@ buddies, prayer requests, events, resources, notifications and audit logging.
     admin (`/admin/users/`) and coordinator (`/coordinator/users/`); optional contact details (suffix, phone, address);
     special member roles with per-extension limits (`/admin/special-roles/`, `/superadmin/special-roles/`); default
     passwords for the super-admin and admins (see People screens for admin and coordinator).
+  - Public registration and approvals (`/accounts/register/`, role-scoped registration approval inboxes), matching, one-time password emails and nightly request cleanup (see Accounts).
   - A global toast and confirm dialog (`static/js/ui.js`, rendered by `includes/messages.html`).
   - Bible: reader with three versions (KJV and Ang Dating Biblia from the database, ESV from api.esv.org), version
     picker with locking, chapter reads (Next counts a chapter as read), a per-account bookmark, ESV call limits, locks and a size-capped cache, and the super-admin
@@ -29,8 +30,6 @@ buddies, prayer requests, events, resources, notifications and audit logging.
     summary, upload, reopen, the sheet screens for every role, A4 print page, first timer conversion, repeat-visitor
     auto-transfer, reset-to-password-change, guest promotion and personal history (see Attendance).
 - **Not built yet:**
-  - The rest of the access revamp: tags and the guests screen, public Register and approvals
-    (decided, see Access revamp). Brick 1 (people types, trimmed statuses, password change, sign-in rules) is built.
   - Brute-force login throttling.
   - The `faith` listener that turns a chapter read into a streak, MBBTAG. The dashboards show "Coming soon"
     cards for the Bible streak, goals and events until those apps have views.
@@ -318,58 +317,6 @@ with. Only create a new app if the answer is "none".
 - **Tests never call outside services.** Mock `apps.bible.esv.esv_client.fetch_chapter`; tests that depend on ESV
   being locked or open set `ESV_API_KEY` with `override_settings`, so a real key in `.env` never changes them.
 
-## Access revamp: people types, registration, approvals (bricks 1 to 3 built; registration remains)
-This section records decisions made before the work starts. Brick 1 (types, statuses, password change, sign-in rules) is
-built and its rules now live under Accounts. Brick 2 (people screens and the guests list) is built and its rules now live under
-People screens for admin and coordinator. The sections below it (Attendance) still describe the code as it is
-today where a bullet here replaces them; the older bullet is rewritten in the same change that implements it. Until a brick
-lands, do not apply a rule from here on its own: a half-applied rule breaks login. When a brick lands, move its rules into the
-right section above and delete them here.
-
-### Registration (public Register page)
-- **Table `registration_request`** (`accounts` app): first, middle, last name, suffix, birth date, gender, email, extension,
-  the address parts (same as `app_user`), phone, `status` (`pending`, `approved`, `rejected`, `duplicate`), `matched_user`
-  (nullable), `decided_by`, `decided_at`, `created_at`. Everything is required on the form except the middle name and suffix
-  where the person has none. Names are stored lowercase (`core.text.clean_text`), phone as digits, address through
-  `check_address`, like the people screens.
-- **Privacy:** a request's personal data (name, birth date, email, phone, address) is NEVER written to `audit_log`,
-  `notification.data` or logs. Audit rows carry ids and counts only.
-- **Matching, in this order** (`accounts/services/registration.py`, one function, one transaction):
-  1. A suspended person who matches (same name, suffix and birth date) is refused with a neutral message.
-  2. A `member_record` match (name plus birth date) is approved at once only when the site setting
-     `registration_auto_approve` is on; otherwise it is pending.
-  3. A `guest` match, or no match at all, is always pending. Nobody is approved automatically without a match.
-  4. A match to an existing `member_account` shows the same neutral message as a refusal; the form never says who has an account.
-- **`registration_auto_approve`:** a `site_setting` key, default off, editable by the super-admin only (add it to Site
-  settings sections). Turning it on lets anyone who knows a record member's name and birth date claim that record: say so on
-  the settings screen.
-- **Duplicates:** same name and same email while a request is pending shows "You already have submitted your request." A
-  different email for the same name and birth date IS accepted (a person correcting a typo) and is grouped with the earlier one
-  as "possible duplicates"; at most 3 pending requests per name and birth date. A newer request never replaces an older one
-  (that would let a stranger swap the email).
-- **Spam:** honeypot field, a one-time `submission_token`, and a per-IP throttle on the POST. The Register route is public, so it
-  is `never_cache`, rejects anyone already signed in, and tests mock the mailer.
-- **Cleanup:** a nightly `cleanup_registration_requests` command deletes decided requests after a retention period.
-
-### Approval
-- **Who:** the coordinator of the requested extension, admins and the super-admin (`registration_requests_for(actor)` is the only
-  scoping helper; a request outside reach looks like one that no longer exists). A new request raises a bell item for them that
-  says only that a request exists (`notify_many`, no personal data in `notification.data`).
-- **Approve:** one transaction, one-time token, locks the request row, calls `create_user` (or `grant_account` for a matched
-  record) with `person_type=member_account`, the requested extension, the default MEMBER password under the existing default
-  password rules, `must_change_password=True`. It closes every other pending request in the same duplicate group as `duplicate`,
-  so one person never gets two accounts. Logs `registration.approve` with ids only. Reject logs `registration.reject`.
-- **Email:** after commit, one email to the registered address with the Account ID, the sign-in link and the password. This is
-  a deliberate exception to "passwords are shown once": the password is the shared default and must be changed at the first
-  sign-in. It is never logged, audited, stored on the request or put in the session. If sending fails, the approver gets the
-  existing show-once dialog instead. The approval screen shows the email address prominently so the approver can catch a typo.
-- **Wrong email already approved:** a leader edits the email, resets the password (this ends any session the wrong person
-  opened) and gives the new password through the show-once dialog.
-
-### Attendance and later work
-- Tithes (not built) accept only `member_record` and `member_account`, never guests.
-- Update `docs/schema.sql`, `docs/flows.md`, `docs/verify.sql`, `README.md` and this file in each brick's change.
-
 ## Accounts: login, status, password change, profile
 - **Type vs status vs role are three separate things.** `User.person_type` (`accounts.models.PersonType`, next to `Gender` and
   `AgeNetwork`): `guest` (a non-member who has attended), `member_record` (shown as "Member (no account)": a member whose
@@ -377,6 +324,7 @@ right section above and delete them here.
   `role` still means the four roles; a database check (`app_user_non_account_is_member`) says only `member` can be a guest or
   a no-account member. `status` is `active`, `suspended` or `archived`. "Needs password change" is the `must_change_password`
   flag, shown as a tag (`User.tag_codes`, see People screens), never a status. "Deactivated" and "Not activated" no longer exist anywhere.
+  When tithes screens are built, accept only `member_record` and `member_account`, never guests.
 - **Account id is generated for every person** in `User.save()`, guests and no-account members included (the login field stays
   non-null). Never reused, never edited. Guests and no-account members get `set_unusable_password()` (`UserManager.create_user`,
   `_set_initial_password` returns `PasswordInfo("none")`), and a reset refuses them.
@@ -426,6 +374,7 @@ right section above and delete them here.
   except `accounts:change_password` and `accounts:logout` while the flag is set. Tests that sign a user in create them with
   `must_change_password=False` and `person_type="member_account"`, or the middleware redirects every request. No
   `notification_rule` row used the old action names, so there was nothing to migrate there.
+- **Registration and approvals:** `RegistrationRequest` (`registration_request`) stores public requests. Names are normalized with `core.text.clean_text`, phone digits with the accounts contact helper, and addresses are checked with `accounts.address.check_address`. Request personal data (name, birth date, email, phone, address) is NEVER written to `audit_log`, `notification.data` or logs; audit data contains ids/counts only. `/accounts/register/` is public, `never_cache`, rejects signed-in users and uses a honeypot, one-time `submission_token` and per-IP throttle. Suspended exact matches and any `member_account` match receive the same neutral refusal. Guest and unmatched requests remain pending. A matching `member_record` is auto-approved only when `site_setting.registration_auto_approve` is on and a non-console email backend is configured; otherwise it stays pending. The switch is super-admin-only and warns that anyone who knows the member's name and birth date can claim the record. Pending same-identity/same-email repeats report the duplicate message; corrected emails join the same possible-duplicate group, capped at three pending requests per name and birth date. `registration_requests_for(actor)` is the only approval scope: admins/super-admins see all; coordinators see their extension. Approval creates or grants a `member_account` with the requested extension, default MEMBER password and `must_change_password=True`, and closes other pending same-identity requests as `duplicate`. One email sends Account ID, sign-in URL and temporary password. If email fails, a show-once page presents the credentials. Passwords never enter audit, notification, logs, request rows or session. `cleanup_registration_requests` nightly deletes decided requests after `REGISTRATION_REQUEST_RETENTION_DAYS` (default 90).
 - **Profile:** `/accounts/profile/` (every role; `login_required`, `never_cache`). Services in `accounts/services/profile.py`,
   views in `accounts/views/profile.py`, forms `ProfileDetailsForm` / `ProfileEmailForm` / `ChangePasswordForm`. Users edit only
   their birth date and photo. `User.email` is verified only; an unverified address is `pending_email`. A verified address is
@@ -858,7 +807,7 @@ The source plan `docs/attendance.md` is not present in this checkout; the defaul
   A section is a `SiteSection` (key, title, icon, partial template, `context(request)`, order) added with
   `register_section(...)` from `accounts/site_sections.py`. To add a function: write its partial and its POST views, register
   the section from the owning app (import the module once, for example from that app's urls). The shell needs no change.
-  Sections today: `bible` (`apps/bible/site_section.py`, order 10) and `special-roles` (order 20). `accounts` never imports
+  Sections today: `bible` (`apps/bible/site_section.py`, order 10), `special-roles` (order 20) and `registration` (order 30). `accounts` never imports
   feature apps; they register themselves. A section's POST views keep their own `role_required` and service guard: the
   registry only decides what is displayed. Section icons must exist in `sprite.svg`.
 - **Special-role limits live in two places with one panel.** The super-admin uses the "Special roles" section; an admin uses
@@ -955,7 +904,7 @@ The source plan `docs/attendance.md` is not present in this checkout; the defaul
 `purge_archived` (core, children first, files before rows, skips extensions
 still in use), `archive_inactive_users`, `auto_transfer_extension`,
 `cleanup_email_tokens` (accounts), `complete_ended_goals` (faith),
-`cleanup_notifications`, `cleanup_audit_log`; every 15 minutes
+`cleanup_notifications`, `cleanup_registration_requests`, `cleanup_audit_log`; every 15 minutes
 `send_event_reminders`; hourly `fetch_jil_videos`. Jobs log with
 `source='system_job'` and no actor. (`import_bible` is run by hand, not on a schedule.)
 

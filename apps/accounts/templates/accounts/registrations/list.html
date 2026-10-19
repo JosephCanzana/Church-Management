@@ -1,0 +1,14 @@
+{% extends "base_app.html" %}
+{% block title %}Registration approvals{% endblock %}
+{% block page_title %}Registration approvals{% endblock %}
+{% block content %}
+<section class="space-y-4">
+  <p class="text-sm text-txt-secondary">Pending account requests for extensions you manage.</p>
+  {% for item in requests %}
+  <a href="{% url request.resolver_match.namespace|add:':registration_detail' item.pk %}" class="block rounded-xl border border-border bg-surface p-4 hover:bg-bg">
+    <div class="flex flex-wrap items-center justify-between gap-2"><span class="font-semibold text-txt-primary">{{ item.first_name|title }} {{ item.last_name|title }}</span><span class="text-sm text-txt-secondary">{{ item.extension.name|title }} · {{ item.created_at|date:"j M Y" }}</span></div>
+    <p class="mt-1 text-sm text-txt-secondary">{{ item.email }}</p>
+  </a>
+  {% empty %}<p class="rounded-xl border border-border bg-surface p-6 text-txt-secondary">There are no pending requests.</p>{% endfor %}
+</section>
+{% endblock %}

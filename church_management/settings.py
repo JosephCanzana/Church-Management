@@ -199,6 +199,11 @@ RESET_LINK_MINUTES = config("RESET_LINK_MINUTES", default=30, cast=int)
 RESET_RESEND_SECONDS = config("RESET_RESEND_SECONDS", default=60, cast=int)
 RESET_MAX_PER_HOUR = config("RESET_MAX_PER_HOUR", default=5, cast=int)
 
+# Public registration anti-spam and decided-request retention.
+REGISTRATION_IP_WINDOW_SECONDS = config("REGISTRATION_IP_WINDOW_SECONDS", default=3600, cast=int)
+REGISTRATION_IP_MAX_SUBMISSIONS = config("REGISTRATION_IP_MAX_SUBMISSIONS", default=5, cast=int)
+REGISTRATION_REQUEST_RETENTION_DAYS = config("REGISTRATION_REQUEST_RETENTION_DAYS", default=90, cast=int)
+
 
 # Use our backend so people can log in with an account id OR a verified email.
 # It also keeps /django-admin/ login working (it accepts Django's "username" argument).
