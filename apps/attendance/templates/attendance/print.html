@@ -132,6 +132,7 @@ unreliable across browsers). The toolbar is screen-only.
         <col>
         <col style="width: 26mm">
         {% for i in "12345678" %}<col style="width: 10mm">{% endfor %}
+        <col style="width: 8mm">
         <col style="width: 9mm">
       </colgroup>
       <thead>
@@ -141,7 +142,8 @@ unreliable across browsers). The toolbar is screen-only.
           <th rowspan="2" scope="col">Belongs to</th>
           <th colspan="4" scope="colgroup" class="sep">Men</th>
           <th colspan="4" scope="colgroup" class="sep">Women</th>
-          <th rowspan="2" scope="col" class="sep">FT</th>
+          <th rowspan="2" scope="col" class="sep">G</th>
+          <th rowspan="2" scope="col">FT</th>
         </tr>
         <tr>
           {% for code, head in heads %}<th scope="col"{% if forloop.first %} class="sep"{% endif %}>{{ head }}</th>{% endfor %}
@@ -155,10 +157,11 @@ unreliable across browsers). The toolbar is screen-only.
           <td class="name">{{ row.name }}{% if row.needs_category %} <span class="miss">(no category yet)</span>{% endif %}</td>
           <td class="belongs">{{ row.belongs|title_case }}</td>
           {% for cell in row.cells %}<td class="tick{% if forloop.counter0 == 0 or forloop.counter0 == 4 %} sep{% endif %}">{% if cell %}&#10003;{% endif %}</td>{% endfor %}
+          <td class="tick sep">{% if row.guest %}&#10003;{% endif %}</td>
           <td class="tick sep">{% if row.first_timer %}&#10003;{% endif %}</td>
         </tr>
         {% empty %}
-        <tr><td colspan="12" class="empty">Nobody is marked yet.</td></tr>
+        <tr><td colspan="13" class="empty">Nobody is marked yet.</td></tr>
         {% endfor %}
       </tbody>
     </table>
@@ -203,6 +206,7 @@ unreliable across browsers). The toolbar is screen-only.
         <p>Young adult (YA): 25 to 35</p>
         <p>Youth: 13 to 24</p>
         <p>Children (C): 0 to 12</p>
+        <p>G: guest</p>
         <p>FT: first timer</p>
       </div>
     </section>

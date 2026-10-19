@@ -1,0 +1,18 @@
+<!--
+attendance/convert_result.html
+Shown after promoting a guest to a member record. This action preserves the same person row,
+does not create a sign-in account, and does not issue a password or printable welcome slip.
+Context: sheet, member, sheet_url.
+-->
+{% extends 'base_app.html' %}
+
+{% block title %}Member record updated{% endblock %}
+{% block page_title %}Member record updated{% endblock %}
+
+{% block content %}
+<div class="card max-w-xl space-y-3">
+  <p class="text-base text-txt-primary">{{ member.full_name }} is now recorded as a member. Their person record and attendance history were kept.</p>
+  <p class="text-sm text-txt-secondary">This creates a member record without a sign-in account. An admin can grant an account later if needed.</p>
+  <a class="btn btn-primary" href="{{ sheet_url }}">Back to the sheet</a>
+</div>
+{% endblock %}

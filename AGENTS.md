@@ -27,9 +27,9 @@ buddies, prayer requests, events, resources, notifications and audit logging.
     reading, quick links and, for leaders, counts and charts (see Dashboards).
   - Attendance (bricks 1 to 14): gender and age networks, model changes, permissions and scoping, draft services,
     summary, upload, reopen, the sheet screens for every role, A4 print page, first timer conversion, repeat-visitor
-    auto-transfer, reset-to-password-change, 58 mm welcome slip and personal history (see Attendance).
+    auto-transfer, reset-to-password-change, guest promotion and personal history (see Attendance).
 - **Not built yet:**
-  - The rest of the access revamp: tags and the guests screen, attendance guests, public Register and approvals
+  - The rest of the access revamp: tags and the guests screen, public Register and approvals
     (decided, see Access revamp). Brick 1 (people types, trimmed statuses, password change, sign-in rules) is built.
   - Brute-force login throttling.
   - The `faith` listener that turns a chapter read into a streak, MBBTAG. The dashboards show "Coming soon"
@@ -318,7 +318,7 @@ with. Only create a new app if the answer is "none".
 - **Tests never call outside services.** Mock `apps.bible.esv.esv_client.fetch_chapter`; tests that depend on ESV
   being locked or open set `ESV_API_KEY` with `override_settings`, so a real key in `.env` never changes them.
 
-## Access revamp: people types, registration, approvals (bricks 1 and 2 built; the rest decided, NOT built yet)
+## Access revamp: people types, registration, approvals (bricks 1 to 3 built; registration remains)
 This section records decisions made before the work starts. Brick 1 (types, statuses, password change, sign-in rules) is
 built and its rules now live under Accounts. Brick 2 (people screens and the guests list) is built and its rules now live under
 People screens for admin and coordinator. The sections below it (Attendance) still describe the code as it is
@@ -365,15 +365,8 @@ right section above and delete them here.
   existing show-once dialog instead. The approval screen shows the email address prominently so the approver can catch a typo.
 - **Wrong email already approved:** a leader edits the email, resets the password (this ends any session the wrong person
   opened) and gives the new password through the show-once dialog.
-- The 58 mm welcome slip is removed (see Attendance below).
 
 ### Attendance and later work
-- Adding a first timer creates a `guest` person for that extension and links it to the first-timer row. The "same person?" prompt
-  uses `find_duplicate_people`, so a returning guest is ticked present instead of getting a second row.
-- `search_people` returns active people of every type. `AttendanceMember` also snapshots `person_type`, and the summary shows
-  guests separately; frozen summaries still never change after upload.
-- `convert_first_timer` becomes promotion (guest to member). The welcome slip (template, print code, any `convert_result`
-  slip section) is deleted. Accounts a leader creates keep the show-once dialog.
 - Tithes (not built) accept only `member_record` and `member_account`, never guests.
 - Update `docs/schema.sql`, `docs/flows.md`, `docs/verify.sql`, `README.md` and this file in each brick's change.
 
@@ -620,20 +613,19 @@ right section above and delete them here.
   stored as a hash plus an encrypted copy (`DefaultPassword.password_encrypted`, key `DEFAULT_PASSWORD_KEY`).
 
 ## Attendance
-> **Access revamp pending:** the Account reset, Welcome slip and First timer to member bullets below change (guests,
-> promotion, no slip); see Access revamp.
-Bricks 1 to 14 are implemented. In addition to the sheet workflow, first-timer conversion and "My attendance":
+Bricks 1 to 14 and the attendance integration for the Access revamp are implemented. In addition to the sheet workflow,
+guest promotion and "My attendance":
 - **Repeat visitors (brick 11):** after three distinct uploaded sheets at an extension, an active member whose home extension differs is transferred there. A draft or a single visit never changes their extension. The transfer is performed by `accounts.services.users.auto_transfer_visitor`, updates `user_extension_history` with reason `auto_transfer`, clears extension-specific roles, and logs extension ids only.
 - **Account reset (brick 12):** a reset sets `must_change_password=True` (the status is left as it is); the account id remains the sign-in identifier and a password change is required on the next login. The password hash change ends existing sessions.
-- **Welcome slip (brick 13):** first-timer conversion offers a browser-printable 58 mm receipt. It is rendered only in the uncached one-time response; a generated password can be printed, while default/typed credentials require the leader to hand over the password separately. No printer driver or server-side PDF dependency is used.
 - **My attendance (brick 14):** own uploaded-sheet history only, newest first, with no user id accepted from the request. The first-visit row appears once its sheet is uploaded.
 
 The source plan `docs/attendance.md` is not present in this checkout; the defaults above are the implemented acceptance assumptions.
 - **Models** (`attendance/models.py`): `Attendance` (one sheet per extension, date and label; `taken_by`, `uploaded_by`,
   frozen `summary` JSON that is NULL while a draft; `is_locked` is true when uploaded), `AttendanceMember` (a tick, with a
-  SNAPSHOT of name, gender, age network and home extension taken at tick time; gender and age network may be blank until the
-  taker fills them in), `AttendanceFirstTimer` (first, middle, last name, suffix, required gender and age network, optional
-  phone and birth date; names stored lowercase and cleaned in `save()`, shown with `full_name`).
+  SNAPSHOT of name, person type, gender, age network and home extension taken at tick time; gender and age network may be blank
+  until the taker fills them in), `AttendanceFirstTimer` (first, middle, last name, suffix, required gender and age network,
+  optional phone and birth date, linked guest, and converted person; names stored lowercase and cleaned in `save()`, shown with
+  `full_name`).
 - **Age networks** (`attendance/age.py`): `AgeNetwork` (adult 36+, young adult 25 to 35, youth 13 to 24, children 0 to 12;
   defined in `accounts/models.py`, re-exported here), `age_on(birth_date, on_date)` and `age_network_for(birth_date, on_date)`
   (None without a birth date or when it is after the date). `effective_age_network(person, on_date)` is what the sheet
@@ -661,35 +653,38 @@ The source plan `docs/attendance.md` is not present in this checkout; the defaul
     `request` is an optional keyword for the audit row.
   - `set_taken_by`: coordinator of the extension or an admin, on a draft (`can_set_taken_by`); the person must be that
     extension's coordinator or an attendance special member who can sign in. Not audited.
-  - `search_people` is a DELIBERATE exception to `for_user` (a visitor belongs to another extension): it searches everyone who
-    can sign in, needs the right to edit the draft, asks for 3+ characters (fewer returns `[]`), returns at most 20 people and
+  - `search_people` is a DELIBERATE exception to `for_user` (a visitor belongs to another extension): it searches active people
+    of every type, needs the right to edit the draft, asks for 3+ characters (fewer returns `[]`), returns at most 20 people and
     only `id`, `name`, `home_extension` ("-" for an admin or super-admin) and `age_network`. Never birth date, phone or address.
-  - `mark_present` returns `(row, created)`. The row snapshots name, home extension, gender and age network (the age network as
+  - `mark_present` returns `(row, created)`. The row snapshots name, person type, home extension, gender and age network (the age network as
     of the SHEET date). The person's own gender, birth date and stored age network win; what the taker supplies only fills
     blanks. A gender is stored on the row only. An age network is stored on the row AND on the person (when they have no birth
     date), and `set_member_category` also updates the person's stored age network when the taker changes it, so nobody is asked
     every Sunday. A row with a missing category is saved blank and flagged on the screen; the upload refuses blanks.
     A second tick of the same person changes nothing.
-  - `add_first_timer` returns an `AddFirstTimerResult` (`first_timer` or `matches`, `needs_confirmation`). When people with the
+  - `add_first_timer` creates a guest record in the sheet's extension and links it from the first-timer row only after the
+    "same person?" check is answered as new. Its `AddFirstTimerResult` (`first_timer` or `matches`, `needs_confirmation`) works
+    when people with the
     same name exist and `confirm_new` is false, nothing is saved and the matches come back for the "same person?" prompt. A birth
     date, when given, DECIDES the age network. The same first timer twice on one sheet is refused unless birth dates differ.
     An earlier unconverted first timer of the same extension with the same name counts like an existing person: without
     `confirm_new` nothing is saved and the result carries `previous_visits` (see First timer to member).
-  - Two guards protect conversions: `mark_present` refuses a person who is already a CONVERTED first timer on that sheet (they
+  - The "same person?" match for an active guest marks that existing row present instead of making another person. `mark_present`
+    refuses a person who is already linked as a first timer on that sheet (they
     would count twice), and `remove_first_timer` refuses a converted row (it is the member's "First visit").
   - Ticks, first timers and `taken_by` changes are working data and are NOT audited.
 - **Duplicate-name rule** (`accounts.services.users.find_duplicate_people`, one rule for user create and edit and for the
   attendance "same person?" prompt; `find_duplicate_person` returns its first result). Same first name, last name and suffix;
   archived people count; a match is dropped only when both sides have a birth date and they differ. `middle_name=None` means
   any middle name (used by attendance).
-- **Summary** (`attendance/summary.py`): `build_summary(sheet)` counts the STORED rows only (never current birth dates) with two
-  grouped queries and returns a `SheetSummary` (`summary` JSON for `Attendance.summary`, `members_present`,
+- **Summary** (`attendance/summary.py`): `build_summary(sheet)` counts the STORED rows only (never current birth dates) with grouped
+  queries and returns a `SheetSummary` (`summary` JSON for `Attendance.summary`, `members_present`,
   `first_timers_count`, `total_present`, `incomplete`). It serves the live preview on a draft and the value frozen at upload, so
   they cannot disagree. `summary_for(sheet)` returns the frozen numbers for an uploaded sheet and counts live otherwise (draft or
   reopened); screens and the print page call it. `incomplete_rows(sheet)` lists member rows missing a gender or age network
   (the upload refuses while any exist). `summary_table(summary)` gives the display rows (Men and Women by the four age networks,
-  for first timers and for members, with totals) for the screen and the print page. A member row without a category counts in
-  `members_present` but in no cell, so a frozen summary always adds up.
+  for first timers, guests and members, with totals) for the screen and the print page. A row without a category counts in
+  `members_present` but in no cell; upload refuses incomplete rows, so a frozen summary always adds up.
 - **Upload** (`upload_sheet(actor, sheet_id, *, token, request=None)` in `attendance/services.py`, returns an `UploadResult`
   with `sheet` and `duplicate`): runs in ONE transaction, in this order: (1) consume the form's one-time token (a replay
   returns `duplicate=True` and does nothing, so a double tap is quiet); (2) lock the sheet row and require a draft
@@ -709,27 +704,17 @@ The source plan `docs/attendance.md` is not present in this checkout; the defaul
   `last_attended_at` is NOT rolled back; the next upload only moves it forward. A reopened sheet leaves the dashboards (they
   count uploaded sheets only) until it is uploaded again. This is the ONLY way to edit an uploaded sheet: reopen, change it with
   the draft services, then the coordinator uploads again. The view puts `new_submission_token()` in the form.
-- **First timer to member** (brick 10, `attendance/services.py`): `convert_first_timer(actor, first_timer_id, *, token,
-  request=None)` returns a `ConvertResult` (`user`, `password` as a `PasswordInfo`, `first_timer`, `duplicate`). Allowed through
-  `can_convert` on the first timer's OWN sheet. ONE transaction, in this order: (1) consume the form's one-time token (a replay
-  returns `duplicate=True`); (2) lock the sheet row, then the first-timer row; refuse an archived sheet and a row that is
-  already converted; (3) call `accounts.services.users.create_user` (role member, the sheet's extension, the row's names, gender,
-  birth date and phone, the actor's default-password rules). It derives its own token from the form's (`cv-<token>`), so one
-  submit is one account, and it runs the duplicate-name check first, so someone who already has an account is refused;
-  (4) set `converted_user`; (5) log `attendance.first_timer_convert` with ids only (`attendance_id`, `user_id`). NO account is
-  created automatically, and NO member row is added to the sheet: the person already counts once, as a first timer, so a member
-  row would count them twice in the frozen numbers. `previous_first_timer_visits(extension, first_name, last_name, *, suffix,
-  before_date, exclude_sheet_id)` lists earlier UNCONVERTED visits in the same extension (`first_timer_id`, `sheet_id`, `date`;
-  archived sheets and converted rows left out); `add_first_timer` returns them as `previous_visits` for the "Visited before on
-  [date]" prompt. `member_attendance_history(user)` reads UPLOADED sheets only, newest first: ticks are "Present", first-timer
-  rows converted into this account are "First visit"; nothing is copied between tables, and a reopened sheet leaves the history
-  until it is uploaded again.
-- **Convert screen** (`sheet_first_timer_convert` in `views.py`, route `sheets/<pk>/first-timers/convert/` in `area_urls.py`):
-  a `sheet_action` POST that renders `attendance/convert_result.html` instead of redirecting, because the new password is shown
-  ONCE through the secrets dialog (`secrets-data`), like the people screens. The first timer may be on this sheet or an earlier
-  one (the "visited before" prompt); with `mark_here` the new member is also ticked present on this draft. Partials to include
-  in the workspace and review templates: `_convert_button.html` (one first-timer line) and `_previous_visits.html` (the
-  "same person?" prompt). The context carries `can_convert` and `convert_token`.
+- **Guest promotion** (`convert_first_timer` in `attendance/services.py`): one-time token, lock the sheet and first-timer row,
+  promote its linked guest in place through `accounts.services.users.promote_guest`, then set `converted_user` on every first-timer
+  row linked to that same person. A legacy first-timer row without a guest link gets one guest record before promotion. The
+  Account ID, person row, home extension and attendance history stay; no sign-in account, password, or attendance member row is
+  created. The audit event carries ids only. `previous_first_timer_visits` lists earlier unpromoted visits in the same extension;
+  `member_attendance_history(user)` reads uploaded sheets newest first, showing those linked first-timer rows as "First visit".
+- **Promote screen** (`sheet_first_timer_convert` in `views.py`, route `sheets/<pk>/first-timers/convert/` in `area_urls.py`):
+  a `sheet_action` POST renders a confirmation page with no credentials. The first timer may be on this sheet or an earlier
+  one (the "visited before" prompt); with `mark_here` the promoted person is also ticked present on this draft. The convert
+  button says "Promote to member". There is no 58 mm welcome slip or print-only conversion code; account creation elsewhere
+  continues to use its existing show-once credential dialog.
 - **My attendance** (brick 14, `my_attendance` in `views.py`, route `mine/` in `attendance/urls.py` ONLY, name `attendance:mine`,
   template `attendance/mine.html`, a "My attendance" entry in `NAV_ITEMS` for every role): the signed-in person's own history
   from `member_attendance_history(request.user)`. It never reads a person id from the URL, query string or a form, skips
@@ -762,8 +747,8 @@ The source plan `docs/attendance.md` is not present in this checkout; the defaul
   is a CSS mask whose class lives in `input.css`, so the page uses a plain `<img src="{% static 'images/black-logo.svg' %}">`).
   Layout copies the paper sheet: header (logo, church and extension name, municipality and province, "Attendance sheet", date,
   service label, "Taken by", and "Uploaded by" with the upload date or a plain "DRAFT, not uploaded" line), ONE numbered grid
-  (members by name, then first timers by name) with Name, Belongs to, Men and Women by Adult, YA, Youth, C, and an FT column, a
-  tick in the cell of the person's stored gender and age network (a first timer gets their gender and age tick AND the FT tick),
+  (people by name, then first timers by name) with Name, Belongs to, Men and Women by Adult, YA, Youth, C, a G guest column and
+  an FT column, a tick in the cell of the person's stored gender and age network (a first timer gets their gender and age tick AND the FT tick),
   then the summary table from `summary_table`, "Total attendees" (`summary.total_present`), the age-network legend and the
   printed date and time in Manila. "Belongs to" shows the home extension only for a visitor (home extension different from the
   sheet's, the same rule as the review) and is blank for everyone else, admins included. The view builds `rows` (`_print_rows`:

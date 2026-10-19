@@ -11,13 +11,13 @@ Who is who:
 
 Permission table (S = special member, C = coordinator, A = admin or super-admin):
   create a draft                       S own extension | C own extension | A any
-  mark members, add first timers       draft only, same people as above
+  mark active people of every type, add first timers       draft only, same people as above
   choose who took the attendance       C own extension, draft | A any draft | S no
   read-only review                     S drafts | C own extension | A any
   save and upload                      C own extension, draft | A only while the extension has no coordinator
   open an uploaded sheet               C read-only | A read-only | S no
   reopen an uploaded sheet             A only
-  convert a first timer to a member    C own extension | A any (draft or uploaded sheet) | S no
+  promote a first timer's guest        C own extension | A any (draft or uploaded sheet) | S no
   print or save as PDF                 any sheet the person can open
 
 Page-level checks for the screens (brick 8): `can_use_area` (may this person open the attendance screens at all?)
@@ -125,11 +125,11 @@ def can_reopen(actor, sheet):
 
 
 def can_convert(actor, sheet):
-    """May `actor` turn a first timer of this sheet into a member account (brick 10)?
+    """May `actor` promote a first timer of this sheet to a member record?
 
     The coordinator of the sheet's extension, or an admin or super-admin, on a draft or an uploaded
-    sheet. Never a special member, and never an archived sheet. Conversion creates an account, so it
-    is a people action as much as an attendance one.
+    sheet. Never a special member, and never an archived sheet. Promotion is a people action as much
+    as an attendance one.
     """
     return (
         can_view(actor, sheet)

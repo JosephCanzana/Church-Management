@@ -1,0 +1,56 @@
+<!--
+attendance/sheet_detail.html
+One sheet: header facts and the three numbers. Extends base_app.html and fills: title, page_title, content.
+Context (attendance.views.sheet_detail): sheet (with extension, taken_by, uploaded_by), summary (SheetSummary:
+total_present, members_present, first_timers_count; frozen for an uploaded sheet, live for a draft).
+Since round 2 this is only the fallback for a sheet the person may open but not edit or review (an archived sheet):
+the draft workspace and the read-only review (sheet_workspace.html, sheet_review.html) cover everything else.
+-->
+{% extends 'base_app.html' %}
+{% load ui_tags people_tags %}
+
+{% block title %}{{ sheet.label }}{% endblock %}
+{% block page_title %}{{ sheet.label }}{% endblock %}
+
+{% block content %}
+{% role_url 'sheet_list' as list_url %}
+{% include 'includes/breadcrumb.html' with parent_label='Attendance' parent_url=list_url current=sheet.label %}
+
+<div class="card max-w-2xl space-y-5">
+  <div class="flex flex-wrap items-center justify-between gap-3">
+    <div>
+      <h2 class="text-xl font-semibold tracking-tight text-txt-primary">{{ sheet.label }}</h2>
+      <p class="text-base text-txt-secondary">{{ sheet.attendance_date|date:"l, j F Y" }} &middot; {{ sheet.extension.name|title_case }}</p>
+    </div>
+    {% include 'attendance/_status_badge.html' with sheet=sheet %}
+  </div>
+
+  <dl class="grid grid-cols-1 gap-3 text-base sm:grid-cols-2">
+    <div>
+      <dt class="text-sm text-txt-secondary">Taken by</dt>
+      <dd class="text-txt-primary">{% if sheet.taken_by %}{{ sheet.taken_by.full_name }}{% else %}Not recorded{% endif %}</dd>
+    </div>
+    <div>
+      <dt class="text-sm text-txt-secondary">Uploaded by</dt>
+      <dd class="text-txt-primary">
+        {% if sheet.uploaded_by %}{{ sheet.uploaded_by.full_name }}, {{ sheet.uploaded_at|date:"j M Y, g:i A" }}{% else %}Draft, not uploaded{% endif %}
+      </dd>
+    </div>
+  </dl>
+
+  <div class="grid grid-cols-3 gap-3 text-center">
+    <div class="rounded-lg border border-border p-3">
+      <p class="text-2xl font-semibold tabular-nums text-txt-primary">{{ summary.total_present }}</p>
+      <p class="text-sm text-txt-secondary">Present</p>
+    </div>
+    <div class="rounded-lg border border-border p-3">
+      <p class="text-2xl font-semibold tabular-nums text-txt-primary">{{ summary.members_present }}</p>
+        <p class="text-sm text-txt-secondary">People marked</p>
+    </div>
+    <div class="rounded-lg border border-border p-3">
+      <p class="text-2xl font-semibold tabular-nums text-txt-primary">{{ summary.first_timers_count }}</p>
+      <p class="text-sm text-txt-secondary">First timers</p>
+    </div>
+  </div>
+</div>
+{% endblock %}

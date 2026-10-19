@@ -1,0 +1,45 @@
+<!--
+attendance/_summary_table.html
+The summary table: first timers, guests and members by gender and the four age networks, then everyone.
+Usage: include with table=table (the dict from attendance.summary.summary_table). Shared by the draft
+workspace and the review page; the print page (brick 9) will use the same dict.
+The table scrolls sideways inside its own box on a narrow phone. colspan is 6 = label + four age networks + total.
+-->
+<div class="overflow-x-auto">
+  <table class="w-full min-w-[22rem] text-left text-base">
+    <thead>
+      <tr class="text-sm text-txt-secondary">
+        <th scope="col" class="py-2 pr-3 font-medium"><span class="sr-only">Group</span></th>
+        {% for column in table.columns %}
+        <th scope="col" class="px-2 py-2 text-right font-medium">{{ column.label }}</th>
+        {% endfor %}
+        <th scope="col" class="py-2 pl-2 text-right font-medium">Total</th>
+      </tr>
+    </thead>
+    {% for group in table.groups %}
+    <tbody class="border-t border-border">
+      <tr>
+        <th scope="rowgroup" colspan="6" class="pt-3 pb-1 text-sm font-semibold text-txt-primary">{{ group.title }}</th>
+      </tr>
+      {% for row in group.rows %}
+      <tr>
+        <th scope="row" class="py-1.5 pr-3 font-normal text-txt-primary">{{ row.label }}</th>
+        {% for cell in row.cells %}<td class="px-2 py-1.5 text-right tabular-nums text-txt-primary">{{ cell }}</td>{% endfor %}
+        <td class="py-1.5 pl-2 text-right font-medium tabular-nums text-txt-primary">{{ row.total }}</td>
+      </tr>
+      {% endfor %}
+      <tr class="text-txt-secondary">
+        <th scope="row" class="py-1.5 pr-3 text-sm font-medium">Subtotal</th>
+        {% for total in group.column_totals %}<td class="px-2 py-1.5 text-right text-sm tabular-nums">{{ total }}</td>{% endfor %}
+        <td class="py-1.5 pl-2 text-right text-sm font-medium tabular-nums">{{ group.total }}</td>
+      </tr>
+    </tbody>
+    {% endfor %}
+    <tfoot>
+      <tr class="border-t border-border-strong">
+        <th scope="row" colspan="5" class="py-2 pr-3 font-semibold text-txt-primary">Everyone counted in the table</th>
+        <td colspan="1" class="py-2 pl-2 text-right font-semibold tabular-nums text-txt-primary">{{ table.total }}</td>
+      </tr>
+    </tfoot>
+  </table>
+</div>

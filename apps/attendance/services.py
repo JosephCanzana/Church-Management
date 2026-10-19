@@ -16,7 +16,7 @@ birth date or phone number ever goes into `audit_log`.
 A visitor is simply a person whose home extension differs from the sheet's extension. Nothing
 extra is stored for it.
 
-Brick 10 adds the conversion of a first timer into a member (`convert_first_timer`), the "visited
+Brick 10 adds promotion of a first timer guest (`convert_first_timer`), the "visited
 before" hint (`previous_first_timer_visits`) and the personal history (`member_attendance_history`).
 """
 from dataclasses import dataclass, field
@@ -26,10 +26,10 @@ from django.db import transaction
 from django.db.models import Q
 from django.utils import timezone
 
-from apps.accounts.models import Extension, Gender, Role, Status, User
+from apps.accounts.models import Extension, Gender, PersonType, Role, Status, User, UserExtensionHistory
 from apps.accounts.services.presence import mark_attended, remember_age_network
 from apps.accounts.services.users import (
-    PasswordInfo, auto_transfer_visitor, check_contact, create_user, find_duplicate_people, normalize_details,
+    auto_transfer_visitor, check_contact, find_duplicate_people, normalize_details, promote_guest,
 )
 from apps.audit.services import log_action
 from apps.core.services import ServiceError, consume_submission_token
@@ -104,6 +104,7 @@ def _person_row(person, on_date):
     return {
         "id": person.pk,
         "name": person.full_name,
+        "person_type": person.person_type,
         "home_extension": title_case(person.extension.name) if person.extension_id else NO_EXTENSION_LABEL,
         "age_network": network.value if network else None,
     }
@@ -175,8 +176,8 @@ def search_people(actor, sheet, text):
     """People matching `text`, for the checklist (visitors from other extensions included).
 
     DELIBERATE EXCEPTION to `for_user`: that stops at a coordinator's own extension, but a visitor
-    belongs to another one, so this searches everyone who can sign in: members, coordinators,
-    admins and the super-admin (not archived, not suspended). To keep that safe it needs the right
+    belongs to another one, so this searches active people of every type (not archived or suspended).
+    To keep that safe it needs the right
     to edit this draft, asks for at least 3 characters (fewer returns an empty list), returns at
     most 20 people, and gives back only id, name, where they belong and age network. An admin
     or super-admin has no extension, so their "belongs to" is a dash. Every word typed must
@@ -189,7 +190,7 @@ def search_people(actor, sheet, text):
     words = (text or "").split()
     if len(" ".join(words)) < SEARCH_MIN_LENGTH:
         return []
-    people = User.objects.exclude(status__in=_CANNOT_SIGN_IN).select_related("extension")
+    people = User.objects.filter(status=Status.ACTIVE).select_related("extension")
     for word in words:
         word = clean_text(word)
         people = people.filter(
@@ -215,7 +216,10 @@ def find_possible_matches(first_name, last_name, birth_date=None, suffix="", *, 
         suffix=clean_suffix(suffix), limit=MATCH_LIMIT,
     )
     on_date = on_date or timezone.localdate()
-    return [dict(_person_row(p, on_date), archived=p.status == Status.ARCHIVED) for p in people]
+    return [
+        dict(_person_row(p, on_date), archived=p.status == Status.ARCHIVED, active=p.status == Status.ACTIVE)
+        for p in people
+    ]
 
 
 # ------------------------------------------------------------------ the ticks
@@ -234,16 +238,17 @@ def mark_present(actor, sheet, user, gender=None, age_network=None):
     with transaction.atomic():
         locked = _lock_draft(actor, sheet)
         person = User.objects.select_related("extension").filter(pk=user.pk).first()  # fresh, not the caller's copy
-        if person is None or person.status in _CANNOT_SIGN_IN:
-            raise ServiceError("Only people who can sign in can be marked present.")
+        if person is None or person.status != Status.ACTIVE:
+            raise ServiceError("Only active people can be marked present.")
         existing = AttendanceMember.objects.filter(attendance=locked, user=person).first()
         if existing is not None:
             return existing, False
         # A converted first timer already counts on this sheet (as a first timer). A member row too
         # would count the same person twice in the frozen numbers.
-        if AttendanceFirstTimer.objects.filter(attendance=locked, converted_user=person).exists():
+        if AttendanceFirstTimer.objects.filter(attendance=locked).filter(
+                Q(converted_user=person) | Q(guest=person)).exists():
             raise ServiceError(
-                f"{person.full_name} is already on this sheet as a first timer who has since become a member."
+                f"{person.full_name} is already on this sheet as a first timer."
             )
         if gender not in (None, ""):
             _pick(gender, Gender, "gender")
@@ -252,6 +257,7 @@ def mark_present(actor, sheet, user, gender=None, age_network=None):
         known = effective_age_network(person, locked.attendance_date)
         row = AttendanceMember.objects.create(
             attendance=locked, user=person, member_name=person.full_name,
+            person_type=person.person_type,
             gender=person.gender or gender or "",
             age_network=(known.value if known else None) or age_network or "",
             home_extension=person.extension,
@@ -401,7 +407,20 @@ def add_first_timer(
             # (convert the earlier visit, then tick them) or "a new person" (confirm_new).
             if matches or visits:
                 return AddFirstTimerResult(matches=matches, previous_visits=visits)
-        row = AttendanceFirstTimer.objects.create(attendance=locked, **data)
+        guest = User.objects.create_user(
+            first_name=data["first_name"], middle_name=data["middle_name"],
+            last_name=data["last_name"], suffix=data["suffix"],
+            birth_date=data["birth_date"], gender=data["gender"], age_network=data["age_network"],
+            phone_number=data["phone_number"], role=Role.MEMBER, person_type=PersonType.GUEST,
+            status=Status.ACTIVE, extension=locked.extension, must_change_password=False,
+            created_by=actor,
+        )
+        UserExtensionHistory.objects.create(
+            user=guest, extension=locked.extension,
+            from_date=min(locked.attendance_date, timezone.localdate()),
+            reason=UserExtensionHistory.Reason.INITIAL,
+        )
+        row = AttendanceFirstTimer.objects.create(attendance=locked, guest=guest, **data)
         visits = _visits_for(locked, data)
     return AddFirstTimerResult(first_timer=row, previous_visits=visits)
 
@@ -431,8 +450,9 @@ def remove_first_timer(actor, sheet, first_timer_id):
     """Take a first timer off the sheet. Returns True if removed, False if they were not on it."""
     with transaction.atomic():
         locked = _lock_draft(actor, sheet)
-        row = AttendanceFirstTimer.objects.filter(attendance=locked, pk=first_timer_id).first()
-        if row is not None and row.converted_user_id:
+        row = AttendanceFirstTimer.objects.select_related("guest").filter(attendance=locked, pk=first_timer_id).first()
+        if row is not None and (
+                row.converted_user_id or row.guest_id and row.guest.person_type != PersonType.GUEST):
             # The row is the member's "First visit" in their history: removing it would erase it.
             raise ServiceError(
                 f"{row.full_name} has become a member, so this first visit stays on the sheet."
@@ -441,7 +461,7 @@ def remove_first_timer(actor, sheet, first_timer_id):
     return bool(removed)
 
 
-# ------------------------------------------------- first timer to member (brick 10)
+# -------------------------------------------------- guest first-visit helpers
 def previous_first_timer_visits(
     extension, first_name, last_name, *, suffix="", before_date=None, exclude_sheet_id=None,
 ):
@@ -449,8 +469,8 @@ def previous_first_timer_visits(
 
     Feeds the "Visited before on [date]" hint of `add_first_timer`. Each entry is
     `{"first_timer_id", "sheet_id", "date"}`; the id lets the screen offer `convert_first_timer`
-    for that earlier row. Only rows that are NOT converted yet are listed (a converted person is an
-    account now and is found by the "same person?" matching), on sheets that are not archived.
+    for that earlier row. Only rows whose linked person is still a guest are listed (a promoted
+    person is found by the "same person?" matching), on sheets that are not archived.
     `before_date` keeps the list to sheets dated earlier than the one being worked on, and
     `exclude_sheet_id` leaves that sheet out. Names are compared ignoring capitals.
     No permission check: only `add_first_timer` calls it, after its own checks. Names and dates only
@@ -462,6 +482,8 @@ def previous_first_timer_visits(
         first_name__iexact=clean_text(first_name),
         last_name__iexact=clean_text(last_name),
         suffix__iexact=clean_suffix(suffix),
+    ).filter(
+        Q(guest__isnull=True) | Q(guest__person_type=PersonType.GUEST),
     ).exclude(attendance__status=Attendance.Status.ARCHIVED)
     if before_date is not None:
         rows = rows.filter(attendance__attendance_date__lt=before_date)
@@ -477,30 +499,27 @@ def previous_first_timer_visits(
 class ConvertResult:
     """What `convert_first_timer` did.
 
-    `user` is the new member and `password` a `PasswordInfo` the view shows ONCE (never stored or logged).
+    `user` is the promoted member record. This action does not create an account or password.
     `duplicate` is True when this very form submission was already processed: nothing was done again.
     """
 
     user: object = None
-    password: PasswordInfo = None
     first_timer: AttendanceFirstTimer = None
     duplicate: bool = False
 
 
 def convert_first_timer(actor, first_timer_id, *, token, request=None):
-    """Turn a first timer into a member account, keeping their first visit in their history.
+    """Promote a first timer's linked guest to a member record, keeping their visit history.
 
     Allowed for the coordinator of the sheet's extension, or an admin or super-admin, on a draft
     or an uploaded sheet (never an archived one, and never a special member). Everything runs in
     ONE transaction, in this order:
       1. consume the form's one-time `token` (a replay returns `duplicate=True`);
       2. lock the sheet row, then the first-timer row; refuse if it is already converted;
-      3. call the existing `create_user` (role member, the sheet's extension, the row's names, gender,
-         birth date and phone, and its default-password rules). It runs the duplicate-name check
-         first, so someone who already has an account is refused with the usual message;
-      4. set `converted_user` on the row;
+      3. use its linked guest (creating one for a legacy row without a link), then promote that same row;
+      4. link all visits for that guest to the promoted row for attendance history;
       5. log `attendance.first_timer_convert` with ids only (no name, birth date or phone).
-    No account is created automatically and NO member row is added to the sheet: the person already
+    No sign-in account or password is created, and NO member row is added to the sheet: the person already
     counts once, as a first timer, so a member row would count them twice in the frozen numbers.
     """
     with transaction.atomic():
@@ -518,37 +537,46 @@ def convert_first_timer(actor, first_timer_id, *, token, request=None):
             raise ServiceError("This sheet is archived.")
         require(can_convert, actor, sheet)
         if row.converted_user_id:
-            raise ServiceError(f"{row.full_name} already has an account.")
+            raise ServiceError(f"{row.full_name} has already been promoted.")
 
-        # create_user takes its own one-time token; derive it from this form's so one submit = one account.
-        result = create_user(
-            actor, request,
-            {
-                "first_name": row.first_name, "middle_name": row.middle_name, "last_name": row.last_name,
-                "suffix": row.suffix, "birth_date": row.birth_date, "gender": row.gender,
-                # The birth date decides when there is one; otherwise keep the network for next time.
-                "age_network": "" if row.birth_date else row.age_network,
-                "phone_number": row.phone_number, "role": Role.MEMBER, "extension": sheet.extension,
-            },
-            token=f"cv-{token}"[:64],
-        )
-        if result.duplicate:  # cannot happen after step 1, but never create twice
-            return ConvertResult(duplicate=True)
-        row.converted_user = result.user
-        row.save(update_fields=["converted_user"])
+        person = User.objects.select_for_update().filter(pk=row.guest_id).first() if row.guest_id else None
+        if person is None:
+            # Legacy attendance rows predate guest links. Give the visit one guest identity now,
+            # then promote it in place; never create a second member or a sign-in account.
+            person = User.objects.create_user(
+                first_name=row.first_name, middle_name=row.middle_name, last_name=row.last_name,
+                suffix=row.suffix, birth_date=row.birth_date, gender=row.gender,
+                age_network=row.age_network, phone_number=row.phone_number,
+                role=Role.MEMBER, person_type=PersonType.GUEST, status=Status.ACTIVE,
+                extension=sheet.extension, must_change_password=False, created_by=actor,
+            )
+            UserExtensionHistory.objects.create(
+                user=person, extension=sheet.extension,
+                from_date=min(sheet.attendance_date, timezone.localdate()),
+                reason=UserExtensionHistory.Reason.INITIAL,
+            )
+            row.guest = person
+        if person.person_type == PersonType.GUEST:
+            person, _changed = promote_guest(actor, request, person)
+        elif person.person_type not in (PersonType.MEMBER_RECORD, PersonType.MEMBER_ACCOUNT):
+            raise ServiceError("This first timer cannot be promoted from their current person type.")
+        AttendanceFirstTimer.objects.filter(guest=person, converted_user__isnull=True).update(converted_user=person)
+        row.converted_user = person
+        row.guest = person
+        row.save(update_fields=["converted_user", "guest"])
         log_action(
             "attendance.first_timer_convert", actor=actor, request=request,
             entity_type="attendance_first_timer", entity_id=row.pk, entity_label=str(sheet),
             extension_id=sheet.extension_id,
-            after={"attendance_id": sheet.pk, "user_id": result.user.pk},
+            after={"attendance_id": sheet.pk, "user_id": person.pk},
         )
-    return ConvertResult(user=result.user, password=result.password, first_timer=row)
+    return ConvertResult(user=person, first_timer=row)
 
 
 def member_attendance_history(user):
     """The services `user` was at, from UPLOADED sheets only, newest first.
 
-    Combines their ticks ("Present") with the first-timer rows that were converted into this account
+    Combines their ticks ("Present") with the first-timer rows promoted into this person record
     ("First visit"). Nothing is copied between tables, so a reopened sheet leaves the history until it
     is uploaded again. Each entry: `{"sheet_id", "date", "label", "extension", "kind"}` where `kind` is
     "present" or "first_visit". Only the person's OWN rows are read (`user` comes from the signed-in
@@ -562,7 +590,8 @@ def member_attendance_history(user):
     for row in ticks:
         entries.append(_history_entry(row.attendance, "present"))
     firsts = AttendanceFirstTimer.objects.select_related("attendance__extension").filter(
-        converted_user=user, attendance__status=uploaded,
+        Q(converted_user=user) | Q(guest=user, guest__person_type__in=(PersonType.MEMBER_RECORD, PersonType.MEMBER_ACCOUNT)),
+        attendance__status=uploaded,
     )
     for row in firsts:
         entries.append(_history_entry(row.attendance, "first_visit"))

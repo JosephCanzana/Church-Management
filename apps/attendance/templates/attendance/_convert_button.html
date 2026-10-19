@@ -1,17 +1,23 @@
 <!--
 attendance/_convert_button.html
-The "Make a member" button for one first-timer line. The workspace and review templates include it only
-for an unconverted first timer when the current user may convert. Needs: sheet, ft, convert_token.
-POSTs to sheet_first_timer_convert; the confirm dialog is ui.js's data-confirm. The one-time token stops a double tap.
+Three-dot action menu for creating/updating the existing person as a member without creating a sign-in account.
+The workspace and review templates include it only when the current user may convert them.
+Needs: sheet, ft, convert_token.
 -->
 {% load people_tags %}
-<form method="post" action="{% role_url 'sheet_first_timer_convert' sheet.pk %}">
-  {% csrf_token %}
-  <input type="hidden" name="first_timer_id" value="{{ ft.pk }}">
-  <input type="hidden" name="submit_token" value="{{ convert_token }}">
-  <button type="submit" class="btn btn-secondary min-h-[44px]"
-          data-confirm="This creates an account for {{ ft.full_name }} with a password shown once. Their first visit stays in their history."
-          data-confirm-title="Make this person a member?" data-confirm-text="Make a member">
-    Make a member
-  </button>
-</form>
+<details data-action-menu class="relative inline-block" oncontextmenu="event.preventDefault(); this.open = true;">
+  <summary class="flex min-h-[44px] min-w-[44px] cursor-pointer list-none items-center justify-center rounded-lg text-2xl text-txt-secondary hover:bg-surface-subtle focus:outline-none focus:ring-2 focus:ring-primary"
+           aria-label="More options for {{ ft.full_name }}" title="More options">⋮</summary>
+  <div class="absolute right-0 z-20 mt-1 min-w-56 rounded-lg border border-border bg-surface p-1 shadow-lg">
+    <form method="post" action="{% role_url 'sheet_first_timer_convert' sheet.pk %}">
+      {% csrf_token %}
+      <input type="hidden" name="first_timer_id" value="{{ ft.pk }}">
+      <input type="hidden" name="submit_token" value="{{ convert_token }}">
+      <button type="submit" class="w-full rounded-md px-3 py-2 text-left text-sm text-txt-primary hover:bg-surface-subtle"
+              data-confirm="Create or update {{ ft.full_name }} as a member on the same person record? No sign-in account will be created, and their visit history stays linked."
+              data-confirm-title="Create or update member without an account?" data-confirm-text="Create or update member">
+        Create or update member without an account
+      </button>
+    </form>
+  </div>
+</details>

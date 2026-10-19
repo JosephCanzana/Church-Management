@@ -17,7 +17,7 @@ from dataclasses import dataclass
 
 from django.db.models import Count, Q
 
-from apps.accounts.models import Gender
+from apps.accounts.models import Gender, PersonType
 
 from .age import AgeNetwork
 from .models import AttendanceFirstTimer, AttendanceMember
@@ -25,7 +25,7 @@ from .models import AttendanceFirstTimer, AttendanceMember
 #: How the two genders are named on the summary table.
 GENDER_ROW_LABELS = {Gender.MALE.value: "Men", Gender.FEMALE.value: "Women"}
 #: The two groups of the summary, in display order: (key in the summary, title shown).
-SUMMARY_GROUPS = (("first_timers", "First timers"), ("members", "Members"))
+SUMMARY_GROUPS = (("first_timers", "First timers"), ("guests", "Guests"), ("members", "Members"))
 
 
 @dataclass(frozen=True)
@@ -68,19 +68,22 @@ def _count(rows):
 def build_summary(sheet):
     """The numbers of `sheet`, counted from its stored rows. Returns a `SheetSummary`.
 
-    `.summary` is the structure stored in `Attendance.summary` (two queries in all):
+    `.summary` is the structure stored in `Attendance.summary`:
         {"first_timers": {"male": {"adult": 0, "young_adult": 0, "youth": 0, "children": 0},
                           "female": {...}},
+         "guests": {"male": {...}, "female": {...}},
          "members": {"male": {...}, "female": {...}}}
     """
-    members, members_present, incomplete = _count(AttendanceMember.objects.filter(attendance=sheet))
+    rows = AttendanceMember.objects.filter(attendance=sheet)
+    guests, guest_count, incomplete_guests = _count(rows.filter(person_type=PersonType.GUEST))
+    members, member_count, incomplete_members = _count(rows.exclude(person_type=PersonType.GUEST))
     first_timers, first_timers_count, _ = _count(AttendanceFirstTimer.objects.filter(attendance=sheet))
     return SheetSummary(
-        summary={"first_timers": first_timers, "members": members},
-        members_present=members_present,
+        summary={"first_timers": first_timers, "guests": guests, "members": members},
+        members_present=guest_count + member_count,
         first_timers_count=first_timers_count,
-        total_present=members_present + first_timers_count,
-        incomplete=incomplete,
+        total_present=guest_count + member_count + first_timers_count,
+        incomplete=incomplete_guests + incomplete_members,
     )
 
 
@@ -118,10 +121,10 @@ def summary_table(summary):
 
     Returns {"columns": [...], "groups": [...], "total": n}:
       columns  one per age network, in order: {"code", "label"}
-      groups   first timers, then members; each {"key", "title", "rows", "column_totals", "total"}
+      groups   first timers, guests, then other members; each {"key", "title", "rows", "column_totals", "total"}
                where a row is {"gender", "label" ("Men" or "Women"), "cells", "total"} and `cells`
                (and `column_totals`) are plain numbers in the same order as `columns`
-      total    everyone counted in the table (first timers plus members)
+      total    everyone counted in the table (first timers, guests and members)
     Missing keys count as 0, so a summary of any age renders.
     """
     columns = [{"code": code, "label": AgeNetwork(code).label} for code in AgeNetwork.values]

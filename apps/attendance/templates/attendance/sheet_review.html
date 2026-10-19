@@ -43,7 +43,7 @@ network only. No birth dates, phone numbers or addresses. An uploaded sheet show
       </div>
       <div class="rounded-lg border border-border p-3">
         <p class="text-2xl font-semibold tabular-nums text-txt-primary">{{ summary.members_present }}</p>
-        <p class="text-sm text-txt-secondary">Members</p>
+        <p class="text-sm text-txt-secondary">People marked</p>
       </div>
       <div class="rounded-lg border border-border p-3">
         <p class="text-2xl font-semibold tabular-nums text-txt-primary">{{ summary.first_timers_count }}</p>
@@ -123,14 +123,14 @@ network only. No birth dates, phone numbers or addresses. An uploaded sheet show
         </thead>
         <tbody class="divide-y divide-border">
           {% for visitor in first_timers %}
-          <tr>
+          <tr {% if can_convert and not visitor.promoted %}oncontextmenu="event.preventDefault(); this.querySelector('[data-action-menu]').open = true;"{% endif %}>
             <td class="px-5 py-2 tabular-nums text-txt-secondary">{{ forloop.counter }}</td>
             <td class="px-2 py-2 text-txt-primary">{{ visitor.full_name }}</td>
             <td class="px-2 py-2 text-txt-secondary">{{ visitor.gender_label }}</td>
             <td class="px-5 py-2 text-txt-secondary">{{ visitor.age_label }}</td>
             <td class="px-5 py-2">
-              {% if visitor.converted_user_id %}
-              <span class="text-sm text-txt-secondary">Member</span>
+              {% if visitor.promoted %}
+              <span class="text-sm text-txt-secondary">Member record</span>
               {% elif can_convert %}
               {% include 'attendance/_convert_button.html' with ft=visitor %}
               {% endif %}

@@ -9,7 +9,7 @@ from django.core.exceptions import PermissionDenied
 from django.test import TestCase
 from django.utils import timezone
 
-from apps.accounts.models import Extension, Role, SpecialRole, Status, User, UserSpecialRole
+from apps.accounts.models import Extension, PersonType, Role, SpecialRole, Status, User, UserSpecialRole
 from apps.audit.models import AuditLog
 from apps.core.services import ServiceError
 
@@ -133,7 +133,7 @@ class SearchPeopleTests(ServiceTestCase):
         self.assertEqual(services.search_people(self.coordinator, self.sheet(), "ca"), [])
 
     def test_finds_visitors_admins_and_hides_archived_and_suspended(self):
-        visitor = make_user("victor", "visitor", Role.MEMBER, self.other_ext)
+        visitor = make_user("victor", "visitor", Role.MEMBER, self.other_ext, person_type=PersonType.GUEST)
         archived = make_user("victoria", "gone", Role.MEMBER, self.other_ext)
         suspended = make_user("victoria", "held", Role.MEMBER, self.other_ext)
         # the database ties status archived to archived_at, so set both
@@ -151,7 +151,7 @@ class SearchPeopleTests(ServiceTestCase):
             make_user("sample", f"person{number}", Role.MEMBER, self.ext, birth_date=date(1990, 1, 1))
         found = services.search_people(self.coordinator, self.sheet(), "sample")
         self.assertEqual(len(found), 20)
-        self.assertEqual(set(found[0]), {"id", "name", "home_extension", "age_network"})
+        self.assertEqual(set(found[0]), {"id", "name", "person_type", "home_extension", "age_network"})
 
     def test_needs_the_right_to_edit_the_draft(self):
         sheet = self.sheet()
@@ -245,6 +245,7 @@ class FirstTimerTests(ServiceTestCase):
         self.assertFalse(result.needs_confirmation)
         self.assertEqual((row.first_name, row.suffix), ("juan", "jr"))
         self.assertEqual(row.full_name, "Juan Santos Dela Cruz Jr.")
+        self.assertEqual(row.guest.person_type, PersonType.GUEST)
 
     def test_birth_date_decides_the_age_network(self):
         row = self.add(self.sheet(), age_network="youth", birth_date=date(1990, 10, 12)).first_timer

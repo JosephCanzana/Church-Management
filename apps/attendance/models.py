@@ -12,7 +12,7 @@ from django.conf import settings
 from django.db import models
 
 from apps.accounts.contact import clean_phone
-from apps.accounts.models import Gender, Role, UserSpecialRole
+from apps.accounts.models import Gender, PersonType, Role, UserSpecialRole
 from apps.core.models import ArchivableModel, archived_matches_status
 from apps.core.text import clean_suffix, clean_text, person_name
 
@@ -57,7 +57,8 @@ class Attendance(ArchivableModel):
     attendance_date = models.DateField()
     label = models.CharField(max_length=100, default="Sunday Service")
     status = models.CharField(max_length=10, choices=Status.choices, default=Status.DRAFT)
-    # frozen on upload; total_present = members_present + first_timers_count
+    # frozen on upload; members_present counts all AttendanceMember rows (including guests).
+    # total_present = members_present + first_timers_count.
     total_present = models.PositiveIntegerField(null=True, blank=True)
     members_present = models.PositiveIntegerField(null=True, blank=True)
     first_timers_count = models.PositiveIntegerField(null=True, blank=True)
@@ -113,6 +114,7 @@ class AttendanceMember(models.Model):
         settings.AUTH_USER_MODEL, null=True, blank=True,
         on_delete=models.SET_NULL, related_name="attendance_records",
     )  # NULL if the account was purged; member_name keeps the record readable
+    person_type = models.CharField(max_length=20, choices=PersonType.choices, default=PersonType.MEMBER_ACCOUNT)
     member_name = models.CharField(max_length=255)
     # Snapshot at tick time, computed as of the sheet date. Blank means the person had no
     # gender or birth date yet; the sheet cannot be uploaded until the taker fills it in.
@@ -134,7 +136,7 @@ class AttendanceMember(models.Model):
 
 
 class AttendanceFirstTimer(models.Model):
-    """A first-time visitor on a sheet. Not an account until the coordinator converts them."""
+    """A first-time visitor on a sheet, linked to the guest person created for them."""
 
     attendance = models.ForeignKey(Attendance, on_delete=models.CASCADE, related_name="first_timers")
     # Names are stored lowercase with single spaces and shown through `full_name`.
@@ -147,6 +149,10 @@ class AttendanceFirstTimer(models.Model):
     age_network = models.CharField(max_length=20, choices=AgeNetwork.choices)
     phone_number = models.CharField(max_length=20, blank=True)
     birth_date = models.DateField(null=True, blank=True)
+    guest = models.ForeignKey(
+        settings.AUTH_USER_MODEL, null=True, blank=True, on_delete=models.SET_NULL,
+        related_name="first_timer_visits",
+    )
     converted_user = models.ForeignKey(
         settings.AUTH_USER_MODEL, null=True, blank=True,
         on_delete=models.SET_NULL, related_name="+",

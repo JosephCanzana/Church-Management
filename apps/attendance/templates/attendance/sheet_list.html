@@ -47,7 +47,7 @@ Links go through role_url so the same file serves superadmin, admin_area, coordi
       {% include 'attendance/_status_badge.html' with sheet=sheet %}
       <div class="min-w-[7rem] text-right">
         <p class="text-lg font-semibold tabular-nums text-txt-primary">{{ sheet.total_shown }} present</p>
-        <p class="text-sm text-txt-secondary">{{ sheet.members_shown }} members, {{ sheet.first_timers_shown }} first timers</p>
+        <p class="text-sm text-txt-secondary">{{ sheet.members_shown }} people marked, {{ sheet.first_timers_shown }} first timers</p>
       </div>
     </a>
   </li>

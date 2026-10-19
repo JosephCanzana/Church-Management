@@ -33,10 +33,10 @@ Colors come from tokens only. The only Alpine here scrolls the first-timer secti
       <li class="flex flex-wrap items-center justify-between gap-3 px-4 py-3">
         <div class="min-w-0">
           <p class="truncate text-base font-medium text-txt-primary">{{ match.name }}</p>
-          <p class="text-sm text-txt-secondary">{{ match.home_extension }}{% if match.age_label %} &middot; {{ match.age_label }}{% endif %}{% if match.archived %} &middot; Archived account{% endif %}</p>
+          <p class="text-sm text-txt-secondary">{{ match.person_type_label }} &middot; {{ match.home_extension }}{% if match.age_label %} &middot; {{ match.age_label }}{% endif %}{% if match.archived %} &middot; Archived person{% endif %}</p>
         </div>
-        {% if match.archived %}
-        <span class="text-sm text-txt-secondary">An admin must restore this account first.</span>
+        {% if not match.active %}
+        <span class="text-sm text-txt-secondary">A leader must restore or unsuspend this person first.</span>
         {% else %}
         <form method="post" action="{% role_url 'sheet_mark' sheet.pk %}">
           {% csrf_token %}
@@ -77,7 +77,7 @@ Colors come from tokens only. The only Alpine here scrolls the first-timer secti
       </div>
       <div class="rounded-lg border border-border p-3">
         <p class="text-2xl font-semibold tabular-nums text-txt-primary">{{ summary.members_present }}</p>
-        <p class="text-sm text-txt-secondary">Members</p>
+        <p class="text-sm text-txt-secondary">People marked</p>
       </div>
       <div class="rounded-lg border border-border p-3">
         <p class="text-2xl font-semibold tabular-nums text-txt-primary">{{ summary.first_timers_count }}</p>
@@ -114,7 +114,7 @@ Colors come from tokens only. The only Alpine here scrolls the first-timer secti
       <li class="flex flex-wrap items-center justify-between gap-3 px-4 py-3">
         <div class="min-w-0">
           <p class="truncate text-base font-medium text-txt-primary">{{ person.name }}</p>
-          <p class="text-sm text-txt-secondary">{{ person.home_extension }}{% if person.visitor %} (visitor){% endif %}{% if person.age_label %} &middot; {{ person.age_label }}{% endif %}</p>
+          <p class="text-sm text-txt-secondary">{{ person.person_type_label }} &middot; {{ person.home_extension }}{% if person.visitor %} (visitor){% endif %}{% if person.age_label %} &middot; {{ person.age_label }}{% endif %}</p>
         </div>
         {% if person.marked %}
         <span class="rounded-full border border-success px-3 py-1 text-sm text-success">Marked</span>
@@ -140,7 +140,7 @@ Colors come from tokens only. The only Alpine here scrolls the first-timer secti
       <li class="px-5 py-3">
         <div class="flex items-start justify-between gap-3">
           <div class="min-w-0">
-            <p class="text-base font-medium text-txt-primary">{{ member.member_name }}{% if member.is_visitor %} <span class="ml-1 rounded-full border border-border-strong px-2 py-0.5 text-sm font-normal text-txt-secondary">Visitor</span>{% endif %}</p>
+            <p class="text-base font-medium text-txt-primary">{{ member.member_name }}{% if member.is_guest %} <span class="ml-1 rounded-full border border-highlight px-2 py-0.5 text-sm font-normal text-txt-secondary">Guest</span>{% endif %}{% if member.is_visitor %} <span class="ml-1 rounded-full border border-border-strong px-2 py-0.5 text-sm font-normal text-txt-secondary">Visitor</span>{% endif %}</p>
             <p class="text-sm text-txt-secondary">
               {{ member.home_extension_name|default:"-" }}
               {% if not member.needs_category %}&middot; {{ member.gender_label }}, {{ member.age_label }}{% endif %}
@@ -263,18 +263,18 @@ Colors come from tokens only. The only Alpine here scrolls the first-timer secti
     {% if first_timers %}
     <ul class="divide-y divide-border overflow-hidden rounded-lg border border-border">
       {% for visitor in first_timers %}
-      <li class="flex items-center justify-between gap-3 px-4 py-3">
+      <li class="flex items-center justify-between gap-3 px-4 py-3" {% if can_convert and not visitor.promoted %}oncontextmenu="event.preventDefault(); this.querySelector('[data-action-menu]').open = true;"{% endif %}>
         <div class="min-w-0">
           <p class="truncate text-base font-medium text-txt-primary">{{ visitor.full_name }}</p>
           <p class="text-sm text-txt-secondary">{{ visitor.gender_label }}, {{ visitor.age_label }}</p>
         </div>
         <div class="flex flex-wrap items-center justify-end gap-2">
-          {% if can_convert and not visitor.converted_user_id %}
+          {% if can_convert and not visitor.promoted %}
           {% include 'attendance/_convert_button.html' with ft=visitor %}
-          {% elif visitor.converted_user_id %}
-          <span class="text-sm text-txt-secondary">Member</span>
+          {% elif visitor.promoted %}
+          <span class="text-sm text-txt-secondary">Member record</span>
           {% endif %}
-          {% if not visitor.converted_user_id %}
+          {% if not visitor.promoted %}
           <form method="post" action="{% role_url 'sheet_first_timer_remove' sheet.pk %}"
                 data-confirm="This first timer and the details you typed will be removed from the sheet."
                 data-confirm-title="Remove this first timer?" data-confirm-text="Remove" data-confirm-danger>

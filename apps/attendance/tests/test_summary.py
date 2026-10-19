@@ -8,7 +8,7 @@ from datetime import date
 from django.test import TestCase
 from django.utils import timezone
 
-from apps.accounts.models import Extension, Role, Status, User
+from apps.accounts.models import Extension, PersonType, Role, Status, User
 
 from .. import summary
 from ..age import AgeNetwork
@@ -41,10 +41,11 @@ class SummaryTestCase(TestCase):
 
     def fill_every_cell(self, sheet):
         """Put a different number in every cell: first timers 1..8, members 11..18."""
-        expected = {"first_timers": {}, "members": {}}
+        expected = {"first_timers": {}, "guests": {}, "members": {}}
         first, second = 0, 10
         for gender in GENDERS:
             expected["first_timers"][gender] = {}
+            expected["guests"][gender] = {network: 0 for network in NETWORKS}
             expected["members"][gender] = {}
             for network in NETWORKS:
                 first += 1
@@ -74,16 +75,19 @@ class BuildSummaryTests(SummaryTestCase):
     def test_an_empty_sheet_is_all_zeros_with_every_key_present(self):
         result = summary.build_summary(self.sheet())
         self.assertEqual((result.members_present, result.first_timers_count, result.total_present), (0, 0, 0))
-        for part in ("first_timers", "members"):
+        for part in ("first_timers", "guests", "members"):
             for gender in GENDERS:
                 self.assertEqual(result.summary[part][gender], {network: 0 for network in NETWORKS})
 
     def test_a_visitor_is_counted(self):
         sheet = self.sheet()
-        self.member(sheet, "female", "youth", home_extension=self.other_ext, home_extension_name="Cabanatuan")
+        self.member(
+            sheet, "female", "youth", person_type=PersonType.GUEST,
+            home_extension=self.other_ext, home_extension_name="Cabanatuan",
+        )
         result = summary.build_summary(sheet)
         self.assertEqual(result.members_present, 1)
-        self.assertEqual(result.summary["members"]["female"]["youth"], 1)
+        self.assertEqual(result.summary["guests"]["female"]["youth"], 1)
 
     def test_only_the_stored_rows_count_never_the_current_birth_date(self):
         person = User.objects.create_user(
@@ -113,10 +117,10 @@ class BuildSummaryTests(SummaryTestCase):
         self.first_timer(other)
         self.assertEqual(summary.build_summary(sheet).total_present, 0)
 
-    def test_it_uses_two_queries_however_many_rows(self):
+    def test_it_uses_three_queries_however_many_rows(self):
         sheet = self.sheet()
         self.fill_every_cell(sheet)
-        with self.assertNumQueries(2):
+        with self.assertNumQueries(3):
             summary.build_summary(sheet)
 
     def test_the_summary_is_plain_json(self):
@@ -200,7 +204,8 @@ class SummaryTableTests(SummaryTestCase):
         table = summary.summary_table(expected)
         self.assertEqual([c["code"] for c in table["columns"]], list(NETWORKS))
         self.assertEqual([c["label"] for c in table["columns"]], ["Adult", "Young adult", "Youth", "Children"])
-        first_timers, members = table["groups"]
+        first_timers, guests, members = table["groups"]
+        self.assertEqual((guests["title"], guests["total"]), ("Guests", 0))
         self.assertEqual((first_timers["title"], members["title"]), ("First timers", "Members"))
         self.assertEqual([r["label"] for r in first_timers["rows"]], ["Men", "Women"])
         self.assertEqual(first_timers["rows"][0]["cells"], [1, 2, 3, 4])
@@ -220,6 +225,8 @@ class SummaryTableTests(SummaryTestCase):
         table = summary.summary_table({"members": {"male": {"adult": 2}}})
         self.assertEqual(table["total"], 2)
         self.assertEqual(table["groups"][0]["total"], 0)
+        self.assertEqual(table["groups"][1]["total"], 0)
+        self.assertEqual(table["groups"][2]["total"], 2)
         self.assertEqual(summary.summary_table(None)["total"], 0)
 
     def test_network_labels_cover_every_age_network(self):

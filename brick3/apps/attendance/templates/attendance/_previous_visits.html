@@ -1,0 +1,40 @@
+<!--
+attendance/_previous_visits.html
+The "visited before" part of the "same person?" prompt. Include it inside the `pending` block of
+sheet_workspace.html, after the list of matching people:
+    {% if pending.previous_visits %}{% include 'attendance/_previous_visits.html' %}{% endif %}
+Needs: pending (name, previous_visits, gender, age_network), sheet, can_convert, convert_token.
+Each earlier visit is {first_timer_id, sheet_id, date}. "Same person" promotes that earlier guest and
+ticks them present on THIS sheet (mark_here); "A new person" is the prompt's existing confirm_new form.
+-->
+{% load people_tags %}
+<ul class="mt-3 divide-y divide-border rounded-xl border border-border bg-surface">
+  {% for visit in pending.previous_visits %}
+  <li class="flex flex-wrap items-center justify-between gap-3 px-4 py-3" {% if can_convert %}oncontextmenu="event.preventDefault(); this.querySelector('[data-action-menu]').open = true;"{% endif %}>
+    <p class="text-base text-txt-primary">{{ pending.name }} <span class="text-sm text-txt-secondary">visited before on {{ visit.date|date:"j F Y" }}</span></p>
+    {% if can_convert %}
+    <details data-action-menu class="relative inline-block" oncontextmenu="event.preventDefault(); this.open = true;">
+      <summary class="flex min-h-[44px] min-w-[44px] cursor-pointer list-none items-center justify-center rounded-lg text-2xl text-txt-secondary hover:bg-surface-subtle focus:outline-none focus:ring-2 focus:ring-primary"
+               aria-label="More options for {{ pending.name }}" title="More options">⋮</summary>
+      <div class="absolute right-0 z-20 mt-1 min-w-56 rounded-lg border border-border bg-surface p-1 shadow-lg">
+        <form method="post" action="{% role_url 'sheet_first_timer_convert' sheet.pk %}">
+          {% csrf_token %}
+          <input type="hidden" name="first_timer_id" value="{{ visit.first_timer_id }}">
+          <input type="hidden" name="submit_token" value="{{ convert_token }}">
+          <input type="hidden" name="mark_here" value="1">
+          <input type="hidden" name="gender" value="{{ pending.gender }}">
+          <input type="hidden" name="age_network" value="{{ pending.age_network }}">
+          <button type="submit" class="w-full rounded-md px-3 py-2 text-left text-sm text-txt-primary hover:bg-surface-subtle"
+                  data-confirm="Create or update {{ pending.name }} as a member on the same person record and mark them present today? No sign-in account will be created. The earlier visit stays in their history."
+                  data-confirm-title="Same person?" data-confirm-text="Create or update member">
+            Create or update member without an account
+          </button>
+        </form>
+      </div>
+    </details>
+    {% else %}
+    <p class="text-sm text-txt-secondary">Ask the coordinator to promote them to a member.</p>
+    {% endif %}
+  </li>
+  {% endfor %}
+</ul>

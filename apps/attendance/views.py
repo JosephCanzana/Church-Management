@@ -33,7 +33,7 @@ from django.views.decorators.cache import never_cache
 from django.views.decorators.http import require_http_methods
 
 from apps.accounts.decorators import home_url_for, role_required
-from apps.accounts.models import Gender, Role, User
+from apps.accounts.models import Gender, PersonType, Role, User
 from apps.core.services import ServiceError, new_submission_token
 from apps.core.text import title_case
 
@@ -247,6 +247,7 @@ def _decorate_member(row, sheet):
     row.needs_category = not (row.gender in Gender.values and row.age_network in AgeNetwork.values)
     # A visitor is just someone whose home extension is not the sheet's (nothing extra is stored).
     row.is_visitor = row.home_extension_id is not None and row.home_extension_id != sheet.extension_id
+    row.is_guest = row.person_type == PersonType.GUEST
     return row
 
 
@@ -254,6 +255,11 @@ def _decorate_first_timer(row):
     """Add the words for a first timer's gender and age network."""
     row.gender_label = GENDER_LABELS.get(row.gender, "")
     row.age_label = AGE_LABELS.get(row.age_network, "")
+    row.promoted = bool(
+        row.converted_user_id or (
+            row.guest_id and row.guest.person_type in (PersonType.MEMBER_RECORD, PersonType.MEMBER_ACCOUNT)
+        )
+    )
     return row
 
 
@@ -310,6 +316,11 @@ def _search_context(request, sheet, members):
                 here = title_case(sheet.extension.name)
                 for person in results:
                     person["marked"] = person["id"] in ticked
+                    person["person_type_label"] = {
+                        PersonType.GUEST: "Guest",
+                        PersonType.MEMBER_RECORD: "Member (no account)",
+                        PersonType.MEMBER_ACCOUNT: "Member",
+                    }.get(person["person_type"], "")
                     person["age_label"] = AGE_LABELS.get(person["age_network"], "")
                     person["visitor"] = person["home_extension"] not in (services.NO_EXTENSION_LABEL, here)
                 if not results:
@@ -331,7 +342,7 @@ def _workspace_context(request, sheet, form=None, pending=None):
     members.sort(key=lambda row: not row.needs_category)
     first_timers = [
         _decorate_first_timer(row)
-        for row in AttendanceFirstTimer.objects.filter(attendance=sheet).order_by("last_name", "first_name", "pk")
+        for row in AttendanceFirstTimer.objects.select_related("guest").filter(attendance=sheet).order_by("last_name", "first_name", "pk")
     ]
     summary = summary_for(sheet)  # a draft is counted live from its rows
     form = form or FirstTimerForm()
@@ -412,7 +423,7 @@ def sheet_review(request, pk):
     ]
     first_timers = [
         _decorate_first_timer(row)
-        for row in AttendanceFirstTimer.objects.filter(attendance=sheet).order_by("last_name", "first_name", "pk")
+        for row in AttendanceFirstTimer.objects.select_related("guest").filter(attendance=sheet).order_by("last_name", "first_name", "pk")
     ]
     summary = summary_for(sheet)
     can_upload = permissions.can_upload(request.user, sheet)
@@ -444,10 +455,10 @@ PRINT_HEADS = {"adult": "Adult", "young_adult": "YA", "youth": "Youth", "childre
 
 
 def _print_rows(sheet):
-    """The numbered lines of the printed grid: members by name, then first timers by name.
+    """The numbered lines of the printed grid: people by name, then first timers by name.
 
     Each line is a dict with `name`, `belongs` (the home extension, only for a visitor, else blank),
-    `first_timer`, `needs_category` and `cells`: eight booleans, men then women, each in age-network order,
+    `first_timer`, `guest`, `needs_category` and `cells`: eight booleans, men then women, each in age-network order,
     so the template only draws a tick where a cell is true. Only names, home extension, gender and age
     network are read: never a birth date, phone number or address.
     """
@@ -460,6 +471,7 @@ def _print_rows(sheet):
             "name": row.member_name,
             "belongs": row.home_extension_name if row.home_extension_id != sheet.extension_id else "",
             "first_timer": False,
+            "guest": row.person_type == PersonType.GUEST,
             "needs_category": row.needs_category,
             "gender": row.gender,
             "network": row.age_network,
@@ -467,7 +479,7 @@ def _print_rows(sheet):
     first_timers = AttendanceFirstTimer.objects.filter(attendance=sheet).order_by("last_name", "first_name", "pk")
     for row in first_timers:
         rows.append({
-            "name": row.full_name, "belongs": "", "first_timer": True, "needs_category": False,
+            "name": row.full_name, "belongs": "", "first_timer": True, "guest": False, "needs_category": False,
             "gender": row.gender, "network": row.age_network,
         })
     for number, line in enumerate(rows, start=1):
@@ -590,6 +602,11 @@ def sheet_first_timer_add(request, pk):
             if result.needs_confirmation:
                 for match in result.matches:
                     match["age_label"] = AGE_LABELS.get(match["age_network"], "")
+                    match["person_type_label"] = {
+                        PersonType.GUEST: "Guest",
+                        PersonType.MEMBER_RECORD: "Member (no account)",
+                        PersonType.MEMBER_ACCOUNT: "Member",
+                    }.get(match["person_type"], "")
                 pending = {
                     "name": f"{data['first_name']} {data['last_name']}".strip(),
                     "matches": result.matches,
@@ -602,7 +619,7 @@ def sheet_first_timer_add(request, pk):
             else:
                 messages.success(request, f"First timer added: {result.first_timer.full_name}.")
                 if result.previous_visits:  # only after "no, a new person": still worth a nudge
-                    messages.info(request, "This name visited before. Convert them to a member to keep their history.")
+                    messages.info(request, "This name visited before. You can promote that earlier guest and keep the visit together.")
                 return _back(request, sheet, "#first-timers")
     return _render_workspace(request, sheet, form=form, pending=pending)
 
@@ -640,16 +657,14 @@ def sheet_reopen(request, sheet):
         messages.success(request, "Sheet reopened. Correct it, then the coordinator uploads it again.")
 
 
-# ------------------------------------------------- first timer to member (brick 10)
+# ---------------------------------------------------------- promote first timer
 @sheet_action("#first-timers")
 def sheet_first_timer_convert(request, sheet):
-    """Turn a first timer into a member account (coordinator or admin; see `services.convert_first_timer`).
+    """Promote a first timer's guest record to a member without creating a sign-in account.
 
     The first timer may be on THIS sheet or an EARLIER one (from the "visited before" prompt); the service
-    checks permission on the first timer's own sheet. The new password is shown ONCE, so this view renders
-    a page with the show-once dialog instead of redirecting (like the people screens that show a password).
-    A one-time token makes a double tap convert once. With `mark_here` (the prompt for an earlier visit) the
-    new member is also ticked present on this draft, with the gender and age network typed for this visit.
+    checks permission on the first timer's own sheet. A one-time token makes a double tap promote once.
+    With `mark_here` (the prompt for an earlier visit) the person is also ticked present on this draft.
     """
     result = services.convert_first_timer(
         request.user, _to_int(request.POST.get("first_timer_id")),
@@ -666,21 +681,9 @@ def sheet_first_timer_convert(request, sheet):
                 gender=request.POST.get("gender") or None, age_network=request.POST.get("age_network") or None,
             )
         except (ServiceError, PermissionDenied) as exc:
-            messages.warning(request, f"The account was created, but they were not ticked present: {exc}")
-    secrets = {
-        "title": "New member created",
-        "message": "Give them this password now. It is shown only once.",
-        "headers": ["Name", "Account ID", "Password"],
-        "rows": [[member.full_name, member.account_id, result.password.display]],
-    }
-    welcome_slip = {
-        "name": member.full_name,
-        "account_id": member.account_id,
-        "password": result.password.value if result.password.kind == "generated" else "Ask your leader for the password.",
-    }
+            messages.warning(request, f"The person was promoted, but they were not ticked present: {exc}")
     return render(request, CONVERT_RESULT_TEMPLATE, {
-        "sheet": sheet, "member": member, "secrets": secrets, "welcome_slip": welcome_slip,
-        "sheet_url": _sheet_url(request, sheet),
+        "sheet": sheet, "member": member, "sheet_url": _sheet_url(request, sheet),
     })
 
 

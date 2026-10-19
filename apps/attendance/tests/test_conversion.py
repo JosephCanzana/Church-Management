@@ -57,15 +57,18 @@ class ConvertTests(TestCase):
         services.upload_sheet(self.coord, sheet.pk, token=new_submission_token())
 
     # --- the conversion ---------------------------------------------------
-    def test_the_account_gets_the_data_of_the_row(self):
+    def test_promotion_keeps_the_guest_person_data_and_identity(self):
+        guest_id = self.ft.guest_id
         result = self.convert()
         user = result.user
         self.assertEqual((user.first_name, user.last_name), ("ana", "lopez"))
         self.assertEqual((user.role, user.extension_id), (Role.MEMBER, self.a.pk))
         self.assertEqual((user.gender, user.birth_date), (Gender.FEMALE, date(2008, 3, 4)))
         self.assertEqual(user.phone_number, self.ft.phone_number)
-        self.assertTrue(user.must_change_password)
-        self.assertTrue(result.password.display)
+        self.assertEqual(user.person_type, "member_record")
+        self.assertFalse(user.has_usable_password())
+        self.assertFalse(user.must_change_password)
+        self.assertEqual(user.pk, guest_id)
         self.ft.refresh_from_db()
         self.assertEqual(self.ft.converted_user_id, user.pk)
 
@@ -104,17 +107,18 @@ class ConvertTests(TestCase):
         self.ft.refresh_from_db()
         self.assertIsNone(self.ft.converted_user_id)
 
-    def test_someone_with_the_same_name_is_refused_and_nothing_is_created(self):
+    def test_a_confirmed_guest_is_promoted_even_if_another_person_shares_the_name(self):
         person(
             Role.MEMBER, self.b, first="ana", last="lopez",
             birth_date=date(2008, 3, 4),
         )
         before = User.objects.count()
-        with self.assertRaises(ServiceError):
-            self.convert()
+        promoted = self.convert().user
         self.assertEqual(User.objects.count(), before)
+        self.assertEqual(promoted.pk, self.ft.guest_id)
+        self.assertEqual(promoted.person_type, "member_record")
         self.ft.refresh_from_db()
-        self.assertIsNone(self.ft.converted_user_id)
+        self.assertEqual(self.ft.converted_user_id, promoted.pk)
 
     def test_the_audit_row_has_ids_only(self):
         with mock.patch.object(services, "log_action") as log:
@@ -131,16 +135,16 @@ class ConvertTests(TestCase):
             services.remove_first_timer(self.coord, self.sheet, self.ft.pk)
         self.assertTrue(AttendanceFirstTimer.objects.filter(pk=self.ft.pk).exists())
 
-    def test_conversion_response_renders_the_uncached_welcome_slip(self):
+    def test_conversion_response_has_no_welcome_slip_or_credentials(self):
         self.client.force_login(self.coord)
         response = self.client.post(
             reverse("coordinator_area:sheet_first_timer_convert", args=[self.sheet.pk]),
             {"first_timer_id": self.ft.pk, "submit_token": new_submission_token()},
         )
         self.assertEqual(response.status_code, 200)
-        self.assertEqual(response.context["welcome_slip"]["account_id"], response.context["member"].account_id)
-        self.assertContains(response, "Print 58 mm welcome slip")
-        self.assertContains(response, "@page { size: 58mm auto")
+        self.assertNotIn("welcome_slip", response.context)
+        self.assertNotContains(response, "Print 58 mm welcome slip")
+        self.assertNotContains(response, "Password")
         self.assertEqual(response["Cache-Control"], "max-age=0, no-cache, no-store, must-revalidate, private")
 
     # --- visited before ---------------------------------------------------

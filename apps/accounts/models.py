@@ -41,7 +41,8 @@ class PersonType(models.TextChoices):
     MEMBER_ACCOUNT = "member_account", "Member"               # full access
 
 
-#: The two types that never sign in. The guests screen lists exactly these.
+#: The two types that never sign in. The superadmin guests/user list includes both guests and
+#: members without accounts so promoting a guest does not make the person disappear from the list.
 NO_ACCOUNT_TYPES = (PersonType.GUEST, PersonType.MEMBER_RECORD)
 
 
