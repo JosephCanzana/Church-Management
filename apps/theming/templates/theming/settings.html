@@ -1,12 +1,14 @@
 <!--
-  theming/settings.html: the signed-in person's own settings (color mode, mobile menu style).
+  theming/settings.html: the signed-in person's own settings (color mode, event reminders, phone menu).
   Extends: base_app.html (fills title, page_title and content). Page content uses h2 and below.
-  Context: form (UserSettingsForm; a bound form comes back after an error), color_options and
-  nav_options (lists of value, label, help and checked, from the form's options method).
-  Layout: one column, two cards. One POST form with one Save button and data-confirm, so ui.js
-  asks first; nothing saves by itself. The dialog is only a UX guard: the service re-checks.
-  Each choice is a radio input (visually hidden, peer) with a card label, so it is keyboard
-  accessible. The chosen card also shows a check icon, so the choice is not carried by color alone.
+  Context: form (UserSettingsForm; a bound form comes back after an error), color_options,
+  reminder_options and nav_options (lists of value, label, help and checked).
+  Layout: one column, one card per group. Each setting is a row: name and a short hint on the
+  left, a segmented control on the right (stacked on phones). One POST form that saves by itself: any
+  change submits it (Alpine x-on:change). A Save button exists only inside noscript.
+  Each segment is a visually hidden radio (peer) with a label, so it stays keyboard accessible.
+  The chosen segment is raised, bordered and bold-free, so the choice is not carried by color alone.
+  The option help text is kept as a tooltip (title) instead of visible copy.
   Note: this comment contains no template tags on purpose.
 -->
 {% extends "base_app.html" %}
@@ -18,110 +20,102 @@
 {% block content %}
 <div class="w-full max-w-2xl space-y-6">
   <form method="post" action="{% url 'theming:settings' %}" class="space-y-6" novalidate
-        data-confirm="Save your settings?" data-confirm-title="Save settings" data-confirm-text="Save">
+        x-data x-on:change="$el.requestSubmit()">
     {% csrf_token %}
 
     {% if form.non_field_errors %}
-      <div class="flex items-start gap-3 rounded-2xl border border-error px-4 py-3 text-base text-error" role="alert">
+      <div class="flex items-start gap-3 rounded-xl border border-error px-4 py-3 text-sm text-error" role="alert">
         <span class="mt-0.5 shrink-0">{% include "includes/icon.html" with name="exclamation-circle" class="h-5 w-5" %}</span>
         <div>{% for error in form.non_field_errors %}<p>{{ error }}</p>{% endfor %}</div>
       </div>
     {% endif %}
 
-    {# ------------------------------------------------------- color mode #}
-    <section class="card" aria-labelledby="appearance-heading">
-      <h2 id="appearance-heading" class="text-lg font-semibold tracking-tight text-txt-primary">Appearance</h2>
-      <p class="mt-1 text-base text-txt-secondary">Saved to your account, so it is the same on every device you sign in on.</p>
+    {# ------------------------------------------------------- appearance #}
+    <section class="card !p-0" aria-labelledby="appearance-heading">
+      <h2 id="appearance-heading" class="border-b border-border px-6 py-4 text-base font-semibold tracking-tight text-txt-primary">Appearance</h2>
 
-      <fieldset class="mt-5">
-        <legend class="label text-base">Color mode</legend>
-        <div class="mt-2 grid gap-3 sm:grid-cols-3">
+      <div class="flex flex-col gap-3 px-6 py-5 sm:flex-row sm:items-center sm:justify-between sm:gap-6">
+        <div class="min-w-0">
+          <p id="color-mode-label" class="text-sm font-medium text-txt-primary">Theme</p>
+          <p class="mt-0.5 text-sm text-txt-muted">Synced across your devices</p>
+        </div>
+
+        <div role="radiogroup" aria-labelledby="color-mode-label"
+             class="inline-flex shrink-0 flex-wrap gap-1 self-start rounded-lg border border-border bg-surface-alt p-1 sm:self-auto">
           {% for opt in color_options %}
-          <div class="relative">
+          <label class="relative" title="{{ opt.help }}">
             <input type="radio" name="color_mode" id="id_color_mode_{{ opt.value }}" value="{{ opt.value }}"
                    class="peer sr-only" {% if opt.checked %}checked{% endif %}>
-            <label for="id_color_mode_{{ opt.value }}"
-                   class="flex h-full min-h-14 cursor-pointer flex-col gap-1 rounded-2xl border border-border bg-surface p-4 pr-10 transition-colors hover:border-border-strong peer-checked:border-accent peer-checked:bg-accent/10 peer-focus-visible:outline peer-focus-visible:outline-2 peer-focus-visible:outline-offset-2 peer-focus-visible:outline-accent">
-              <span class="text-base font-medium text-txt-primary">{{ opt.label }}</span>
-              <span class="text-base text-txt-secondary">{{ opt.help }}</span>
-            </label>
-            <span class="pointer-events-none absolute right-3 top-3 hidden text-accent peer-checked:block" aria-hidden="true">
-              {% include "includes/icon.html" with name="check-circle" class="size-5" %}
-            </span>
-          </div>
+            <span class="block cursor-pointer rounded-md border border-transparent px-3.5 py-1.5 text-sm font-medium text-txt-secondary transition-colors hover:text-txt-primary peer-checked:border-border-strong peer-checked:bg-surface peer-checked:text-txt-primary peer-checked:shadow-sm peer-focus-visible:outline-2 peer-focus-visible:outline-offset-2 peer-focus-visible:outline-accent">{{ opt.label }}</span>
+          </label>
           {% endfor %}
         </div>
-        {% if form.color_mode.errors %}
-          <div class="mt-2 space-y-1 text-base text-error" role="alert">
-            {% for error in form.color_mode.errors %}<p>{{ error }}</p>{% endfor %}
-          </div>
-        {% endif %}
-      </fieldset>
+      </div>
+      {% if form.color_mode.errors %}
+        <div class="space-y-1 px-6 pb-4 text-sm text-error" role="alert">
+          {% for error in form.color_mode.errors %}<p>{{ error }}</p>{% endfor %}
+        </div>
+      {% endif %}
     </section>
-    {# ------------------------------------------------- event reminders #}
-    <section class="card" aria-labelledby="reminder-heading">
-      <h2 id="reminder-heading" class="text-lg font-semibold tracking-tight text-txt-primary">Event reminders</h2>
-      <p class="mt-1 text-base text-txt-secondary">How early you are reminded before an event starts. A reminder can arrive up to 15 minutes after that time. It always appears in the bell; to also get it on your phone or computer, turn on notifications for that device below.</p>
 
-      <fieldset class="mt-5">
-        <legend class="label text-base">Remind me</legend>
-        <div class="mt-2 grid gap-3 sm:grid-cols-2">
+    {# ------------------------------------------------- event reminders #}
+    <section class="card !p-0" aria-labelledby="reminder-heading">
+      <h2 id="reminder-heading" class="border-b border-border px-6 py-4 text-base font-semibold tracking-tight text-txt-primary">Notifications</h2>
+
+      <div class="flex flex-col gap-3 px-6 py-5 sm:flex-row sm:items-center sm:justify-between sm:gap-6">
+        <div class="min-w-0">
+          <p id="reminder-label" class="text-sm font-medium text-txt-primary">Event reminder</p>
+          <p class="mt-0.5 text-sm text-txt-muted">Time before an event starts</p>
+        </div>
+
+        <div role="radiogroup" aria-labelledby="reminder-label"
+             class="inline-flex shrink-0 flex-wrap gap-1 self-start rounded-lg border border-border bg-surface-alt p-1 sm:self-auto">
           {% for opt in reminder_options %}
-          <div class="relative">
+          <label class="relative" title="{{ opt.help }}">
             <input type="radio" name="event_reminder" id="id_event_reminder_{{ opt.value }}" value="{{ opt.value }}"
                    class="peer sr-only" {% if opt.checked %}checked{% endif %}>
-            <label for="id_event_reminder_{{ opt.value }}"
-                   class="flex h-full min-h-14 cursor-pointer flex-col gap-1 rounded-2xl border border-border bg-surface p-4 pr-10 transition-colors hover:border-border-strong peer-checked:border-accent peer-checked:bg-accent/10 peer-focus-visible:outline peer-focus-visible:outline-2 peer-focus-visible:outline-offset-2 peer-focus-visible:outline-accent">
-              <span class="text-base font-medium text-txt-primary">{{ opt.label }}</span>
-              <span class="text-base text-txt-secondary">{{ opt.help }}</span>
-            </label>
-            <span class="pointer-events-none absolute right-3 top-3 hidden text-accent peer-checked:block" aria-hidden="true">
-              {% include "includes/icon.html" with name="check-circle" class="size-5" %}
-            </span>
-          </div>
+            <span class="block cursor-pointer rounded-md border border-transparent px-3.5 py-1.5 text-sm font-medium text-txt-secondary transition-colors hover:text-txt-primary peer-checked:border-border-strong peer-checked:bg-surface peer-checked:text-txt-primary peer-checked:shadow-sm peer-focus-visible:outline-2 peer-focus-visible:outline-offset-2 peer-focus-visible:outline-accent">{{ opt.label }}</span>
+          </label>
           {% endfor %}
         </div>
-        {% if form.event_reminder.errors %}
-          <div class="mt-2 space-y-1 text-base text-error" role="alert">
-            {% for error in form.event_reminder.errors %}<p>{{ error }}</p>{% endfor %}
-          </div>
-        {% endif %}
-      </fieldset>
+      </div>
+      {% if form.event_reminder.errors %}
+        <div class="space-y-1 px-6 pb-4 text-sm text-error" role="alert">
+          {% for error in form.event_reminder.errors %}<p>{{ error }}</p>{% endfor %}
+        </div>
+      {% endif %}
     </section>
-
 
     {# ------------------------------------------------- mobile menu style #}
-    <section class="card" aria-labelledby="mobile-nav-heading">
-      <h2 id="mobile-nav-heading" class="text-lg font-semibold tracking-tight text-txt-primary">Phone menu</h2>
-      <p class="mt-1 text-base text-txt-secondary">How the menu works on small screens. It changes the next time a page loads.</p>
+    <section class="card !p-0" aria-labelledby="mobile-nav-heading">
+      <h2 id="mobile-nav-heading" class="border-b border-border px-6 py-4 text-base font-semibold tracking-tight text-txt-primary">Navigation</h2>
 
-      <fieldset class="mt-5">
-        <legend class="label text-base">Menu style</legend>
-        <div class="mt-2 grid gap-3 sm:grid-cols-2">
+      <div class="flex flex-col gap-3 px-6 py-5 sm:flex-row sm:items-center sm:justify-between sm:gap-6">
+        <div class="min-w-0">
+          <p id="mobile-nav-label" class="text-sm font-medium text-txt-primary">Phone menu</p>
+          <p class="mt-0.5 text-sm text-txt-muted">Applies on next page load</p>
+        </div>
+
+        <div role="radiogroup" aria-labelledby="mobile-nav-label"
+             class="inline-flex shrink-0 flex-wrap gap-1 self-start rounded-lg border border-border bg-surface-alt p-1 sm:self-auto">
           {% for opt in nav_options %}
-          <div class="relative">
+          <label class="relative" title="{{ opt.help }}">
             <input type="radio" name="mobile_nav_style" id="id_mobile_nav_style_{{ opt.value }}" value="{{ opt.value }}"
                    class="peer sr-only" {% if opt.checked %}checked{% endif %}>
-            <label for="id_mobile_nav_style_{{ opt.value }}"
-                   class="flex h-full min-h-14 cursor-pointer flex-col gap-1 rounded-2xl border border-border bg-surface p-4 pr-10 transition-colors hover:border-border-strong peer-checked:border-accent peer-checked:bg-accent/10 peer-focus-visible:outline peer-focus-visible:outline-2 peer-focus-visible:outline-offset-2 peer-focus-visible:outline-accent">
-              <span class="text-base font-medium text-txt-primary">{{ opt.label }}</span>
-              <span class="text-base text-txt-secondary">{{ opt.help }}</span>
-            </label>
-            <span class="pointer-events-none absolute right-3 top-3 hidden text-accent peer-checked:block" aria-hidden="true">
-              {% include "includes/icon.html" with name="check-circle" class="size-5" %}
-            </span>
-          </div>
+            <span class="block cursor-pointer rounded-md border border-transparent px-3.5 py-1.5 text-sm font-medium text-txt-secondary transition-colors hover:text-txt-primary peer-checked:border-border-strong peer-checked:bg-surface peer-checked:text-txt-primary peer-checked:shadow-sm peer-focus-visible:outline-2 peer-focus-visible:outline-offset-2 peer-focus-visible:outline-accent">{{ opt.label }}</span>
+          </label>
           {% endfor %}
         </div>
-        {% if form.mobile_nav_style.errors %}
-          <div class="mt-2 space-y-1 text-base text-error" role="alert">
-            {% for error in form.mobile_nav_style.errors %}<p>{{ error }}</p>{% endfor %}
-          </div>
-        {% endif %}
-      </fieldset>
+      </div>
+      {% if form.mobile_nav_style.errors %}
+        <div class="space-y-1 px-6 pb-4 text-sm text-error" role="alert">
+          {% for error in form.mobile_nav_style.errors %}<p>{{ error }}</p>{% endfor %}
+        </div>
+      {% endif %}
     </section>
 
-    <button type="submit" class="btn btn-primary">Save settings</button>
+    {# Only shown when JavaScript is off; otherwise every change saves by itself. #}
+    <noscript><button type="submit" class="btn btn-primary">Save changes</button></noscript>
   </form>
 
   {# Outside the settings form on purpose: the card has its own forms (Remove device), and forms cannot nest. #}

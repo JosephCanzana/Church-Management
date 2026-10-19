@@ -1,75 +1,107 @@
 {% comment %}
 _push_card.html: the "Notifications on this device" card for the Settings page (Brick 12).
 Rendered by the {% push_device_card %} tag (notifications/templatetags/push_tags.py); do not include it directly.
-Variables: enabled, devices (the person's own PushSubscription rows), public_key, max_devices, csrf_token, next_url.
+Variables: enabled, devices (the person's own PushSubscription rows), public_key, max_devices, csrf_token, next_url,
+can_test (True only for a superadmin; the tag must pass request.user.is_superuser).
 Behaviour lives in static/js/push.js (Alpine component pushDevice). Nothing is drawn when push is not set up.
-The status is always written as text, never by color alone. Subscription endpoints and keys are never in this page.
+The status is always written as text, never by color alone; the switch also exposes aria-checked.
+Subscription endpoints and keys are never in this page.
+The devices list starts collapsed (nested Alpine scope, inherits thisHash).
+The test button is hidden for everyone except a superadmin. This is only a UX guard: the push:test view must check it too.
 {% endcomment %}
 {% if enabled %}
-<section class="card space-y-5 p-5 sm:p-6" aria-labelledby="push-heading"
+<section class="card !p-0" aria-labelledby="push-heading"
          x-data="pushDevice()"
          data-public-key="{{ public_key }}" data-csrf="{{ csrf_token }}" data-device-count="{{ devices|length }}"
          data-subscribe-url="{% url 'push:subscribe' %}" data-unsubscribe-url="{% url 'push:unsubscribe' %}"
          data-status-url="{% url 'push:status' %}" data-test-url="{% url 'push:test' %}">
 
-  <div class="flex items-start gap-3">
-    <span class="mt-0.5 flex size-10 shrink-0 items-center justify-center rounded-full bg-txt-primary/5 text-txt-secondary">
-      {% include 'includes/icon.html' with name='bell' class='size-5' %}
-    </span>
-    <div class="min-w-0 flex-1">
-      <h2 id="push-heading" class="text-lg font-semibold text-txt-primary">Notifications on this device</h2>
-      <p class="mt-1 text-base text-txt-secondary">Get alerts such as event reminders on your phone or computer, even when the app is closed. You choose this per device.</p>
+  <h2 id="push-heading" class="border-b border-border px-6 py-4 text-base font-semibold tracking-tight text-txt-primary">Push notifications</h2>
+
+  {# ---------------------------------------------------- this device #}
+  <div class="flex items-center justify-between gap-6 px-6 py-5">
+    <div class="min-w-0">
+      <p id="push-switch-label" class="text-sm font-medium text-txt-primary">This device</p>
+      {# One line of status text. x-cloak hides every line until the browser has been checked. #}
+      <div role="status" aria-live="polite" class="mt-0.5 text-sm">
+        <p x-show="state === 'loading'" x-cloak class="text-txt-muted">Checking…</p>
+        <p x-show="state === 'on'" x-cloak class="text-txt-secondary">On</p>
+        <p x-show="state === 'off'" x-cloak class="text-txt-muted">Off</p>
+        <p x-show="state === 'blocked'" x-cloak class="text-txt-secondary">Blocked. Allow notifications for this site in your browser settings, then reload.</p>
+        <p x-show="state === 'unsupported'" x-cloak class="text-txt-muted">Not supported in this browser</p>
+        <p x-show="state === 'needs_install'" x-cloak class="text-txt-secondary">Install the app to enable</p>
+      </div>
     </div>
+
+    <button type="button" role="switch" aria-labelledby="push-switch-label"
+            x-show="state === 'on' || state === 'off'" x-cloak
+            x-bind:aria-checked="state === 'on' ? 'true' : 'false'"
+            x-bind:disabled="busy"
+            x-on:click="state === 'on' ? disable() : enable()"
+            class="relative inline-flex h-6 w-11 shrink-0 cursor-pointer items-center rounded-full border border-transparent transition-colors disabled:cursor-not-allowed disabled:opacity-50 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-accent"
+            x-bind:class="state === 'on' ? 'bg-accent' : 'bg-border-strong'">
+      <span class="pointer-events-none inline-block size-5 rounded-full bg-surface shadow-sm transition-transform"
+            x-bind:class="state === 'on' ? 'translate-x-5' : 'translate-x-0.5'"></span>
+    </button>
   </div>
 
-  {# One line for the state of THIS device. x-cloak hides every line until the browser has been checked. #}
-  <div role="status" aria-live="polite" class="rounded-lg border border-border bg-bg px-4 py-3 text-base">
-    <p x-show="state === 'loading'" x-cloak class="text-txt-secondary">Checking this device…</p>
-    <p x-show="state === 'on'" x-cloak class="font-medium text-txt-primary">On: this device receives notifications.</p>
-    <p x-show="state === 'off'" x-cloak class="text-txt-secondary">Off: this device does not receive notifications.</p>
-    <p x-show="state === 'blocked'" x-cloak class="text-txt-primary">Blocked by your browser. Allow notifications for this site in the browser's site settings, then reload this page.</p>
-    <p x-show="state === 'unsupported'" x-cloak class="text-txt-secondary">Not supported: this browser cannot receive push notifications. The bell inside the app still works.</p>
-    <div x-show="state === 'needs_install'" x-cloak class="space-y-1 text-txt-primary">
-      <p class="font-medium">Install the app first.</p>
-      <p class="text-txt-secondary">On iPhone and iPad (iOS 16.4 or newer): open this site in Safari, tap the Share button, choose Add to Home Screen, then open the app from your home screen and come back to this page.</p>
+  <div x-show="state === 'needs_install'" x-cloak class="border-t border-border px-6 py-4 text-sm text-txt-secondary">
+    On iPhone or iPad (iOS 16.4+): open this site in Safari, tap Share, choose Add to Home Screen, then open the app from your home screen.
+  </div>
+
+  {# ---------------------------------------------------- superadmin only #}
+  {% if can_test %}
+  <div class="flex items-center justify-between gap-6 border-t border-border px-6 py-4"
+       x-show="state === 'on' || hasDevices" x-cloak>
+    <div class="min-w-0">
+      <p class="text-sm font-medium text-txt-primary">Test notification</p>
+      <p class="mt-0.5 text-sm text-txt-muted">Admin only</p>
     </div>
+    <button type="button" class="btn btn-secondary shrink-0 !px-3 !py-1.5" x-bind:disabled="busy"
+            x-on:click="sendTest()">Send test</button>
   </div>
+  {% endif %}
 
-  <div class="flex flex-wrap gap-3">
-    <button type="button" class="btn btn-primary" x-show="state === 'off'" x-cloak x-bind:disabled="busy"
-            x-on:click="enable()">Turn on notifications</button>
-    <button type="button" class="btn btn-secondary" x-show="state === 'on'" x-cloak x-bind:disabled="busy"
-            x-on:click="disable()">Turn off for this device</button>
-    <button type="button" class="btn btn-secondary" x-show="state === 'on' || hasDevices" x-cloak x-bind:disabled="busy"
-            x-on:click="sendTest()">Send test notification</button>
-  </div>
+  {# ---------------------------------------------------- devices (collapsed until "Show more") #}
+  <div class="border-t border-border" x-data="{ open: false }">
+    <div class="flex items-center justify-between gap-6 px-6 py-4">
+      <div class="min-w-0">
+        <p class="text-sm font-medium text-txt-primary">Devices</p>
+        <p class="mt-0.5 text-sm text-txt-muted">{% if devices %}{{ devices|length }} of {{ max_devices }}{% else %}None yet{% endif %}</p>
+      </div>
+      {% if devices %}
+      <button type="button" class="btn btn-ghost shrink-0 !px-3 !py-1.5" aria-controls="push-device-list"
+              x-bind:aria-expanded="open ? 'true' : 'false'" x-on:click="open = !open">
+        <span x-show="!open">Show more</span>
+        <span x-show="open" x-cloak>Show less</span>
+      </button>
+      {% endif %}
+    </div>
 
-  <div>
-    <h3 class="text-base font-semibold text-txt-primary">Your devices</h3>
     {% if devices %}
-    <ul class="mt-2 divide-y divide-border overflow-hidden rounded-xl border border-border">
-      {% for d in devices %}
-      <li class="flex min-h-14 items-center gap-3 px-4 py-3">
-        <div class="min-w-0 flex-1">
-          <p class="truncate text-base font-medium text-txt-primary">{{ d.label|default:"Unknown device" }}
-            <span class="ml-1 text-sm font-normal text-txt-secondary" x-show="thisHash === '{{ d.endpoint_hash }}'" x-cloak>(this device)</span>
-          </p>
-          <p class="text-sm text-txt-secondary">Added {{ d.created_at|date:"M j, Y" }}</p>
-        </div>
-        <form method="post" action="{% url 'push:remove_device' d.pk %}"
-              data-confirm="This device will stop receiving notifications until you turn them on again there."
-              data-confirm-title="Remove this device?" data-confirm-text="Remove" data-confirm-danger>
-          {% csrf_token %}
-          <input type="hidden" name="next" value="{{ next_url }}">
-          <button type="submit" class="btn btn-secondary min-h-11">Remove<span class="sr-only"> {{ d.label }}</span></button>
-        </form>
-      </li>
-      {% endfor %}
-    </ul>
-    {% else %}
-    <p class="mt-1 text-base text-txt-secondary">No devices yet, so event reminders only appear in the bell. Turn on notifications on a phone or computer and it will appear here.</p>
+    <div id="push-device-list" x-show="open" x-cloak>
+      <ul class="divide-y divide-border border-t border-border">
+        {% for d in devices %}
+        <li class="flex min-h-14 items-center gap-4 px-6 py-3">
+          <div class="min-w-0 flex-1">
+            <p class="truncate text-sm font-medium text-txt-primary">{{ d.label|default:"Unknown device" }}
+              <span class="ml-1 font-normal text-txt-muted" x-show="thisHash === '{{ d.endpoint_hash }}'" x-cloak>(this device)</span>
+            </p>
+            <p class="text-sm text-txt-muted">Added {{ d.created_at|date:"M j, Y" }}</p>
+          </div>
+          <form method="post" action="{% url 'push:remove_device' d.pk %}"
+                data-confirm="This device will stop receiving notifications until you turn them on again there."
+                data-confirm-title="Remove this device?" data-confirm-text="Remove" data-confirm-danger>
+            {% csrf_token %}
+            <input type="hidden" name="next" value="{{ next_url }}">
+            <button type="submit" class="btn btn-ghost !px-3 !py-1.5">Remove<span class="sr-only"> {{ d.label }}</span></button>
+          </form>
+        </li>
+        {% endfor %}
+      </ul>
+      <p class="border-t border-border px-6 py-3 text-xs text-txt-muted">Only you can see this list.</p>
+    </div>
     {% endif %}
-    <p class="mt-2 text-sm text-txt-secondary">You can add up to {{ max_devices }} devices. Only you can see this list.</p>
   </div>
 </section>
 {% endif %}
