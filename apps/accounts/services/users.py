@@ -32,11 +32,11 @@ from ..validators import generate_strong_password, validate_strong_password
 from ..address import ADDRESS_FIELDS, check_address
 from ..contact import PHONE_MESSAGE, clean_phone, is_valid_phone
 from ..models import (
-    AgeNetwork, ArchiveReason, DefaultPassword, Extension, Gender, Role, Status, User,
+    AgeNetwork, ArchiveReason, DefaultPassword, Extension, Gender, PersonType, Role, Status, User,
     UserExtensionHistory,
 )
 from ..permissions import (
-    ARCHIVE, CHANGE_PLACEMENT, DEACTIVATE, DELETE, EDIT, RESET_PASSWORD, RESTORE, SUSPEND, UNSUSPEND,
+    ARCHIVE, CHANGE_PLACEMENT, DELETE, EDIT, RESET_PASSWORD, RESTORE, SUSPEND, UNSUSPEND,
     allowed_bulk_actions, assignable_roles, can_type_password, default_password_roles,
     default_password_view_roles, require_can_act,
     require_can_create, require_password_typer, require_placement_manager, require_user_manager,
@@ -63,7 +63,7 @@ PASSWORD_ALPHABET = "abcdefghijkmnpqrstuvwxyzABCDEFGHJKLMNPQRSTUVWXYZ23456789"
 class PasswordInfo:
     """How a password was chosen, and what (if anything) may be shown once."""
 
-    kind: str                 # "typed" | "default" | "generated"
+    kind: str                 # "typed" | "default" | "generated" | "none" (cannot sign in)
     value: str = ""           # the plain text, only for "generated"
 
     @property
@@ -73,6 +73,8 @@ class PasswordInfo:
             return self.value
         if self.kind == "default":
             return "The default password"
+        if self.kind == "none":
+            return "No password (cannot sign in)"
         return "The password you typed"
 
 
@@ -149,7 +151,11 @@ def _set_initial_password(actor, person, typed):
     """Set `person`'s password: what was typed, else `actor`'s default, else a random one.
 
     Only the super-admin and admin may type one; a coordinator always gets the global member password.
+    A guest or a no-account member never signs in, so they get an unusable password and nothing is shown.
     """
+    if person.person_type != PersonType.MEMBER_ACCOUNT:
+        person.set_unusable_password()
+        return PasswordInfo("none")
     if typed:
         require_password_typer(actor)
         try:
@@ -330,15 +336,6 @@ def _refuse_last_super_admin(locked, what):
         raise ServiceError(f"You cannot {what} the last active super-admin.")
 
 
-def _usable_status(person):
-    """Status for someone coming back (restore, unsuspend).
-
-    Anyone who still has to change their password goes back to not_activated;
-    everyone else goes back to active.
-    """
-    return Status.NOT_ACTIVATED if person.must_change_password else Status.ACTIVE
-
-
 def _log_person(action, actor, request, person, **kwargs):
     """One audit row about a person."""
     log_action(
@@ -402,8 +399,10 @@ def create_user(actor, request, data, *, token):
 
     token     -- the form's one-time token; a replay returns duplicate=True and
                  creates nothing.
-    activated -- True skips activation (status active, no forced password
-                 change). Meant for test accounts.
+    skip_password_change -- True leaves `must_change_password` off (the person keeps the password they
+                 were given). Meant for test accounts; only the super-admin and admin may use it.
+    person_type -- left out means `member_account`. A person who is not one (guest, no-account member)
+                 must be a member and gets an unusable password.
     Coordinators: the new person is set as the coordinator of the extension in the
     same transaction. If the seat is taken, `data["replace_coordinator"]` (ticked by
     the confirmation dialog) demotes the old coordinator to a member of that
@@ -436,8 +435,13 @@ def create_user(actor, request, data, *, token):
 
         _refuse_duplicate(data)
 
-        # Skipping activation would keep a shared default for good, so only those who may choose passwords can.
-        activated = bool(data.get("activated")) and can_type_password(actor)
+        # Skipping the password change would keep a shared default for good, so only those who may choose passwords can.
+        skip_change = bool(data.get("skip_password_change")) and can_type_password(actor)
+        person_type = data.get("person_type") or PersonType.MEMBER_ACCOUNT
+        if person_type not in PersonType.values:
+            raise ServiceError("Choose a valid person type.")
+        if person_type != PersonType.MEMBER_ACCOUNT and role != Role.MEMBER:
+            raise ServiceError("Only a member can be a guest or a member without an account.")
         person = User(
             first_name=data["first_name"],
             middle_name=data.get("middle_name", ""),
@@ -450,8 +454,9 @@ def create_user(actor, request, data, *, token):
             **{name: data.get(name, "") for name in ADDRESS_FIELDS},
             role=role,
             extension=ext,
-            status=Status.ACTIVE if activated else Status.NOT_ACTIVATED,
-            must_change_password=not activated,
+            person_type=person_type,
+            status=Status.ACTIVE,
+            must_change_password=person_type == PersonType.MEMBER_ACCOUNT and not skip_change,
             created_by=actor,
         )
         info = _set_initial_password(actor, person, data.get("password") or "")
@@ -474,7 +479,8 @@ def create_user(actor, request, data, *, token):
                 "role": role,
                 "extension_id": ext.pk if ext else None,
                 "status": person.status,
-                "activated_by_admin": activated,
+                "person_type": person.person_type,
+                "password_change_skipped": skip_change,
                 "how_set": info.kind,          # not "password_...": audit drops those keys
             },
         )
@@ -660,7 +666,7 @@ def restore_user(actor, request, ref):
         ext = locked.extension
         if ext is not None and ext.is_archived:
             raise ServiceError(f"{ext.name} is archived. Restore the extension first.")
-        person.status = _usable_status(person)
+        person.status = Status.ACTIVE
         person.archive_reason = None
         core_services.restore(person, extra_fields=["status", "archive_reason"])
         _log_person("account.restore", actor, request, person,
@@ -698,31 +704,10 @@ def unsuspend_user(actor, request, ref):
         require_can_act(actor, person, UNSUSPEND)
         if person.status != Status.SUSPENDED:
             return person, False
-        person.status = _usable_status(person)
+        person.status = Status.ACTIVE
         person.save(update_fields=["status", "updated_at"])
         _log_person("account.unsuspend", actor, request, person,
                     before={"status": Status.SUSPENDED}, after={"status": person.status})
-    return person, True
-
-
-def deactivate_user(actor, request, ref):
-    """Send an active person back to not_activated: they must activate again."""
-    require_user_manager(actor)
-    with transaction.atomic():
-        locked = _lock_person(ref.pk)
-        person = locked.person
-        require_can_act(actor, person, DEACTIVATE)
-        if person.status == Status.NOT_ACTIVATED:
-            return person, False
-        if person.status != Status.ACTIVE:
-            raise ServiceError("Only active accounts can be deactivated.")
-        _refuse_self(actor, person, "deactivate")
-        _refuse_last_super_admin(locked, "deactivate")
-        person.status = Status.NOT_ACTIVATED
-        person.must_change_password = True
-        person.save(update_fields=["status", "must_change_password", "updated_at"])
-        _log_person("account.deactivate", actor, request, person,
-                    before={"status": Status.ACTIVE}, after={"status": Status.NOT_ACTIVATED})
     return person, True
 
 
@@ -746,13 +731,15 @@ def _reset_password(actor, request, ref, typed=""):
         if person.status == Status.ARCHIVED:
             raise ServiceError("Restore this person before resetting their password.")
         _refuse_self(actor, person, "reset the password of")
+        if person.person_type != PersonType.MEMBER_ACCOUNT:
+            raise ServiceError("This person has no account, so there is no password to reset.")
         info = _set_initial_password(actor, person, typed)
-        person.status = Status.NOT_ACTIVATED
+        # A reset only sets the flag: the status (active or suspended) is left as it is.
         person.must_change_password = True
         # Changing the hash also signs the person out of every open session.
-        person.save(update_fields=["password", "status", "must_change_password", "updated_at"])
+        person.save(update_fields=["password", "must_change_password", "updated_at"])
         _log_person("account.password_reset", actor, request, person,
-                    after={"needs_activation": True, "how_set": info.kind})
+                    after={"needs_change": True, "how_set": info.kind})
     return person, info
 
 
@@ -970,7 +957,6 @@ BULK_ACTIONS = {
     "restore": restore_user,
     "suspend": suspend_user,
     "unsuspend": unsuspend_user,
-    "deactivate": deactivate_user,
     "delete": force_delete_user,
 }
 BULK_ACTION_NAMES = (*BULK_ACTIONS, "reset_password")
@@ -980,7 +966,6 @@ NOTHING_TO_DO = {
     "restore": "not archived",
     "suspend": "already suspended",
     "unsuspend": "not suspended",
-    "deactivate": "not activated yet",
 }
 
 

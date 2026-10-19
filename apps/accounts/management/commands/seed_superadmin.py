@@ -42,8 +42,8 @@ class Command(BaseCommand):
             raise CommandError("Set SEED_SUPERADMIN_PASSWORD in your .env file first.")
 
         with transaction.atomic():
-            # create_superuser sets role=super_admin, status=active and
-            # must_change_password=False; User.save() generates the account id.
+            # create_superuser sets role=super_admin, status=active,
+            # person_type=member_account and must_change_password=False; User.save() generates the account id.
             user = User.objects.create_superuser(
                 password=password,
                 first_name=config("SEED_SUPERADMIN_FIRST_NAME", default="Super"),

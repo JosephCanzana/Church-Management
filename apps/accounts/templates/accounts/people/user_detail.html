@@ -68,17 +68,6 @@
       </button>
     </form>
     {% endif %}
-    {% if 'deactivate' in can %}
-    <form method="post" action="{% role_url 'user_deactivate' person.pk %}">
-      {% csrf_token %}
-      <button type="submit" class="btn btn-secondary"
-              data-confirm="{{ person.full_name }} goes back to 'not activated' and must activate again."
-              data-confirm-title="Deactivate this person?" data-confirm-text="Deactivate">
-        {% include 'includes/icon.html' with name='power' class='size-4' %}
-        Deactivate
-      </button>
-    </form>
-    {% endif %}
     {% if 'archive' in can %}
     <form method="post" action="{% role_url 'user_archive' person.pk %}">
       {% csrf_token %}

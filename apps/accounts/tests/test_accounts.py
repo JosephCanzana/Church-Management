@@ -1,4 +1,4 @@
-"""accounts.tests.test_accounts: tests for login, logout and activation redirect.
+"""accounts.tests.test_accounts: tests for login, logout and the password-change redirect.
 
 Run with:
     docker compose exec web python manage.py test apps.accounts.tests.test_accounts -v 2
@@ -14,7 +14,7 @@ from django.urls import reverse
 from django.utils import timezone
 
 from apps.accounts.forms import GENERIC_LOGIN_ERROR
-from apps.accounts.models import ArchiveReason, Extension, Role, Status, User
+from apps.accounts.models import ArchiveReason, Extension, PersonType, Role, Status, User
 from apps.audit.models import AuditLog
 from apps.accounts import navigation as nav
 from apps.accounts.navigation import NavItem
@@ -34,6 +34,7 @@ def make_user(**overrides):
         last_name="Dela Cruz",
         role=Role.MEMBER,
         extension=extension,
+        person_type=PersonType.MEMBER_ACCOUNT,
         status=Status.ACTIVE,
         must_change_password=False,
     )
@@ -91,19 +92,29 @@ class LoginTests(TestCase):
         self.assertContains(response, GENERIC_LOGIN_ERROR)
         self.assertNotIn("_auth_user_id", self.client.session)
 
-    def test_not_activated_user_goes_to_activation(self):
-        user = make_user(status=Status.NOT_ACTIVATED)
-        response = self.post(user.account_id)
-        self.assertRedirects(
-            response, reverse("accounts:activate"), fetch_redirect_response=False
-        )
-
-    def test_must_change_password_user_goes_to_activation(self):
+    def test_must_change_password_user_goes_to_change_password(self):
         user = make_user(must_change_password=True)
         response = self.post(user.account_id)
         self.assertRedirects(
-            response, reverse("accounts:activate"), fetch_redirect_response=False
+            response, reverse("accounts:change_password"), fetch_redirect_response=False
         )
+
+    def test_a_guest_record_cannot_sign_in(self):
+        guest = make_user(person_type=PersonType.GUEST)
+        self.assertFalse(guest.has_usable_password())
+        self.assertFalse(guest.can_sign_in)
+        response = self.post(guest.account_id, password=PASSWORD)
+        self.assertContains(response, GENERIC_LOGIN_ERROR)
+        self.assertNotIn("_auth_user_id", self.client.session)
+
+    def test_a_member_without_an_account_cannot_sign_in_even_with_a_password_set(self):
+        # The type is checked on its own: a leftover password must not open the door.
+        record = make_user(person_type=PersonType.MEMBER_RECORD)
+        record.set_password(PASSWORD)
+        record.save(update_fields=["password"])
+        response = self.post(record.account_id, password=PASSWORD)
+        self.assertContains(response, GENERIC_LOGIN_ERROR)
+        self.assertNotIn("_auth_user_id", self.client.session)
 
     def test_safe_next_url_is_followed(self):
         user = make_user()

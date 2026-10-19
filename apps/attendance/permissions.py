@@ -40,7 +40,7 @@ _ADMINS = (Role.SUPER_ADMIN, Role.ADMIN)
 
 
 def _signed_in(actor):
-    """True for a real person who can sign in (not anonymous, not archived, not suspended)."""
+    """True for a real person who can sign in (not anonymous, not archived, not suspended, a member with an account: `is_active` includes the person type)."""
     return actor is not None and getattr(actor, "is_authenticated", False) and actor.is_active
 
 
@@ -197,7 +197,7 @@ def creatable_extensions(actor):
 
 
 def _can_sign_in(actor):
-    """True for a signed-in, active person (suspended and archived people are not)."""
+    """True for a signed-in person who can sign in (suspended, archived, guest and no-account people cannot)."""
     return actor is not None and getattr(actor, "is_authenticated", False) and actor.is_active
 
 

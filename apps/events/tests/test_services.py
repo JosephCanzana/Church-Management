@@ -4,7 +4,7 @@ from django.core.exceptions import PermissionDenied
 from django.test import TestCase
 from django.utils import timezone
 
-from apps.accounts.models import Extension, Role, Status
+from apps.accounts.models import Extension, PersonType, Role, Status, User
 from apps.audit.models import AuditLog
 from apps.core.services import ServiceError, archive, new_submission_token
 from apps.events import services
@@ -163,16 +163,19 @@ class UpdateEventTests(TestCase):
         self.update(w.coord_a, location="Chapel")
         self.assertEqual(notified(self.event, services.EVENT_CHANGED), {w.member_a.pk, w.member_a2.pk})
 
-    def test_inactive_suspended_archived_and_muted_people_are_skipped(self):
+    def test_suspended_archived_guest_no_account_and_muted_people_are_skipped(self):
         w = self.w
         suspended = make_user(Role.MEMBER, w.ext_a, status=Status.SUSPENDED)
         archived = archive_user(make_user(Role.MEMBER, w.ext_a))
-        not_activated = make_user(Role.MEMBER, w.ext_a, status=Status.NOT_ACTIVATED)
+        guest = make_user(Role.MEMBER, w.ext_a)
+        no_account = make_user(Role.MEMBER, w.ext_a)
+        User.objects.filter(pk=guest.pk).update(person_type=PersonType.GUEST)
+        User.objects.filter(pk=no_account.pk).update(person_type=PersonType.MEMBER_RECORD)
         NotificationPreference.objects.create(user=w.member_a2, type=services.EVENT_CHANGED, in_app=False)
         self.update(w.admin, location="Chapel")
         got = notified(self.event, services.EVENT_CHANGED)
         self.assertEqual(got, {w.coord_a.pk, w.member_a.pk})
-        for skipped in (suspended, archived, not_activated, w.member_a2, w.member_b, w.coord_b):
+        for skipped in (suspended, archived, guest, no_account, w.member_a2, w.member_b, w.coord_b):
             self.assertNotIn(skipped.pk, got)
 
     def test_global_event_change_reaches_every_active_person_but_the_actor(self):

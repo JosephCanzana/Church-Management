@@ -135,13 +135,13 @@
     The new member gets the global member password and must change it the first time they sign in.
   </p>
   {% endif %}
-  {% if form.activated %}
+  {% if form.skip_password_change %}
   <div class="mt-4">
     <label class="flex items-start gap-3 text-sm">
-      {{ form.activated }}
+      {{ form.skip_password_change }}
       <span>
-        <span class="font-medium">{{ form.activated.label }}</span>
-        <span class="mt-0.5 block text-txt-secondary">{{ form.activated.help_text }}</span>
+        <span class="font-medium">{{ form.skip_password_change.label }}</span>
+        <span class="mt-0.5 block text-txt-secondary">{{ form.skip_password_change.help_text }}</span>
       </span>
     </label>
   </div>

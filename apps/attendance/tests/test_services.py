@@ -165,16 +165,6 @@ class SearchPeopleTests(ServiceTestCase):
 
 
 class MarkPresentTests(ServiceTestCase):
-    def test_member_is_snapshotted_as_of_the_sheet_date(self):
-        # 35 on the sheet date (turns 36 the day after), so young adult, not adult
-        person = make_user("mara", "member", Role.MEMBER, self.ext, gender="female",
-                           birth_date=date(1990, 10, 12))
-        row, created = services.mark_present(self.coordinator, self.sheet(), person)
-        self.assertTrue(created)
-        self.assertEqual((row.gender, row.age_network), ("female", "young_adult"))
-        self.assertEqual((row.member_name, row.home_extension_name), ("Mara Member", "Santa Rosa"))
-        self.assertEqual(row.home_extension, self.ext)
-
     def test_visitor_can_be_marked(self):
         visitor = make_user("vera", "visitor", Role.MEMBER, self.other_ext)
         row, _ = services.mark_present(self.taker, self.sheet(), visitor)

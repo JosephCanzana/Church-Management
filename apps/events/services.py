@@ -15,7 +15,7 @@ from datetime import timedelta
 from django.db import transaction
 from django.utils import timezone
 
-from apps.accounts.models import Extension, Role, Status, User
+from apps.accounts.models import Extension, PersonType, Role, Status, User
 from apps.audit.models import AuditLog
 from apps.audit.services import log_action
 from apps.core.services import ServiceError, consume_submission_token
@@ -29,7 +29,6 @@ from datetime import timedelta
 
 EVENT_CHANGED = "event_changed"
 EVENT_CANCELLED = "event_cancelled"
-EVENT_REMINDER = "e255vent_reminder"
 REMINDER_MAX_MINUTES = 43200   # same ceiling as UserSettings.event_reminder_minutes
 REMINDER_KEEP_DAYS = 30        # EventReminder rows older than this are trimmed by send_reminders
 EVENT_REMINDER = "event_reminder"
@@ -90,11 +89,12 @@ def event_recipients(event, actor=None):
     """Ids of the people who get a notice about `event`.
 
     Global event: everyone with an ACTIVE account. Extension event: that extension's ACTIVE
-    members and coordinator. Never the person who made the change. Suspended, archived and
-    not-yet-activated accounts are skipped. (People who turned event alerts off are left out
+    members and coordinator. Never the person who made the change. Suspended and archived people
+    are skipped, and so are guests and members without an account (only a `member_account` can
+    sign in, so only they have a bell). (People who turned event alerts off are left out
     later, by `notify_many`.)
     """
-    people = User.objects.filter(status=Status.ACTIVE)
+    people = User.objects.filter(status=Status.ACTIVE, person_type=PersonType.MEMBER_ACCOUNT)
     if event.extension_id is not None:
         people = people.filter(
             extension_id=event.extension_id, role__in=[Role.MEMBER, Role.COORDINATOR],

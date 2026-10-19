@@ -28,7 +28,7 @@ from apps.core.services import ServiceError
 from apps.core.text import title_case
 
 from ..models import (
-    Extension, ExtensionSpecialRoleLimit, Role, SpecialRole, Status, User, UserSpecialRole,
+    Extension, ExtensionSpecialRoleLimit, PersonType, Role, SpecialRole, Status, User, UserSpecialRole,
 )
 from ..permissions import (
     require_special_role_assigner, require_special_role_limit_manager, require_user_manager,
@@ -42,11 +42,13 @@ TAG_LABELS = {"tithes_offering": "Tithes member", "attendance": "Attendance memb
 def member_counts(extension_ids=None):
     """{extension_id: members who can sign in}. This is the most a special-role limit may be.
 
-    Only members count (admins and coordinators cannot hold a special role), and not archived or
-    suspended ones, because `assign_special_role` refuses them.
+    Only members with an account count (admins, coordinators, guests and no-account members cannot hold
+    a special role), and not archived or suspended ones, because `assign_special_role` refuses them.
     """
     people = (
-        User.objects.filter(role=Role.MEMBER, extension_id__isnull=False)
+        User.objects.filter(
+            role=Role.MEMBER, person_type=PersonType.MEMBER_ACCOUNT, extension_id__isnull=False,
+        )
         .exclude(status__in=(Status.ARCHIVED, Status.SUSPENDED))
     )
     if extension_ids is not None:
@@ -152,7 +154,10 @@ def filter_by_special_role(people, role_code):
 def assign_special_role(actor, request, person, role_code):
     """Give `person` a special role. Returns True if given, False if they already had it."""
     require_user_manager(actor)
-    if person.role != Role.MEMBER or person.extension_id is None:
+    if (
+        person.role != Role.MEMBER or person.person_type != PersonType.MEMBER_ACCOUNT
+        or person.extension_id is None
+    ):
         raise ServiceError("Only members of an extension can hold a special role.")
     require_special_role_assigner(actor, person.extension_id)
     with transaction.atomic():
@@ -160,6 +165,8 @@ def assign_special_role(actor, request, person, role_code):
         locked = User.objects.select_for_update().get(pk=person.pk)
         if locked.extension_id != extension.pk or locked.role != Role.MEMBER:
             raise ServiceError("This person was moved. Reload the page and try again.")
+        if locked.person_type != PersonType.MEMBER_ACCOUNT:
+            raise ServiceError("Only members with an account can hold a special role.")
         if locked.status in (Status.ARCHIVED, Status.SUSPENDED):
             raise ServiceError("Only members who can sign in can hold a special role.")
         role = SpecialRole.objects.filter(pk=role_code).first()

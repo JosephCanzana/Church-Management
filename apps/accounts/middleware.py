@@ -1,23 +1,23 @@
-"""accounts.middleware: keep people who still must activate on the activation page.
+"""accounts.middleware: keep people who must change their password on the change-password page.
 
-Login already sends them to /accounts/activate/, but nothing stopped them from
+Login already sends them to /accounts/change-password/, but nothing stopped them from
 typing another address afterwards. This middleware closes that gap: while
-`user_needs_activation(user)` is true, every page except the activation page
-and logout redirects to the activation page.
+`user_needs_password_change(user)` is true, every page except the change-password page
+and logout redirects to the change-password page.
 
 Place it AFTER AuthenticationMiddleware and MessageMiddleware in MIDDLEWARE.
 """
 from django.shortcuts import redirect
 from django.urls import reverse
 
-from .services.activation import user_needs_activation
+from .services.password_change import user_needs_password_change
 
 
-class ActivationRequiredMiddleware:
-    """Redirect signed-in people who must activate, except on the allowed pages."""
+class PasswordChangeRequiredMiddleware:
+    """Redirect signed-in people who must change their password, except on the allowed pages."""
 
-    #: URL names a person who still must activate may open.
-    ALLOWED_URL_NAMES = ("accounts:activate", "accounts:logout")
+    #: URL names a person who still must change their password may open.
+    ALLOWED_URL_NAMES = ("accounts:change_password", "accounts:logout")
 
     def __init__(self, get_response):
         self.get_response = get_response
@@ -26,10 +26,10 @@ class ActivationRequiredMiddleware:
         user = request.user
         if (
             user.is_authenticated
-            and user_needs_activation(user)
+            and user_needs_password_change(user)
             and request.path not in self._allowed_paths()
         ):
-            return redirect("accounts:activate")
+            return redirect("accounts:change_password")
         return self.get_response(request)
 
     def _allowed_paths(self):

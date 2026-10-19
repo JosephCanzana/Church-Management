@@ -2,7 +2,7 @@
 
 Included from the project urls with:  path("coordinator/", include("apps.accounts.urls.coordinator_area"))
 A coordinator manages the members of their own extension only: create, edit details, reset a
-password, archive and restore. No suspend, deactivate or delete routes exist for this role, and
+password, archive and restore. No suspend or delete routes exist for this role, and
 the services refuse them anyway. The views are shared with the other roles (see admin_area).
 There is no default-passwords screen either: the Default passwords button on the list POSTs to
 `default_password_show`, which displays the global member password read-only.

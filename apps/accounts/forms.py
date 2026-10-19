@@ -384,11 +384,11 @@ class UserForm(forms.Form):
         self.fixed_extension = None
         if actor.role == Role.COORDINATOR:
             self.fixed_extension = Extension.objects.filter(pk=actor.extension_id).first()
-        # A coordinator cannot choose a password or skip activation: new people get the global
+        # A coordinator cannot choose a password or skip the password change: new people get the global
         # member password and must change it. The service refuses it too.
         if not can_type_password(actor):
             self.fields.pop("password", None)
-            self.fields.pop("activated", None)
+            self.fields.pop("skip_password_change", None)
         roles = list(assignable_roles(actor))
         if keep_role and keep_role not in roles:
             roles.insert(0, keep_role)
@@ -508,10 +508,10 @@ class UserCreateForm(UserForm):
         widget=forms.PasswordInput(attrs={"class": "input", "autocomplete": "new-password"}, render_value=False),
         help_text="Leave empty to use your default password for this role, or a generated one shown once.",
     )
-    activated = forms.BooleanField(
-        required=False, label="Skip activation",
+    skip_password_change = forms.BooleanField(
+        required=False, label="Skip password change",
         widget=forms.CheckboxInput(attrs={"class": "mt-0.5 size-4 accent-accent"}),
-        help_text="The account is active at once and is not asked to change the password. Meant for test accounts.",
+        help_text="The person is not asked to change the password at first sign-in. Meant for test accounts.",
     )
 
     def clean_password(self):
@@ -526,7 +526,6 @@ class UserFilterForm(forms.Form):
 
     STATUS_CHOICES = [
         ("current", "Not archived"),
-        ("not_activated", "Not activated"),
         ("active", "Active"),
         ("suspended", "Suspended"),
         ("archived", "Archived"),
@@ -615,7 +614,7 @@ class DefaultPasswordsForm(forms.Form):
                 out[role] = ("set", password)
         return out
 
-# ============================================================ activation
+# ============================================================ forced password change
 def clean_new_password(self):
     value = self.cleaned_data["new_password"]
     if self.user.check_password(value):
@@ -630,8 +629,10 @@ def clean_password(self):
         validate_strong_password(value)
     return value
 
-class ActivationForm(forms.Form):
-    """Choose a new password (twice) to finish activation.
+class SetNewPasswordForm(forms.Form):
+    """Choose a new password (twice) to replace a temporary one (`must_change_password`).
+
+    Not `ChangePasswordForm` (the profile page: current + new password).
 
     user -- the signed-in person. Used to refuse reusing the temporary
     password and for Django's password validators (length, common

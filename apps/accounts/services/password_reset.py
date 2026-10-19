@@ -2,8 +2,8 @@
 
 Flow (docs: AGENTS.md "Behaviour rules", docs/flows.md):
   1. `request_password_reset()` -- someone types an account id or a verified
-     email. A link is emailed ONLY when the account is `active` and has a
-     VERIFIED email. In every other case nothing happens, and the caller shows
+     email. A link is emailed ONLY when the person can sign in (a `member_account`
+     that is not suspended or archived) and has a VERIFIED email. In every other case nothing happens, and the caller shows
      the same message, so the page never reveals whether an account exists.
   2. `get_valid_reset_token()` -- read-only check used by the reset page (a GET
      never uses up a token, because mail scanners open links automatically).
@@ -12,9 +12,10 @@ Flow (docs: AGENTS.md "Behaviour rules", docs/flows.md):
 
 Rules that matter:
   * Tokens are stored as SHA-256 hashes (same helper as email verification).
-  * Not-activated, suspended and archived people cannot reset, and neither can
-    people without a verified email; they use the admin / coordinator reset.
-  * A link stops working if the person is no longer active or their verified
+  * Suspended and archived people cannot reset, nor can guests and no-account members
+    (`User.can_sign_in` is the one test), nor can people without a verified email; they
+    use the admin / coordinator reset.
+  * A link stops working if the person can no longer sign in or their verified
     email changed after it was sent.
   * Mail is sent AFTER the transaction commits, and a mail failure is logged,
     never shown, so it cannot change what the visitor sees.
@@ -37,7 +38,7 @@ from django.utils import timezone
 from apps.audit.services import log_action
 from apps.core.services import ServiceError
 
-from ..models import EmailToken, Status, User
+from ..models import EmailToken, User
 # One hashing implementation for every emailed token.
 from .profile import _hash_token, _lock_user
 
@@ -86,8 +87,8 @@ def _find_person(identifier):
 
 
 def _can_reset(person):
-    """Only active people with a verified email may reset by email."""
-    return person.status == Status.ACTIVE and bool(person.email) and bool(person.email_verified_at)
+    """Only people who can sign in and have a verified email may reset by email."""
+    return person.can_sign_in and bool(person.email) and bool(person.email_verified_at)
 
 
 def _token_usable(token, person):
@@ -155,7 +156,7 @@ def request_password_reset(request, identifier):
 
     Returns True when a link was issued. CALLERS MUST NOT USE THE RESULT to
     change what the visitor sees (that would allow account enumeration); it
-    exists for tests. Unknown id, no verified email, not active, and being
+    exists for tests. Unknown id, no verified email, cannot sign in, and being
     rate limited all return False without any error.
     """
     person = _find_person(identifier)

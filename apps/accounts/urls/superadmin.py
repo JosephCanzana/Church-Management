@@ -39,7 +39,6 @@ urlpatterns = [
     path("users/<int:pk>/restore/", people.user_restore, name="user_restore"),
     path("users/<int:pk>/suspend/", people.user_suspend, name="user_suspend"),
     path("users/<int:pk>/unsuspend/", people.user_unsuspend, name="user_unsuspend"),
-    path("users/<int:pk>/deactivate/", people.user_deactivate, name="user_deactivate"),
     path("users/<int:pk>/reset-password/", people.user_reset_password, name="user_reset_password"),
     path("users/<int:pk>/delete/", people.user_delete, name="user_delete"),
 

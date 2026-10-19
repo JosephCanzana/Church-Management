@@ -14,7 +14,7 @@ app_name = "accounts"
 urlpatterns = [
     path("login/", views.login_view, name="login"),
     path("logout/", views.logout_view, name="logout"),
-    path("activate/", views.activate_view, name="activate"),
+    path("change-password/", views.change_password_view, name="change_password"),
     # Profile: the signed-in person's own details, email and password (every role).
     path("profile/", profile.profile_view, name="profile"),
     path("profile/details/", profile.details_view, name="profile_details"),

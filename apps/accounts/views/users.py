@@ -33,7 +33,7 @@ from apps.core.text import name_case, suffix_case, title_case
 from ..address import ADDRESS_FIELDS, canonical_country
 from ..decorators import role_required
 from ..forms import UserCreateForm, UserFilterForm, UserForm
-from ..models import Role, Status, User, UserExtensionHistory
+from ..models import PersonType, Role, Status, User, UserExtensionHistory
 from ..permissions import (
     EDIT, allowed_bulk_actions, can_assign_special_roles, can_change_placement, require_can_act,
 )
@@ -41,7 +41,6 @@ from ..services.special_roles import attach_special_roles, filter_by_special_rol
 from ..services.users import (
     archive_user,
     create_user,
-    deactivate_user,
     force_delete_user,
     reset_password,
     restore_user,
@@ -88,9 +87,6 @@ BULK_BUTTONS = {
     "unsuspend": dict(label="Unsuspend", icon="play-circle", past="unsuspended", danger=False,
                       title="Unsuspend {n} selected?",
                       message="They can log in again."),
-    "deactivate": dict(label="Deactivate", icon="power", past="deactivated", danger=False,
-                       title="Deactivate {n} selected?",
-                       message="They go back to not activated and must activate again."),
     "reset_password": dict(label="Reset password", icon="key", past="given a new password", danger=False,
                            title="Reset the password of {n} selected?",
                            message="Each person gets a new password, shown once. Their open sessions end."),
@@ -101,16 +97,15 @@ BULK_BUTTONS = {
                    title="Delete {n} selected permanently?",
                    message="This cannot be undone. Only archived people can be deleted."),
 }
-BULK_ORDER = ("archive", "suspend", "unsuspend", "deactivate", "reset_password", "restore", "delete")
+BULK_ORDER = ("archive", "suspend", "unsuspend", "reset_password", "restore", "delete")
 # The statuses each bulk action can do something for. The list page counts only the ticked rows
 # in these statuses and hides a button when none of them apply, so Restore never shows for
 # someone who is not archived.
-_LIVE = (Status.NOT_ACTIVATED, Status.ACTIVE, Status.SUSPENDED)
+_LIVE = (Status.ACTIVE, Status.SUSPENDED)
 BULK_APPLIES = {
     "archive": _LIVE,
-    "suspend": (Status.NOT_ACTIVATED, Status.ACTIVE),
+    "suspend": (Status.ACTIVE,),
     "unsuspend": (Status.SUSPENDED,),
-    "deactivate": (Status.ACTIVE,),
     "reset_password": _LIVE,
     "restore": (Status.ARCHIVED,),
     "delete": (Status.ARCHIVED,),
@@ -335,8 +330,8 @@ def _render_detail(request, person, secrets=None):
     )
     # Special roles are for members who can still sign in; the card is hidden otherwise.
     show_special = (
-        person.role == Role.MEMBER and person.extension_id is not None
-        and person.status != Status.ARCHIVED
+        person.role == Role.MEMBER and person.person_type == PersonType.MEMBER_ACCOUNT
+        and person.extension_id is not None and person.status != Status.ARCHIVED
     )
     return render(request, DETAIL_TEMPLATE, {
         "person": person,
@@ -417,13 +412,6 @@ def user_suspend(request, pk):
 def user_unsuspend(request, pk):
     return _run_user_action(request, pk, unsuspend_user,
                             "{name} can log in again.", "{name} is not suspended.")
-
-
-@people_manager
-@require_POST
-def user_deactivate(request, pk):
-    return _run_user_action(request, pk, deactivate_user,
-                            "{name} must activate again.", "{name} is not activated yet.")
 
 
 @super_admin_only

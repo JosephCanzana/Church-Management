@@ -64,7 +64,6 @@ class ConvertTests(TestCase):
         self.assertEqual((user.role, user.extension_id), (Role.MEMBER, self.a.pk))
         self.assertEqual((user.gender, user.birth_date), (Gender.FEMALE, date(2008, 3, 4)))
         self.assertEqual(user.phone_number, self.ft.phone_number)
-        self.assertEqual(user.status, Status.NOT_ACTIVATED)
         self.assertTrue(user.must_change_password)
         self.assertTrue(result.password.display)
         self.ft.refresh_from_db()

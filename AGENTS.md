@@ -12,7 +12,7 @@ buddies, prayer requests, events, resources, notifications and audit logging.
 - **Built:**
   - Base templates, design tokens, light/dark toggle, the public landing page (a default for every block until
     `pages` content is managed) and the redesigned login page.
-  - Accounts: login (`/accounts/login/`, `/accounts/logout/`), activation (`/accounts/activate/`), profile
+  - Accounts: login (`/accounts/login/`, `/accounts/logout/`), forced password change (`/accounts/change-password/`), profile
     (`/accounts/profile/`), `role_required` (`accounts/decorators.py`).
   - Super-admin extension management (`/superadmin/extensions/`).
   - People management for three roles, one set of screens with role-based rules: super-admin (`/superadmin/users/`),
@@ -27,10 +27,10 @@ buddies, prayer requests, events, resources, notifications and audit logging.
     reading, quick links and, for leaders, counts and charts (see Dashboards).
   - Attendance (bricks 1 to 14): gender and age networks, model changes, permissions and scoping, draft services,
     summary, upload, reopen, the sheet screens for every role, A4 print page, first timer conversion, repeat-visitor
-    auto-transfer, reset-to-activation, 58 mm welcome slip and personal history (see Attendance).
+    auto-transfer, reset-to-password-change, 58 mm welcome slip and personal history (see Attendance).
 - **Not built yet:**
-  - The access revamp: guest and no-account member types, public Register, approvals, "change password" replacing
-    activation (decided, see Access revamp).
+  - The rest of the access revamp: tags and the guests screen, attendance guests, public Register and approvals
+    (decided, see Access revamp). Brick 1 (people types, trimmed statuses, password change, sign-in rules) is built.
   - Brute-force login throttling.
   - The `faith` listener that turns a chapter read into a streak, MBBTAG. The dashboards show "Coming soon"
     cards for the Bible streak, goals and events until those apps have views.
@@ -117,7 +117,7 @@ moving or reorganizing app code.
 |---|---|---|
 | `core` | `site_setting`, `retention_policy`, `submission_token` | Abstract bases (`TimestampedModel`, `ArchivableModel`), `archived_matches_status()`, generic archive / restore / force-delete, upload validation and storage helpers (`uploads.py`), nightly `purge_archived`, permission hierarchy helpers, retention screen. `site_setting` also holds the Bible switches and ESV state (keys `bible_api_enabled`, `bible_esv_enabled`, `bible_esv_state`, `bible_esv_cache_lock`) |
 | `audit` | `audit_log` | `log_action()` in `audit/services.py` (strips sensitive keys, sends `action_logged` from `audit/signals.py`), log viewer, `cleanup_audit_log` |
-| `accounts` | `extension`, `app_user`, `special_role`, `user_special_role`, `extension_special_role_limit`, `default_password`, `email_token`, `user_extension_history` | Login/logout/activation, forgot + reset password, email verification, profile, create/manage accounts, extensions, special roles and limits, default passwords, `archive_inactive_users`, `auto_transfer_extension`, `cleanup_email_tokens`, `mark_attended()` |
+| `accounts` | `extension`, `app_user`, `special_role`, `user_special_role`, `extension_special_role_limit`, `default_password`, `email_token`, `user_extension_history` | Login/logout/forced password change, forgot + reset password, email verification, profile, create/manage accounts, extensions, special roles and limits, default passwords, `archive_inactive_users`, `auto_transfer_extension`, `cleanup_email_tokens`, `mark_attended()` |
 | `theming` | `theme`, `theme_palette`, `user_settings` | Theme CRUD (both palettes in one transaction), contrast warning (including `highlight` / `on_highlight`), CSS generation + cache, context processor; `UserSettings` row created by `signals.py` |
 | `pages` | `church_content`, `landing_image`, `donation_account`, `jil_video` | Landing page (`get_landing_context()` in `pages/services.py`, a default for every block) and terms editing, donation page, `fetch_jil_videos` |
 | `bible` | `bible_verse`, `bible_esv_cache`, `daily_verse`, `bible_chapter_read`, `bible_bookmark` | Reader (KJV, Ang Dating Biblia, ESV), `import_bible`, ESV client with limits, locks and cache, version picker, daily verse (`daily_verse.py`, `seed_daily_verses`), `record_chapter_read()`, `finish_chapter()`, bookmark |
@@ -318,44 +318,12 @@ with. Only create a new app if the answer is "none".
 - **Tests never call outside services.** Mock `apps.bible.esv.esv_client.fetch_chapter`; tests that depend on ESV
   being locked or open set `ESV_API_KEY` with `override_settings`, so a real key in `.env` never changes them.
 
-## Access revamp: people types, registration, approvals (decided, NOT built yet)
-This section records decisions made before the work starts. The sections below it (Accounts, People screens, Attendance)
-describe the code as it is today; each bullet this section replaces is named here, and the older bullet is rewritten in the
-same change that implements it. Until a brick lands, do not apply a rule from here on its own: a half-applied rule breaks
-login. When a brick lands, move its rules into the right section above and delete them here.
-
-### People types and statuses
-- **Type vs status vs role are three separate things.** A new `User.person_type` (`accounts.models.PersonType`, a
-  `TextChoices` next to `Gender` and `AgeNetwork`): `guest` (a non-member who has attended), `member_record` (shown as
-  "Member (no account)": a member whose attendance and tithes are managed but who has no sign-in) and `member_account`
-  (shown as "Member": full access). `role` is unchanged and still means the four roles. Only `member_account` can sign in.
-- **Status shrinks to** `active`, `suspended`, `archived`. `not_activated` is removed (model choices, the
-  `archived_matches_status` rule and every check that mentions it). "Needs password change" is the existing
-  `must_change_password` flag, shown as a tag, never a status.
-- **Tags shown in the UI** (one helper builds them, templates never rebuild them): Needs password change, Guest,
-  Member (no account), Member, Suspended, Archived. "Deactivated" and "Activated / Not activated" no longer exist anywhere.
-- **Account id is still generated for every person** in `User.save()`, guests and no-account members included (the login
-  field stays non-null). Never reused, never edited.
-- **Sign-in:** `AccountIdOrEmailBackend` rejects anyone who is not `member_account` or who is archived or suspended.
-  Guests and no-account members get `set_unusable_password()`. Every place that asks "can this person sign in" (attendance
-  `permissions.py`, special-role assignment, coordinator seat, extension rules) must also check `person_type`. A guest or
-  no-account member never holds a seat, a special role, a buddy, goals, prayer requests or a notification.
-- Only a leader changes a type: guest to `member_record` (promotion), `member_record` to `member_account` (approval, or
-  `grant_account` from the person's detail page). Both change the EXISTING row; never create a second row for the same person.
-
-### Password change replaces "activation"
-- Rename everything: `services/activation.py` to `services/password_change.py` (`user_needs_password_change`,
-  `complete_password_change`), `ActivationRequiredMiddleware` to `PasswordChangeRequiredMiddleware`, the view, template, route
-  (`/accounts/change-password/`) and form. The profile page already has `ChangePasswordForm` (current + new password), so give
-  the forced form another name (for example `SetNewPasswordForm`) and grep for clashes first.
-- A person must change their password when `must_change_password=True`. It is set on approval, on a leader-created account,
-  and on reset. A reset NO LONGER touches `status`; restore and unsuspend always go back to `active`.
-- Audit: `account.activated` becomes `account.password_set`, and the logged flag `needs_activation` becomes
-  `needs_password_change`. Any `notification_rule` row or listener using the old names is updated in a NEW migration (never
-  edit an applied one).
-- "Deactivate" is removed: service, `_ACTOR_RULES`, `available_actions`, `BULK_APPLIES`, buttons, guards and tests.
-  "Skip activation" on create becomes "Skip password change" (still super-admin and admin only).
-- Tests that sign a user in create them with `must_change_password=False` and `person_type="member_account"`.
+## Access revamp: people types, registration, approvals (brick 1 built; the rest decided, NOT built yet)
+This section records decisions made before the work starts. Brick 1 (types, statuses, password change, sign-in rules) is
+built and its rules now live under Accounts. The sections below it (People screens, Attendance) still describe the code as it is
+today where a bullet here replaces them; the older bullet is rewritten in the same change that implements it. Until a brick
+lands, do not apply a rule from here on its own: a half-applied rule breaks login. When a brick lands, move its rules into the
+right section above and delete them here.
 
 ### Registration (public Register page)
 - **Table `registration_request`** (`accounts` app): first, middle, last name, suffix, birth date, gender, email, extension,
@@ -416,28 +384,40 @@ login. When a brick lands, move its rules into the right section above and delet
 - Tithes (not built) accept only `member_record` and `member_account`, never guests.
 - Update `docs/schema.sql`, `docs/flows.md`, `docs/verify.sql`, `README.md` and this file in each brick's change.
 
-## Accounts: login, status, activation, profile
-> **Access revamp pending:** the Login, Status and Activation bullets below are replaced by the section above
-> (`not_activated`, "activation" and Deactivate go away). Follow the code as it is until each brick lands.
+## Accounts: login, status, password change, profile
+- **Type vs status vs role are three separate things.** `User.person_type` (`accounts.models.PersonType`, next to `Gender` and
+  `AgeNetwork`): `guest` (a non-member who has attended), `member_record` (shown as "Member (no account)": a member whose
+  attendance and tithes are managed but who has no sign-in) and `member_account` (shown as "Member": full access; the default).
+  `role` still means the four roles; a database check (`app_user_non_account_is_member`) says only `member` can be a guest or
+  a no-account member. `status` is `active`, `suspended` or `archived`. "Needs password change" is the `must_change_password`
+  flag, shown as a tag (brick 2), never a status. "Deactivated" and "Not activated" no longer exist anywhere.
+- **Account id is generated for every person** in `User.save()`, guests and no-account members included (the login field stays
+  non-null). Never reused, never edited. Guests and no-account members get `set_unusable_password()` (`UserManager.create_user`,
+  `_set_initial_password` returns `PasswordInfo("none")`), and a reset refuses them.
+- **Who can sign in:** ONE answer, `User.can_sign_in` (member_account, not archived, not suspended). `User.is_active` returns it,
+  so every check built on `is_active` (`permissions._usable`, attendance `_signed_in` / `_can_sign_in`, Django sessions) also
+  looks at the type. Never write a fresh "active" test from `status` alone. A guest or no-account member never holds a seat, a
+  special role (`assign_special_role` refuses them; `member_counts` leaves them out), a buddy, goals, prayer requests or a
+  notification. Only a leader changes a type: guest to `member_record` (promotion, brick 2), `member_record` to `member_account`
+  (approval, or `grant_account`, bricks 2 and 4). Both change the EXISTING row; never create a second row for the same person.
 - **Login:** account id + password, or a *verified* email. Wrong account and
-  wrong password show the same message. Log failures. Archived accounts are
-  denied; not-activated or `must_change_password` users go to activation.
+  wrong password show the same message. Log failures. Archived and suspended accounts, guests and no-account members are
+  denied; `must_change_password` users go to the change-password page.
 - **Login implementation:** `AccountIdOrEmailBackend` (listed in
   `AUTHENTICATION_BACKENDS`) accepts an account id or a verified email and
-  rejects archived users; `accounts.services.attempt_login()` calls Django's
+  rejects archived and suspended users and anyone who is not a `member_account`; `accounts.services.attempt_login()` calls Django's
   `authenticate()` then `login()` (so `user_logged_in` fires), writes failures to
   `audit_log` (`account.login_failed`, status failed, reason code in `after`; never the
   password or the typed identifier)
-  and reports whether activation is needed. Every failure shows
+  and reports whether a password change is needed (`needs_password_change`). Every failure shows
   `forms.GENERIC_LOGIN_ERROR`. `next` is only followed if
   `url_has_allowed_host_and_scheme` passes. Post-login landing URLs are in
   `decorators.ROLE_HOME_NAMES` (the `dashboards` routes). Brute-force
   throttling is not built yet.
-- **Status:** `not_activated -> active -> archived`, plus `suspended` (a reversible login block set by the
-  super-admin or an admin; never purged; `User.is_active` is false, so open sessions end at once). "Inactive for a year" is an
-  automatic archive with `archive_reason='inactive'`. Restore and unsuspend go back to `active` when
-  `must_change_password` is false, otherwise to `not_activated`. Deactivate = back to `not_activated` with
-  `must_change_password=True`.
+- **Status:** `active`, `suspended` (a reversible login block set by the super-admin or an admin; never purged; `User.is_active`
+  is false, so open sessions end at once) and `archived`. "Inactive for a year" is an automatic archive with
+  `archive_reason='inactive'`. Restore and unsuspend ALWAYS go back to `active` (`_usable_status` is gone); a person who still
+  has `must_change_password` keeps the flag and is sent to the change-password page at the next sign-in.
 - **Last attended:** `app_user.last_attended_at` (what the inactivity job reads) is written only through
   `services/presence.mark_attended(user_ids, on_date)`: one UPDATE that moves people with no date, or an earlier one, to
   `on_date` and never moves anyone back. The attendance upload calls it (`accounts` never imports `attendance`, so it takes
@@ -449,15 +429,17 @@ login. When a brick lands, move its rules into the right section above and delet
   (`DefaultPassword.owner` + `applies_to_role`); a coordinator keeps none. Stored as a hash plus an encrypted copy so the
   owner can see it again. Which one a person gets depends on who creates or resets them; the rules are under People
   screens for admin and coordinator.
-- **Activation:** `accounts/services/activation.py` (`user_needs_activation`, `activate_account`), form `ActivationForm`,
-  view `activate_view`, template `accounts/activate.html`. A person must activate when `status=not_activated` OR
-  `must_change_password=True` (a reset leaves the status `active`). `activate_account` locks the row, sets the password,
-  clears `must_change_password`, turns `not_activated` into `active`, re-signs the session
-  (`update_session_auth_hash`) and logs `account.activated` (flag logged as `needs_activation`). It is idempotent, and
-  suspended or archived accounts are left alone. `ActivationRequiredMiddleware` (`accounts/middleware.py`, after
-  `MessageMiddleware`) redirects everything except `accounts:activate` and `accounts:logout` while activation is pending.
-  Tests that log a user in must create them activated (`status="active"`, `must_change_password=False`), or the
-  middleware redirects every request.
+- **Password change:** `accounts/services/password_change.py` (`user_needs_password_change`, `complete_password_change`), form
+  `SetNewPasswordForm` (not `ChangePasswordForm`, which is the profile page), view `change_password_view`, template
+  `accounts/change_password.html`, route `/accounts/change-password/` (`accounts:change_password`). A person must change their
+  password when `must_change_password=True`. It is set on a leader-created account, on a reset and (brick 4) on approval. A reset
+  NO LONGER touches `status`. `complete_password_change` locks the row, sets the password, clears the flag, re-signs the session
+  (`update_session_auth_hash`) and logs `account.password_set` (flag logged as `needs_change`, before False/after: the key
+  must not contain "password" or `log_action` drops it). It is idempotent; suspended, archived and non-`member_account` people
+  are left alone. `PasswordChangeRequiredMiddleware` (`accounts/middleware.py`, after `MessageMiddleware`) redirects everything
+  except `accounts:change_password` and `accounts:logout` while the flag is set. Tests that sign a user in create them with
+  `must_change_password=False` and `person_type="member_account"`, or the middleware redirects every request. No
+  `notification_rule` row used the old action names, so there was nothing to migrate there.
 - **Profile:** `/accounts/profile/` (every role; `login_required`, `never_cache`). Services in `accounts/services/profile.py`,
   views in `accounts/views/profile.py`, forms `ProfileDetailsForm` / `ProfileEmailForm` / `ChangePasswordForm`. Users edit only
   their birth date and photo. `User.email` is verified only; an unverified address is `pending_email`. A verified address is
@@ -499,7 +481,7 @@ login. When a brick lands, move its rules into the right section above and delet
 - **Archive writes:** always `save(update_fields=[...])` with `archived_at` in the list (via `core.services`), or the purge
   trigger does not fire and a stale `purge_at` can be written back.
 - **Audit keys:** `log_action` drops any `before`/`after` key containing "password", "token" or "secret", so a key such as
-  `must_change_password` silently disappears. Log it under another name (for example `needs_activation`).
+  `must_change_password` silently disappears. Log it under another name (for example `needs_change`).
 - **Double clicks:** `static/js/ui.js` locks a POST form on its first real submit (opt out with `data-no-lock`). The server
   must stay safe without it: actions check the current state under a row lock and report "already done" instead of failing.
 - **UI pieces:** `.btn-danger` (destructive buttons), `includes/pagination.html` (Page + `querystring`), and
@@ -524,8 +506,8 @@ login. When a brick lands, move its rules into the right section above and delet
   row per person, plus one `account.bulk_archive` summary row when two or more are archived. Bulk reset shows all new
   passwords in one show-once dialog. Which bulk actions a role has comes from `allowed_bulk_actions(actor)`; people are
   looked up through `for_user`, so anyone outside the actor's reach is skipped as "no longer exists".
-- **Guards:** you cannot archive, suspend, deactivate, reset, delete or change the role of yourself; the last active
-  super-admin cannot be archived, suspended, deactivated or demoted (checked under a lock on all super-admin rows). Who may
+- **Guards:** you cannot archive, suspend, reset, delete or change the role of yourself; the last active
+  super-admin cannot be archived, suspended or demoted (checked under a lock on all super-admin rows). Who may
   act on whom is checked on the locked person row with `require_can_act` (see People screens for admin and coordinator).
 - **Coordinators:** archiving a coordinator frees the seat and makes them a member; a person leaving or entering a
   seat updates `Extension.coordinator` in the same transaction. Putting a coordinator into a seat that is taken is
@@ -544,7 +526,7 @@ login. When a brick lands, move its rules into the right section above and delet
 - **Passwords:** shown once, never stored, logged or put in the session. Order used: typed (min 8 characters; only the
   super-admin and admin may type one), else the default that applies to the acting person (see People screens for admin and
   coordinator), else a generated 12-character password. A reset forces a change at next login and ends the person's
-  sessions (the hash changes). "Skip activation" on create is for test accounts that should not go through the activation
+  sessions (the hash changes). "Skip password change" on create (`skip_password_change`) is for test accounts that should not go through the change-password
   page; only the super-admin and admin may use it, since it would keep a shared default password for good.
 - **Pages that can show a password** (`user_create`, `user_reset_password`, `user_bulk`) are `never_cache` and render the
   dialog in the POST response (`json_script:"secrets-data"`), not a redirect.
@@ -561,9 +543,9 @@ login. When a brick lands, move its rules into the right section above and delet
 - **Who may do what** (`accounts/permissions.py`, `_ACTOR_RULES`; `can_act_on`, `require_can_act`):
   - Super-admin: everything.
   - Admin: acts on coordinators and members anywhere (create, edit, move, reset password, archive, restore, suspend,
-    unsuspend, deactivate). Never force delete; never super-admins or other admins.
+    unsuspend). Never force delete; never super-admins or other admins.
   - Coordinator: acts on members of their OWN extension only (create, edit details, reset password, archive, restore).
-    No role or extension change, no suspend or deactivate, no delete, no typed passwords.
+    No role or extension change, no suspend, no delete, no typed passwords.
   - `assignable_roles`: super-admin admin/coordinator/member; admin coordinator/member; coordinator member.
     `require_can_create` also pins a coordinator's new people to their own extension. `require_placement_manager`
     (move people, change role or extension) is super-admin and admin only. Every service calls these on the LOCKED
@@ -611,7 +593,7 @@ login. When a brick lands, move its rules into the right section above and delet
   creates or resets them (`services.users.default_password_row`): the super-admin their own (the global default); an admin
   their own, else the global one (`global_default_row`: the most recently changed row of an active super-admin); a
   coordinator the global MEMBER one only. No default means a generated password. Only the super-admin and admin may type a
-  password or skip activation (`can_type_password`); a coordinator's new members always get the global member password
+  password or skip the password change (`can_type_password`); a coordinator's new members always get the global member password
   and must change it at first sign-in. Screen: `views/default_passwords.py` with
   `accounts/people/default_passwords.html` (super-admin and admin; an admin with none of their own for a role sees that the
   global one is used). A coordinator has no screen: the "Default password" button on their people list POSTs to
@@ -624,7 +606,7 @@ login. When a brick lands, move its rules into the right section above and delet
 > promotion, no slip); see Access revamp.
 Bricks 1 to 14 are implemented. In addition to the sheet workflow, first-timer conversion and "My attendance":
 - **Repeat visitors (brick 11):** after three distinct uploaded sheets at an extension, an active member whose home extension differs is transferred there. A draft or a single visit never changes their extension. The transfer is performed by `accounts.services.users.auto_transfer_visitor`, updates `user_extension_history` with reason `auto_transfer`, clears extension-specific roles, and logs extension ids only.
-- **Account reset (brick 12):** a reset sets `status=not_activated` and `must_change_password=True`; the account id remains the sign-in identifier and activation is required on the next login. The password hash change ends existing sessions.
+- **Account reset (brick 12):** a reset sets `must_change_password=True` (the status is left as it is); the account id remains the sign-in identifier and a password change is required on the next login. The password hash change ends existing sessions.
 - **Welcome slip (brick 13):** first-timer conversion offers a browser-printable 58 mm receipt. It is rendered only in the uncached one-time response; a generated password can be printed, while default/typed credentials require the leader to hand over the password separately. No printer driver or server-side PDF dependency is used.
 - **My attendance (brick 14):** own uploaded-sheet history only, newest first, with no user id accepted from the request. The first-visit row appears once its sheet is uploaded.
 
@@ -1162,7 +1144,7 @@ still in use), `archive_inactive_users`, `auto_transfer_extension`,
   you change structure, commands or behaviour, update `README.md` and this file
   in the same change.
 - Tests must not touch real external services (see Behaviour rules). A test that needs a logged-in user creates an
-  activated one (see Activation).
+  one with `must_change_password=False` and `person_type="member_account"` (see Password change).
 - Prefer the smallest relevant command or page load to verify a change.
 ### Events (brick 10: services and permissions)
 - `event` gained `location`, `cancelled_at`, `cancelled_by` (migration `event_location_cancel`), a check that `end_at` is after
@@ -1177,7 +1159,7 @@ still in use), `archive_inactive_users`, `auto_transfer_extension`,
   event that already ended cannot be cancelled; scope cannot change after creation.
 - Notices (`event_changed`, `event_cancelled`, declared in `events/services.py`): sent for a time or place change and for a
   cancellation only (not for title or description). Recipients: every ACTIVE account for a global event, the extension's ACTIVE
-  members and coordinator for an extension event; never the actor, never suspended, archived or not-activated accounts, never
+  members and coordinator for an extension event; never the actor, never suspended or archived accounts, and never guests or no-account members, never
   anyone with in-app alerts off for that type. `notification.data` holds only the title and what changed.
 - `notifications/services.py`: `notify()` (one person, optional `dedupe_key`) and `notify_many()` (ids, bulk insert). Both skip
   people who turned off in-app alerts of that type and never import a feature app.

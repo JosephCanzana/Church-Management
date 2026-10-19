@@ -22,10 +22,23 @@ class Role(models.TextChoices):
 
 
 class Status(models.TextChoices):
-    NOT_ACTIVATED = "not_activated", "Not activated"
+    """Where a person stands. "Needs password change" is NOT a status: it is `must_change_password`."""
+
     ACTIVE = "active", "Active"
     SUSPENDED = "suspended", "Suspended"
     ARCHIVED = "archived", "Archived"
+
+
+class PersonType(models.TextChoices):
+    """What kind of person a row is. Separate from `Role` (the four roles) and from `Status`.
+
+    Only `member_account` can sign in. A guest or a no-account member is a record a leader keeps
+    (attendance, later tithes); they have an Account ID but an unusable password.
+    """
+
+    GUEST = "guest", "Guest"                                  # a non-member who has attended
+    MEMBER_RECORD = "member_record", "Member (no account)"    # a member without a sign-in
+    MEMBER_ACCOUNT = "member_account", "Member"               # full access
 
 
 class Gender(models.TextChoices):
@@ -107,13 +120,17 @@ class UserManager(BaseUserManager):
     def create_user(self, account_id=None, password=None, **extra_fields):
         # account_id left blank -> User.save() generates it
         user = self.model(account_id=account_id or "", **extra_fields)
-        user.set_password(password)
+        if user.person_type == PersonType.MEMBER_ACCOUNT:
+            user.set_password(password)
+        else:
+            user.set_unusable_password()      # guests and no-account members never sign in
         user.save(using=self._db)
         return user
 
     def create_superuser(self, account_id=None, password=None, **extra_fields):
         extra_fields.setdefault("role", Role.SUPER_ADMIN)
         extra_fields.setdefault("status", Status.ACTIVE)
+        extra_fields.setdefault("person_type", PersonType.MEMBER_ACCOUNT)
         extra_fields.setdefault("must_change_password", False)
         return self.create_user(account_id, password, **extra_fields)
 
@@ -177,7 +194,12 @@ class User(AbstractBaseUser, TimestampedModel, ArchivableModel):
     extension = models.ForeignKey(
         Extension, null=True, blank=True, on_delete=models.RESTRICT, related_name="members",
     )
-    status = models.CharField(max_length=20, choices=Status.choices, default=Status.NOT_ACTIVATED)
+    # Type, status and role are three separate things (see PersonType). Only `member_account` signs in.
+    person_type = models.CharField(
+        max_length=20, choices=PersonType.choices, default=PersonType.MEMBER_ACCOUNT,
+    )
+    status = models.CharField(max_length=20, choices=Status.choices, default=Status.ACTIVE)
+    # "Needs password change" tag: set on a leader-created account, a reset and an approval.
     must_change_password = models.BooleanField(default=True)
     last_attended_at = models.DateField(null=True, blank=True, db_index=True)
     archive_reason = models.CharField(
@@ -211,6 +233,11 @@ class User(AbstractBaseUser, TimestampedModel, ArchivableModel):
                 name="app_user_email_verified_pair",
             ),
             archived_matches_status("app_user_archived_matches_status"),
+            # Only a member can be a guest or a no-account member (they never hold another role).
+            models.CheckConstraint(
+                condition=Q(person_type="member_account") | Q(role="member"),
+                name="app_user_non_account_is_member",
+            ),
             models.UniqueConstraint(
                 Lower("email"), condition=Q(email__isnull=False), name="uq_app_user_email",
             ),
@@ -223,10 +250,22 @@ class User(AbstractBaseUser, TimestampedModel, ArchivableModel):
 
     # --- Django auth/admin hooks -------------------------------------------
     @property
+    def can_sign_in(self):
+        """True when this person may hold a session: a `member_account` who is neither archived nor suspended.
+
+        The ONE answer to "can this person sign in". Guests and no-account members never can, and a
+        suspended person stays blocked until a leader lifts the suspension.
+        """
+        return (
+            self.person_type == PersonType.MEMBER_ACCOUNT
+            and self.status not in (Status.ARCHIVED, Status.SUSPENDED)
+        )
+
+    @property
     def is_active(self):
-        # not_activated users must still be able to log in to set a password
-        # suspended people stay blocked until a super-admin lifts the suspension
-        return self.status not in (Status.ARCHIVED, Status.SUSPENDED)
+        # Django's hook (the login backend and every open session ask it). Same answer as
+        # `can_sign_in`, so every permission check built on `is_active` also looks at the type.
+        return self.can_sign_in
 
     @property
     def is_staff(self):

@@ -1,4 +1,4 @@
-"""accounts.views: login, logout and account activation.
+"""accounts.views: login, logout and the forced password change.
 
 Views stay thin: read the request, call a form and a service, then render a
 page or redirect. Business rules live in `accounts/services.py`. The role
@@ -14,21 +14,21 @@ from django.views.decorators.cache import never_cache
 from django.views.decorators.http import require_http_methods, require_POST
 
 from ..decorators import home_url_for
-from ..forms import GENERIC_LOGIN_ERROR, ActivationForm, LoginForm
+from ..forms import GENERIC_LOGIN_ERROR, LoginForm, SetNewPasswordForm
 from ..services import attempt_login
-from ..services.activation import activate_account, user_needs_activation
+from ..services.password_change import complete_password_change, user_needs_password_change
 
 
-def post_login_redirect(request, user, needs_activation):
+def post_login_redirect(request, user, needs_password_change):
     """Decide where to send someone who is now logged in.
 
     Order of priority:
-      1. Not activated / must change password -> activation page.
+      1. Must change password -> the change-password page.
       2. A safe `next` URL (the page they were trying to open).
       3. Their role's home page.
     """
-    if needs_activation:
-        return reverse("accounts:activate")
+    if needs_password_change:
+        return reverse("accounts:change_password")
 
     next_url = request.POST.get("next") or request.GET.get("next") or ""
     # Only follow `next` if it stays on this site. Otherwise an attacker could
@@ -47,8 +47,7 @@ def post_login_redirect(request, user, needs_activation):
 @require_http_methods(["GET", "POST"])
 def login_view(request):
     """Show the login form (GET) and process it (POST)."""
-    # Already logged in: skip the form. Activation is not re-checked here;
-    # the activation gate belongs in middleware or role_required later.
+    # Already logged in: skip the form. The password-change gate is PasswordChangeRequiredMiddleware.
     if request.user.is_authenticated:
         return redirect(home_url_for(request.user))
 
@@ -62,7 +61,7 @@ def login_view(request):
         )
         if result.ok:
             return redirect(
-                post_login_redirect(request, result.user, result.needs_activation)
+                post_login_redirect(request, result.user, result.needs_password_change)
             )
         # Same message whatever went wrong (see forms.GENERIC_LOGIN_ERROR).
         form.add_error(None, GENERIC_LOGIN_ERROR)
@@ -87,21 +86,21 @@ def logout_view(request):
 @login_required
 @never_cache
 @require_http_methods(["GET", "POST"])
-def activate_view(request):
-    """Let someone with a temporary password choose their own (set password, confirm).
+def change_password_view(request):
+    """Let someone with a temporary password choose their own (new password, confirm).
 
-    Login and ActivationRequiredMiddleware send not-activated and
-    must-change-password people here. Anyone else goes to their home page.
+    Login and PasswordChangeRequiredMiddleware send people with `must_change_password` here.
+    Anyone else goes to their home page.
     """
     user = request.user
-    if not user_needs_activation(user):
+    if not user_needs_password_change(user):
         return redirect(home_url_for(user))
 
-    form = ActivationForm(request.POST or None, user=user)
+    form = SetNewPasswordForm(request.POST or None, user=user)
     if request.method == "POST" and form.is_valid():
-        result = activate_account(request, user, form.cleaned_data["new_password"])
+        result = complete_password_change(request, user, form.cleaned_data["new_password"])
         if result.changed:
-            messages.success(request, "Your account is active. Welcome!")
+            messages.success(request, "Your password was changed. Welcome!")
         return redirect(home_url_for(request.user))
 
-    return render(request, "accounts/activate.html", {"form": form})
+    return render(request, "accounts/change_password.html", {"form": form})

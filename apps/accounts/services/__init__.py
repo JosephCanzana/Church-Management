@@ -25,8 +25,9 @@ from apps.core.text import clean_text, title_case
 
 from ..address import check_address
 from ..backends import find_user
-from ..models import Extension, Role, Status, User
+from ..models import Extension, PersonType, Role, Status, User
 from ..permissions import require_extension_manager
+from .password_change import user_needs_password_change
 
 
 # ============================================================ login
@@ -34,15 +35,14 @@ from ..permissions import require_extension_manager
 class LoginResult:
     """What happened during a login attempt.
 
-    ok               -- True if the person is now logged in.
-    user             -- the logged-in User, or None on failure.
-    needs_activation -- True if they must finish activation (set a password)
-                        before using the app.
+    ok                    -- True if the person is now logged in.
+    user                  -- the logged-in User, or None on failure.
+    needs_password_change -- True if they must set their own password before using the app.
     """
 
     ok: bool
     user: object = None
-    needs_activation: bool = False
+    needs_password_change: bool = False
 
 
 def _log_login_failure(request, identifier):
@@ -54,7 +54,8 @@ def _log_login_failure(request, identifier):
     (looked up from the database, not copied from the form) and a reason code.
 
     The reason code is worked out here by looking the account up again. It is
-    one of: "unknown_account", "bad_password", "archived", "suspended". audit_log has no
+    one of: "unknown_account", "bad_password", "archived", "suspended", "no_account" (a guest or a
+    member without an account). audit_log has no
     free-form details column, so it goes in `after`.
     """
     user = find_user(identifier)
@@ -64,6 +65,8 @@ def _log_login_failure(request, identifier):
         reason = "archived"
     elif user.status == Status.SUSPENDED:
         reason = "suspended"
+    elif user.person_type != PersonType.MEMBER_ACCOUNT:
+        reason = "no_account"
     else:
         reason = "bad_password"
 
@@ -84,15 +87,15 @@ def attempt_login(request, identifier, password):
 
     Steps:
       1. Ask Django to authenticate (our backend checks id/email + password
-         and rejects archived accounts).
+         and rejects anyone who cannot sign in: archived, suspended, guests, no-account members).
       2. On failure, write an audit row and return a failed result. The view
          shows ONE generic message for every failure type, so an attacker
          cannot tell a wrong password from an unknown account.
       3. On success, call Django's `login()`. This creates the session and
          fires the `user_logged_in` signal, which updates `last_login` and
          drives the daily-open streak in the `faith` app.
-      4. Flag whether the person still has to go through activation
-         (never activated, or forced to change their password).
+      4. Flag whether the person still has to change their password first
+         (`must_change_password`).
     """
     with transaction.atomic():
         user = authenticate(request, identifier=identifier, password=password)
@@ -103,10 +106,9 @@ def attempt_login(request, identifier, password):
 
         login(request, user)
 
-        needs_activation = (
-            user.status == Status.NOT_ACTIVATED or user.must_change_password
+        return LoginResult(
+            ok=True, user=user, needs_password_change=user_needs_password_change(user)
         )
-        return LoginResult(ok=True, user=user, needs_activation=needs_activation)
 
 
 # ============================================================ extensions

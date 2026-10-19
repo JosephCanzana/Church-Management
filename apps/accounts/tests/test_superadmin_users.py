@@ -22,7 +22,7 @@ from django.utils import timezone
 
 from apps.accounts.services import users as svc
 from apps.accounts.models import (
-    ArchiveReason, DefaultPassword, Extension, Role, Status, User, UserExtensionHistory,
+    ArchiveReason, DefaultPassword, Extension, PersonType, Role, Status, User, UserExtensionHistory,
 )
 from apps.audit.models import AuditLog
 from apps.core.services import ServiceError, consume_submission_token, new_submission_token
@@ -39,7 +39,7 @@ def make_super_admin(**overrides):
 def make_person(extension, role=Role.MEMBER, **overrides):
     fields = dict(
         first_name="Juan", last_name="Dela Cruz", role=role, extension=extension,
-        status=Status.ACTIVE, must_change_password=False,
+        person_type=PersonType.MEMBER_ACCOUNT, status=Status.ACTIVE, must_change_password=False,
     )
     fields.update(overrides)
     return User.objects.create_user(password=PASSWORD, **fields)
@@ -49,7 +49,7 @@ def create_data(extension, **overrides):
     """What UserCreateForm.cleaned_data looks like."""
     data = dict(
         first_name="Ana", middle_name="", last_name="Reyes", birth_date=None,
-        role=Role.MEMBER, extension=extension, password="", activated=False,
+        role=Role.MEMBER, extension=extension, password="", skip_password_change=False,
     )
     data.update(overrides)
     return data
@@ -92,7 +92,8 @@ class CreateUserTests(TestCase):
         self.assertEqual(result.password.kind, "generated")
         person = fresh(result.user)
         self.assertTrue(person.check_password(result.password.value))
-        self.assertEqual(person.status, Status.NOT_ACTIVATED)
+        self.assertEqual(person.status, Status.ACTIVE)
+        self.assertEqual(person.person_type, PersonType.MEMBER_ACCOUNT)
         self.assertTrue(person.must_change_password)
         self.assertRegex(person.account_id, r"^[1-9][0-9]{7,}$")
         self.assertEqual(person.created_by_id, self.admin.pk)
@@ -135,8 +136,8 @@ class CreateUserTests(TestCase):
         self.assertEqual(result.password.kind, "default")
         self.assertTrue(fresh(result.user).check_password("current-global-pass1"))
 
-    def test_skip_activation_makes_a_usable_test_account(self):
-        person = fresh(self.create(activated=True).user)
+    def test_skip_password_change_makes_a_usable_test_account(self):
+        person = fresh(self.create(skip_password_change=True).user)
         self.assertEqual(person.status, Status.ACTIVE)
         self.assertFalse(person.must_change_password)
 
@@ -306,11 +307,13 @@ class StatusChangeTests(TestCase):
         self.client.post(reverse("accounts:login"), {"identifier": self.person.account_id, "password": PASSWORD})
         self.assertEqual(audit("account.login_failed").latest("pk").after, {"reason": "suspended"})
 
-    def test_unsuspending_someone_who_never_activated_returns_them_to_not_activated(self):
-        newbie = make_person(self.ext, first_name="New", status=Status.NOT_ACTIVATED, must_change_password=True)
+    def test_unsuspending_always_returns_to_active_and_keeps_the_password_flag(self):
+        newbie = make_person(self.ext, first_name="New", must_change_password=True)
         svc.suspend_user(self.admin, None, newbie)
         svc.unsuspend_user(self.admin, None, newbie)
-        self.assertEqual(fresh(newbie).status, Status.NOT_ACTIVATED)
+        newbie = fresh(newbie)
+        self.assertEqual(newbie.status, Status.ACTIVE)
+        self.assertTrue(newbie.must_change_password)
 
     def test_suspending_twice_logs_once(self):
         svc.suspend_user(self.admin, None, self.person)
@@ -328,20 +331,6 @@ class StatusChangeTests(TestCase):
         other.refresh_from_db()
         with self.assertRaises(PermissionDenied):
             svc.suspend_user(other, None, self.person)
-
-    # ----- deactivate
-    def test_deactivate_sends_an_active_person_back_to_activation(self):
-        svc.deactivate_user(self.admin, None, self.person)
-        person = fresh(self.person)
-        self.assertEqual(person.status, Status.NOT_ACTIVATED)
-        self.assertTrue(person.must_change_password)
-
-    def test_deactivate_is_only_for_active_accounts(self):
-        svc.suspend_user(self.admin, None, self.person)
-        with self.assertRaises(ServiceError):
-            svc.deactivate_user(self.admin, None, self.person)
-        newbie = make_person(self.ext, first_name="New", status=Status.NOT_ACTIVATED, must_change_password=True)
-        self.assertFalse(svc.deactivate_user(self.admin, None, newbie)[1])
 
     # ----- archive / restore / delete
     def test_archive_sets_the_purge_date_and_restore_clears_it(self):
@@ -399,7 +388,7 @@ class StatusChangeTests(TestCase):
         person = fresh(self.person)
         self.assertTrue(person.check_password(result.password.value))
         self.assertFalse(person.check_password(PASSWORD))
-        self.assertEqual(person.status, Status.NOT_ACTIVATED)
+        self.assertEqual(person.status, Status.ACTIVE)
         self.assertTrue(person.must_change_password)
         logged = json.dumps(list(AuditLog.objects.values("before", "after")), default=str)
         self.assertNotIn(result.password.value, logged)
@@ -607,7 +596,7 @@ class UserViewTests(TestCase):
         self.assertRedirects(gone, self.url, fetch_redirect_response=False)
 
     def test_actions_reject_get_requests(self):
-        for name in ("archive", "restore", "suspend", "unsuspend", "deactivate", "reset_password", "delete"):
+        for name in ("archive", "restore", "suspend", "unsuspend", "reset_password", "delete"):
             url = reverse(f"superadmin:user_{name}", args=[self.ana.pk])
             self.assertEqual(self.client.get(url).status_code, 405, name)
         self.assertEqual(self.client.get(reverse("superadmin:user_bulk")).status_code, 405)

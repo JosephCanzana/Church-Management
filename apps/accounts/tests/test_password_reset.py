@@ -14,7 +14,7 @@ from django.test import TestCase, override_settings
 from django.urls import reverse
 from django.utils import timezone
 
-from apps.accounts.models import EmailToken, Extension, Role, Status, User
+from apps.accounts.models import EmailToken, Extension, PersonType, Role, Status, User
 from apps.accounts.services import password_reset as svc
 from apps.audit.models import AuditLog
 from apps.core.services import ServiceError
@@ -66,10 +66,11 @@ class RequestResetServiceTests(TestCase):
         self.assertEqual(len(mail.outbox), 0)
 
     def test_people_who_cannot_reset_get_no_email(self):
-        for status in (Status.NOT_ACTIVATED, Status.SUSPENDED):
-            User.objects.filter(pk=self.person.pk).update(status=status)
-            self.assertFalse(self.request(self.person.account_id), status)
-        User.objects.filter(pk=self.person.pk).update(status=Status.ACTIVE)
+        User.objects.filter(pk=self.person.pk).update(status=Status.SUSPENDED)
+        self.assertFalse(self.request(self.person.account_id))
+        User.objects.filter(pk=self.person.pk).update(status=Status.ACTIVE, person_type=PersonType.MEMBER_RECORD)
+        self.assertFalse(self.request(self.person.account_id))
+        User.objects.filter(pk=self.person.pk).update(person_type=PersonType.MEMBER_ACCOUNT)
         self.assertEqual(len(mail.outbox), 0)
 
     def test_no_verified_email_means_no_reset(self):
@@ -153,7 +154,7 @@ class ResetServiceTests(TestCase):
         self.assertIsNone(EmailToken.objects.get(user=self.person).used_at)
 
     def test_link_dies_when_the_account_stops_being_resettable(self):
-        for change in ({"status": Status.SUSPENDED}, {"status": Status.NOT_ACTIVATED}):
+        for change in ({"status": Status.SUSPENDED}, {"person_type": PersonType.MEMBER_RECORD}):
             User.objects.filter(pk=self.person.pk).update(**change)
             with self.assertRaises(ServiceError):
                 self.reset()

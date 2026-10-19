@@ -58,7 +58,6 @@ XHR search requests.
         {% if 'restore' in can %}data-restore-url="{% role_url 'user_restore' person.pk %}"{% endif %}
         {% if 'suspend' in can %}data-suspend-url="{% role_url 'user_suspend' person.pk %}"{% endif %}
         {% if 'unsuspend' in can %}data-unsuspend-url="{% role_url 'user_unsuspend' person.pk %}"{% endif %}
-        {% if 'deactivate' in can %}data-deactivate-url="{% role_url 'user_deactivate' person.pk %}"{% endif %}
         {% if 'delete' in can %}data-delete-url="{% role_url 'user_delete' person.pk %}"{% endif %}
         @contextmenu.prevent="openMenu($event, $el)">
       <input type="checkbox" form="bulk-form" name="ids" value="{{ person.pk }}" x-model="selected"

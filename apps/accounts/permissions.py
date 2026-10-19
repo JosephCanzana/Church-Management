@@ -12,12 +12,14 @@ Who manages whom
     coordinator  members of their OWN extension only: create, edit details,
                  reset password, archive and restore. No role or extension
                  changes, no suspend, no delete.
+Only a `member_account` can sign in (`User.can_sign_in`); `_usable` below asks `is_active`, which
+already includes the person type, so a guest or a no-account member is never an actor.
 The people matrix lives in `_ACTOR_RULES` below; `available_actions()` reads the
 same matrix, so the buttons a screen shows always match what the server allows.
 """
 from django.core.exceptions import PermissionDenied
 
-from .models import Role, Status
+from .models import PersonType, Role, Status
 
 
 # --------------------------------------------------------------------- actors
@@ -74,12 +76,11 @@ ARCHIVE = "archive"
 RESTORE = "restore"
 SUSPEND = "suspend"
 UNSUSPEND = "unsuspend"
-DEACTIVATE = "deactivate"
 DELETE = "delete"                   # force delete (archived people only)
 
 PERSON_ACTIONS = (
     VIEW, EDIT, CHANGE_PLACEMENT, RESET_PASSWORD, ARCHIVE, RESTORE,
-    SUSPEND, UNSUSPEND, DEACTIVATE, DELETE,
+    SUSPEND, UNSUSPEND, DELETE,
 )
 
 # role -> (roles of people they may act on, actions allowed). A coordinator is also
@@ -149,11 +150,10 @@ def available_actions(actor, person):
         offer(DELETE)
         return allowed
     offer(EDIT)
-    offer(RESET_PASSWORD)
+    offer(RESET_PASSWORD, person.person_type == PersonType.MEMBER_ACCOUNT)   # no account, no password
     offer(ARCHIVE)
     offer(SUSPEND, person.status != Status.SUSPENDED)
     offer(UNSUSPEND, person.status == Status.SUSPENDED)
-    offer(DEACTIVATE, person.status == Status.ACTIVE)
     offer(CHANGE_PLACEMENT)
     return allowed
 
@@ -165,7 +165,7 @@ def allowed_bulk_actions(actor):
     _, actions = _ACTOR_RULES[actor.role]
     names = {
         "archive": ARCHIVE, "restore": RESTORE, "suspend": SUSPEND, "unsuspend": UNSUSPEND,
-        "deactivate": DEACTIVATE, "reset_password": RESET_PASSWORD, "delete": DELETE,
+        "reset_password": RESET_PASSWORD, "delete": DELETE,
     }
     return [name for name, action in names.items() if action in actions]
 
@@ -245,7 +245,7 @@ def default_password_view_roles(actor):
 def can_type_password(actor):
     """Choose a password by hand when creating or resetting someone (super-admin and admin only).
 
-    A coordinator always gives the global member password. Skipping activation (which
+    A coordinator always gives the global member password. Skipping the password change (which
     would keep that shared password for good) is limited the same way.
     """
     return is_super_admin(actor) or is_admin(actor)

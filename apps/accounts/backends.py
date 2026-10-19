@@ -56,18 +56,19 @@ class AccountIdOrEmailBackend(BaseBackend):
             get_user_model()().set_password(password)
             return None
 
-        # Archived accounts are denied (User.is_active is False for them).
+        # Anyone who cannot sign in is denied: archived, suspended, and any person who is not a
+        # `member_account` (guests and no-account members). `can_sign_in` is the one answer.
         # The password is checked first so timing stays the same either way.
-        if user.check_password(password) and user.is_active:
+        if user.check_password(password) and user.can_sign_in:
             return user
         return None
 
     def get_user(self, user_id):
         """Load the user for an existing session (called on every request).
 
-        Returning None for an archived user logs them out immediately, even
-        if they still had a valid session when they were archived.
+        Returning None for someone who can no longer sign in (archived, suspended, or not a
+        `member_account`) logs them out immediately, even with a valid session.
         """
         User = get_user_model()
         user = User.objects.filter(pk=user_id).first()
-        return user if user is not None and user.is_active else None
+        return user if user is not None and user.can_sign_in else None

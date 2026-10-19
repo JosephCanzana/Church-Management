@@ -137,7 +137,7 @@ document.addEventListener('alpine:init', () => {
     get menuItems() {
       const items = [
         ['archive', 'Archive', false], ['restore', 'Restore', false], ['suspend', 'Suspend', false],
-        ['unsuspend', 'Unsuspend', false], ['deactivate', 'Deactivate', false], ['delete', 'Delete', true],
+        ['unsuspend', 'Unsuspend', false], ['delete', 'Delete', true],
       ];
       return items.filter(([kind]) => this.can(kind)).map(([kind, label, danger]) => ({ kind, label, danger }));
     },
@@ -210,7 +210,7 @@ document.addEventListener('alpine:init', () => {
       if (this.menu.open && !event.target.closest('[data-row]')) this.closeMenu();
     },
 
-    // Archive / restore / suspend / unsuspend / deactivate / delete the row the menu was opened on (POST).
+    // Archive / restore / suspend / unsuspend / delete the row the menu was opened on (POST).
     async act(kind) {
       const d = this.menu.row?.dataset;
       if (!d) return;
@@ -221,8 +221,6 @@ document.addEventListener('alpine:init', () => {
         suspend:    { url: d.suspendUrl, title: 'Suspend this person?', confirmText: 'Suspend', danger: false,
                       message: `${d.name} cannot log in until the suspension is lifted. Nothing is deleted.` },
         unsuspend:  { url: d.unsuspendUrl },
-        deactivate: { url: d.deactivateUrl, title: 'Deactivate this person?', confirmText: 'Deactivate', danger: false,
-                      message: `${d.name} goes back to not activated and must activate again.` },
         delete:     { url: d.deleteUrl, title: 'Delete this person?', confirmText: 'Delete permanently', danger: true,
                       message: `This permanently deletes ${d.name}. It cannot be undone.` },
       }[kind];
