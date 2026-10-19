@@ -164,7 +164,7 @@ class ExtensionForm(forms.ModelForm):
 
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
-        for field in self.fields.values():
+        for name, field in self.fields.items():
             field.required = name not in self.OPTIONAL_FIELDS
 
         choices = [("", "Choose a country")] + [(c, c) for c in COUNTRIES]
