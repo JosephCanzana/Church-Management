@@ -10,11 +10,11 @@ Who is who:
                       and only while they can sign in (not archived, not suspended)
 
 Permission table (S = special member, C = coordinator, A = admin or super-admin):
-  create a draft                       S own extension | C own extension | A any
+  create a draft                       C own extension | A any | S no
   mark active people of every type, add first timers       draft only, same people as above
   choose who took the attendance       C own extension, draft | A any draft | S no
   read-only review                     S drafts | C own extension | A any
-  save and upload                      C own extension, draft | A only while the extension has no coordinator
+    save and upload                      C who created the draft (own extension) | A any | S no
   open an uploaded sheet               C read-only | A read-only | S no
   reopen an uploaded sheet             A only
   promote a first timer's guest        C own extension | A any (draft or uploaded sheet) | S no
@@ -74,14 +74,15 @@ def can_view(actor, sheet):
 
 
 def can_create(actor, extension_id):
-    """May `actor` start a draft sheet for this extension (the sheet does not exist yet)?"""
+    """May `actor` start a draft sheet for this extension (the sheet does not exist yet)?
+
+    Admin or super-admin: any extension. Coordinator: their own. Special members cannot create sheets.
+    """
     if not _signed_in(actor):
         return False
     if actor.role in _ADMINS:
         return True
-    if actor.role == Role.COORDINATOR:
-        return _own_extension(actor, extension_id)
-    return has_attendance_role(actor, extension_id)
+    return actor.role == Role.COORDINATOR and _own_extension(actor, extension_id)
 
 
 def can_edit_draft(actor, sheet):
@@ -102,22 +103,22 @@ def can_review(actor, sheet):
     return sheet.status in (Attendance.Status.DRAFT, Attendance.Status.UPLOADED) and can_view(actor, sheet)
 
 
+# attendance/permissions.py
 def can_upload(actor, sheet):
-    """May `actor` save this draft as the locked record?
+    """May `actor` save and upload this sheet?
 
-    The coordinator of the sheet's extension, while the sheet is a draft. Open item in the plan
-    (default taken): when the extension has NO coordinator, nobody could ever upload, so an admin
-    or super-admin may, and only while that stays true. To make it coordinator-only, delete the
-    last `if` block.
+    Any admin or super-admin, or the coordinator who created the draft (and only for their own
+    extension). Not a special member, and not another coordinator of the same extension.
     """
-    if sheet.status != Attendance.Status.DRAFT or not _signed_in(actor):
+    if not _signed_in(actor):
         return False
-    if actor.role == Role.COORDINATOR:
-        return _own_extension(actor, sheet.extension_id)
     if actor.role in _ADMINS:
-        return sheet.extension.coordinator_id is None
-    return False
-
+        return True
+    return (
+        actor.role == Role.COORDINATOR
+        and sheet.created_by_id == actor.pk
+        and _own_extension(actor, sheet.extension_id)
+    )
 
 def can_reopen(actor, sheet):
     """May `actor` send an uploaded sheet back to draft? Admin or super-admin only."""
@@ -181,19 +182,17 @@ def can_use_area(actor):
 def creatable_extensions(actor):
     """Extensions `actor` may start a draft sheet for, as a queryset (the create form's choices).
 
-    The QUERYSET form of the `can_create` rule, so the form offers exactly what the service accepts.
-    Admin and super-admin: every extension that is not archived. Coordinator: their own. Special member: the
-    extensions where they hold the seat. Anyone else: none.
+    Admin and super-admin: every extension that is not archived. Coordinator: their own.
+    Anyone else, including special members: none.
     """
     if not _signed_in(actor):
         return Extension.objects.none()
     live = Extension.objects.filter(archived_at__isnull=True)
     if actor.role in _ADMINS:
         return live
-    if actor.role == Role.COORDINATOR:
-        return live.filter(pk=actor.extension_id) if actor.extension_id else Extension.objects.none()
-    return live.filter(pk__in=seat_extension_ids(actor))
-
+    if actor.role == Role.COORDINATOR and actor.extension_id:
+        return live.filter(pk=actor.extension_id)
+    return Extension.objects.none()
 
 
 def _can_sign_in(actor):

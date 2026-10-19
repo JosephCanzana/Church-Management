@@ -1,0 +1,12 @@
+<!--
+attendance/_choice_chips.html
+Radio chips for one choice field (gender or age network). Plain form inputs, no JavaScript.
+Params: name (the POST field), choices ((value, label) pairs), selected (the current value or empty).
+Wrap it in a grid in the caller so the caller decides the columns.
+-->
+{% for value, label in choices %}
+<label class="block">
+  <input type="radio" name="{{ name }}" value="{{ value }}" class="peer sr-only"{% if selected == value %} checked{% endif %}>
+  <span class="flex min-h-[44px] cursor-pointer items-center justify-center rounded-lg border border-border-strong px-3 text-center text-base text-txt-primary transition-colors peer-checked:border-accent peer-checked:bg-accent peer-checked:text-on-accent peer-focus-visible:outline peer-focus-visible:outline-2 peer-focus-visible:outline-offset-2 peer-focus-visible:outline-accent">{{ label }}</span>
+</label>
+{% endfor %}

@@ -2,31 +2,33 @@
    from theme_palette rows and injected after this file (see base.html). */
 :root.dark,
 :root[data-mode="dark"] {
-  --color-primary:        #4C9BEB;
-  --color-primary-hover:  #78B6F2;
-  --color-primary-soft:   #102C4D;
-  --color-on-primary:     #071827;
+  color-scheme: dark; /* native scrollbars, date pickers, form controls */
 
-  --color-bg:             #0A1728;
-  --color-surface:        #10243B;
-  --color-surface-alt:    #16314F;
+  --color-primary:        #3B97F5;
+  --color-primary-hover:  color-mix(in oklab, var(--color-primary) 75%, white);
+  --color-primary-soft:   color-mix(in oklab, var(--color-primary) 18%, var(--color-bg));
+  --color-on-primary:     #04182E;
 
-  --color-txt-primary:    #F4F8FC;
-  --color-txt-secondary:  #C2D1E2;
-  --color-txt-muted:      #8FA5BD;
+  --color-bg:             #061A2E;
+  --color-surface:        #0C2540;
+  --color-surface-alt:    #133456;
 
-  --color-border:         #294866;
-  --color-border-strong:  #3B6083;
+  --color-txt-primary:    #F1F7FD;
+  --color-txt-secondary:  #BFD3E8;
+  --color-txt-muted:      #85A3C6;
+
+  --color-border:         #25507F;
+  --color-border-strong:  color-mix(in oklab, var(--color-border) 80%, var(--color-txt-muted));
 
   --color-success:        #4ADE80;
   --color-error:          #FB7185;
   --color-warning:        #FBBF24;
-  --color-info:           #60A5FA;
+  --color-info:           #22D3EE;
 
-  --color-accent:         #63A9EF;
-  --color-accent-hover:   #94C6F5;
-  --color-accent-soft:    #123658;
-  --color-on-accent:      #071827;
+  --color-accent:         #5BB0FF;
+  --color-accent-hover:   color-mix(in oklab, var(--color-accent) 70%, white);
+  --color-accent-soft:    color-mix(in oklab, var(--color-accent) 20%, var(--color-bg));
+  --color-on-accent:      #04182E;
 
   --color-highlight:      #D4AF56;
   --color-on-highlight:   #0B1220;

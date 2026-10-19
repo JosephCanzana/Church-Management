@@ -1,13 +1,47 @@
 <!--
 attendance/sheet_workspace.html
-The draft workspace: take attendance on one draft sheet. Extends base_app.html and fills: title, page_title, content.
-Context (attendance.views._workspace_context): sheet, summary (live), table (summary_table), members (each with
-gender_label, age_label, needs_category, is_visitor), first_timers, form (FirstTimerForm), pending (the
-"same person?" prompt or None), more_open, gender_choices, age_choices, q, search_hint, results, can_review,
-can_upload, upload_blocker, submit_token.
-Everything is a plain POST form and a redirect (no JavaScript needed). Search is a GET (?q=). Targets are 44px
-and text 16px or larger, so it works one-handed on a phone. Links go through role_url (one file, four areas).
-Colors come from tokens only. The only Alpine here scrolls the first-timer section into view after a refused post.
+The draft workspace: take attendance on one draft sheet. Extends base_app.html and fills: title, page_title,
+main_class (full width), content.
+
+Layout (desktop): a slim bar on top, then three panes that fill the screen.
+  left   (~30%)  Add a first timer by default; the details of the selected attendee otherwise.
+                 Account members are read-only (their gender and age network come from the account);
+                 members without an account and guests can be edited. A button in the middle pane hides this pane.
+  middle (flex)  Everyone on the sheet. Filter by All / Members / First timers / Needs info, search by name,
+                 select a row to see or edit it on the left, remove from here.
+  right  (~20%)  Church members NOT yet on the sheet. Tick several and press "Add to attendance", or press "Add" on
+                 one row; a confirmation modal lists them before anything is saved. The search box filters the list as you type, and from
+                 3 letters it also asks the server for people outside this list (other extensions).
+Below lg the three panes become three tabs.
+The breakdown table is not shown here (it stays on the review and print pages).
+
+Context (attendance.views._workspace_context), as before: sheet, summary (live), members (each with member_name,
+home_extension_name, gender, age_network, gender_label, age_label, needs_category, is_guest, is_visitor), first_timers,
+form (FirstTimerForm), pending, more_open, gender_choices, age_choices, q, search_hint, results, can_review,
+can_upload, can_convert, upload_blocker, submit_token.
+Needed by this template (the view must supply them):
+  roster              EVERY church member who can be ticked and is not on this sheet yet (account and no account),
+                      already filled when the page opens: id, name, person_type_label, home_extension.
+  member.has_account  True when the marked person has an account (set by _decorate_member). Read-only, except that a
+                      value the account lacks can be filled in. The view enforces the same rule.
+  visitor.is_returning  True for a first-timer row whose person attended before: shown as "Guest", not "First timer".
+Optional:
+  can_edit_first_timer  True when the view 'sheet_first_timer_edit' exists (the view checks this by reversing the URL). It receives first_timer_id, first_name,
+                        last_name, gender, age_network by POST. Without the flag, first timers are shown read-only.
+  first timer fields used for editing: visitor.first_name, visitor.last_name, visitor.gender, visitor.age_network.
+
+Modals (includes/modal.html, opened with $store.ui.openModal): add_people (confirm adding), confirm_action (adding a
+first timer, saving changes to someone, taking someone off the sheet, removing a first timer; any form with
+data-ask-title gets it) and same_person
+(the "same person?" question, opened by itself when the server sends it).
+How it saves: ticking only selects. "Add to attendance" opens a confirmation window, and on Confirm each person is
+posted to the existing mark view, then the page parts are refreshed. Removals and edits are the same plain POST forms as
+before; a small script sends them with fetch and swaps the bar and the panes with the fresh page, so nothing jumps and
+the search text stays. If the script fails, the form is submitted normally. Forms with a confirm prompt (removing a
+first timer) stay normal posts.
+Targets are 44px and text 16px or larger. Colors come from tokens only.
+Partials: _choice_chips.html, _age_hint.html, _status_badge.html, _convert_button.html. The Upload button is built in here
+(it posts submit_token to sheet_upload); _upload_form.html is no longer used by this page.
 -->
 {% extends 'base_app.html' %}
 {% load ui_tags people_tags %}
@@ -15,284 +49,761 @@ Colors come from tokens only. The only Alpine here scrolls the first-timer secti
 {% block title %}{{ sheet.label }}{% endblock %}
 {% block page_title %}{{ sheet.label }}{% endblock %}
 
+{# Full width: the page fills the area next to the icon rail. #}
+{% block main_class %}w-full flex-1 px-3 py-3 sm:px-4 sm:py-4{% if mobile_nav_style == 'bottom' %} pb-[calc(5rem+env(safe-area-inset-bottom))] sm:pb-4{% endif %}{% endblock %}
+
 {% block content %}
 {% role_url 'sheet_list' as list_url %}
-{% include 'includes/breadcrumb.html' with parent_label='Attendance' parent_url=list_url current=sheet.label %}
+{% role_url 'sheet_detail' sheet.pk as detail_url %}
+{% role_url 'sheet_mark' sheet.pk as mark_url %}
 
-<div class="max-w-3xl space-y-6">
+<script>
+  function attendanceWorkspace(cfg) {
+    return {
+      q: cfg.q, aq: '', filter: 'all', selected: null,
+      tab: 'roster', detailOpen: true, busy: false, rev: 0, reqId: 0,
+      picked: {}, single: null, adding: false, addError: '',
+      action: { title: '', message: '', detail: '', confirm: 'Confirm' }, askForm: null,
 
-  {# "Same person?" prompt: shown on top because the page is re-rendered (nothing was saved yet). #}
-  {% if pending %}
-  <section id="same-person" class="card space-y-4 border-highlight" role="region" aria-labelledby="same-person-title">
-    <div>
-      <h2 id="same-person-title" class="text-lg font-semibold text-txt-primary">Is {{ pending.name }} already in the church?</h2>
-      <p class="text-base text-txt-secondary">Someone with the same name exists. If it is the same person, mark them present instead of adding a first timer.</p>
-    </div>
-    <ul class="divide-y divide-border rounded-lg border border-border">
-      {% for match in pending.matches %}
-      <li class="flex flex-wrap items-center justify-between gap-3 px-4 py-3">
-        <div class="min-w-0">
-          <p class="truncate text-base font-medium text-txt-primary">{{ match.name }}</p>
-          <p class="text-sm text-txt-secondary">{{ match.person_type_label }} &middot; {{ match.home_extension }}{% if match.age_label %} &middot; {{ match.age_label }}{% endif %}{% if match.archived %} &middot; Archived person{% endif %}</p>
-        </div>
-        {% if not match.active %}
-        <span class="text-sm text-txt-secondary">A leader must restore or unsuspend this person first.</span>
-        {% else %}
-        <form method="post" action="{% role_url 'sheet_mark' sheet.pk %}">
-          {% csrf_token %}
-          <input type="hidden" name="user_id" value="{{ match.id }}">
-          <input type="hidden" name="gender" value="{{ pending.gender }}">
-          <input type="hidden" name="age_network" value="{{ pending.age_network }}">
-          <button type="submit" class="btn btn-primary min-h-[44px] text-base">Yes, mark present</button>
-        </form>
-        {% endif %}
-      </li>
-      {% endfor %}
-    </ul>
-    <form method="post" action="{% role_url 'sheet_first_timer_add' sheet.pk %}" class="flex flex-wrap items-center gap-3">
-      {% csrf_token %}
-      {% for name, value in pending.fields %}<input type="hidden" name="{{ name }}" value="{{ value }}">{% endfor %}
-      <input type="hidden" name="confirm_new" value="on">
-      <button type="submit" class="btn btn-secondary min-h-[44px] text-base">No, add as a new first timer</button>
-      <a class="btn btn-ghost min-h-[44px] text-base" href="{% role_url 'sheet_detail' sheet.pk %}">Cancel</a>
-    </form>
-  </section>
-  {% endif %}
+      /* Member list (right) and search results */
+      rosterShown() {
+        this.rev;
+        const t = this.q.trim().toLowerCase();
+        let n = 0;
+        document.querySelectorAll('#ws-roster-list [data-name]').forEach(li => { if (!t || li.dataset.name.includes(t)) n++; });
+        return n;
+      },
+      matchRoster(name) {
+        const t = this.q.trim().toLowerCase();
+        return !t || name.includes(t);
+      },
+      inRoster(id) { return !!document.querySelector('#ws-roster-list [data-id="' + id + '"]'); },
+      otherShown() {
+        this.rev;
+        let n = 0;
+        document.querySelectorAll('#ws-results [data-id]').forEach(li => { if (!this.inRoster(li.dataset.id)) n++; });
+        return n;
+      },
+      async remote() {
+        const t = this.q.trim();
+        const id = ++this.reqId;
+        const box = document.getElementById('ws-results');
+        if (t.length < 3) { box.innerHTML = ''; this.rev++; return; }
+        try {
+          const res = await fetch(cfg.base + '?q=' + encodeURIComponent(t), { credentials: 'same-origin' });
+          if (!res.ok || id !== this.reqId) return;
+          const doc = new DOMParser().parseFromString(await res.text(), 'text/html');
+          const fresh = doc.getElementById('ws-results');
+          box.innerHTML = fresh ? fresh.innerHTML : '';
+          this.rev++;
+        } catch (e) { /* the list filter still works */ }
+      },
 
-  {# Header: facts, the running counts and the two main buttons. #}
-  <section class="card space-y-4" aria-label="Sheet summary">
-    <div class="flex flex-wrap items-start justify-between gap-3">
-      <div>
-        <h2 class="text-xl font-semibold tracking-tight text-txt-primary">{{ sheet.label }}</h2>
-        <p class="text-base text-txt-secondary">{{ sheet.attendance_date|date:"l, j F Y" }} &middot; {{ sheet.extension.name|title_case }}</p>
-        <p class="text-sm text-txt-secondary">Taken by {% if sheet.taken_by %}{{ sheet.taken_by.full_name }}{% else %}not recorded{% endif %}</p>
+      /* Adding members: tick several and press "Add to attendance", or press "Add" on one row.
+         Both open the same confirmation modal; nothing is saved before Confirm. */
+      csrf() {
+        const input = document.querySelector('#ws input[name=csrfmiddlewaretoken]');
+        return input ? input.value : '';
+      },
+      isPicked(id) { return Object.prototype.hasOwnProperty.call(this.picked, id); },
+      toggle(el) {
+        const li = el.closest('li');
+        const next = Object.assign({}, this.picked);
+        if (el.checked) next[el.value] = { name: li.dataset.label, meta: li.dataset.meta };
+        else delete next[el.value];
+        this.picked = next;
+      },
+      pickedCount() { return Object.keys(this.picked).length; },
+      pickedList() { return Object.keys(this.picked).map(id => Object.assign({ id: id }, this.picked[id])); },
+      confirmList() { return this.single ? [this.single] : this.pickedList(); },
+      askConfirm() {
+        if (!this.pickedCount()) return;
+        this.single = null;
+        this.addError = '';
+        this.$store.ui.openModal('add_people');
+      },
+      askOne(el) {
+        const li = el.closest('li');
+        this.single = { id: li.dataset.id, name: li.dataset.label, meta: li.dataset.meta };
+        this.addError = '';
+        this.$store.ui.openModal('add_people');
+      },
+      async addPicked() {
+        const list = this.confirmList();
+        if (!list.length || this.adding) return;
+        this.adding = true;
+        this.addError = '';
+        const csrf = this.csrf();
+        const failed = [];
+        const left = Object.assign({}, this.picked);
+        for (const p of list) {
+          const fd = new FormData();
+          fd.append('csrfmiddlewaretoken', csrf);
+          fd.append('user_id', p.id);
+          try {
+            const res = await fetch(cfg.markUrl, { method: 'POST', body: fd, credentials: 'same-origin' });
+            if (!res.ok) throw new Error('status ' + res.status);
+            delete left[p.id];
+          } catch (e) { failed.push(p.name); }
+        }
+        this.picked = left;
+        await this.refresh();
+        this.adding = false;
+        if (failed.length) {
+          this.addError = 'Could not add: ' + failed.join(', ') + '. Try again.';
+        } else {
+          this.single = null;
+          this.$store.ui.closeModal();
+        }
+      },
+
+      /* Any other important button (adding a first timer, removing someone): a form with data-ask-title opens
+         the confirmation modal first, and is only sent after Confirm. */
+      openAction(form, detail) {
+        this.askForm = form;
+        this.action = {
+          title: form.dataset.askTitle || 'Are you sure?',
+          message: form.dataset.askText || '',
+          detail: detail,
+          confirm: form.dataset.askConfirm || 'Confirm',
+        };
+        this.$store.ui.openModal('confirm_action');
+      },
+      confirmAction() {
+        const form = this.askForm;
+        if (!form) return;
+        this.askForm = null;
+        this.$store.ui.closeModal();
+        form.dataset.asked = '1';
+        form.requestSubmit();
+      },
+
+      /* Attendees */
+      showRow(el) {
+        const t = this.aq.trim().toLowerCase();
+        if (t && !el.dataset.name.includes(t)) return false;
+        if (this.filter === 'all') return true;
+        if (this.filter === 'needs') return el.dataset.needs === '1';
+        return el.dataset.kind === this.filter;
+      },
+      attTotal() { this.rev; return document.querySelectorAll('#ws-attendees li[data-kind]').length; },
+      attShown() {
+        this.rev;
+        let n = 0;
+        document.querySelectorAll('#ws-attendees li[data-kind]').forEach(li => { if (this.showRow(li)) n++; });
+        return n;
+      },
+      needsCount() { this.rev; return document.querySelectorAll('#ws-attendees li[data-needs="1"]').length; },
+      select(key) { this.selected = key; this.detailOpen = true; this.tab = 'detail'; },
+
+      /* Saving: swap the live parts of the page with a fresh copy of it. */
+      swap(html) {
+        const doc = new DOMParser().parseFromString(html, 'text/html');
+        if (!doc.getElementById('ws-bar')) return false;
+        ['ws-bar', 'ws-roster-list', 'ws-attendees', 'ws-detail', 'ws-pending'].forEach(id => {
+          const fresh = doc.getElementById(id), live = document.getElementById(id);
+          if (fresh && live) live.innerHTML = fresh.innerHTML;
+        });
+        if (this.selected && !document.querySelector('#ws-detail [data-key="' + this.selected + '"]')) this.selected = null;
+        // Anyone ticked who is now on the sheet is no longer in the list; forget them.
+        const keep = {};
+        Object.keys(this.picked).forEach(id => { if (this.inRoster(id) || document.querySelector('#ws-results [data-id="' + id + '"]')) keep[id] = this.picked[id]; });
+        this.picked = keep;
+        this.rev++;
+        // "Same person?" came back from a first-timer post: ask in the modal.
+        if (document.querySelector('#ws-pending [data-modal]')) this.$nextTick(() => this.$store.ui.openModal('same_person'));
+        return true;
+      },
+      async refresh() {
+        try {
+          const res = await fetch(cfg.base, { credentials: 'same-origin' });
+          if (res.ok) this.swap(await res.text());
+        } catch (e) { /* the next action refreshes it */ }
+        this.remote();
+      },
+      async onSubmit(e) {
+        const form = e.target;
+        if (!form.matches || !form.matches('form[data-ws]')) return;
+        e.preventDefault();
+        if (form.dataset.askTitle && form.dataset.asked !== '1') {
+          const detail = form.dataset.askFields
+            ? form.dataset.askFields.split(',').map(n => (form.elements[n] ? form.elements[n].value.trim() : '')).filter(Boolean).join(' ')
+            : (form.dataset.askDetail || '');
+          // An empty add form goes straight to the server so its errors show beside the fields.
+          if (!form.dataset.askFields || detail) { this.openAction(form, detail); return; }
+        }
+        delete form.dataset.asked;
+        if (form.closest('[data-modal]')) this.$store.ui.closeModal();
+        this.busy = true;
+        try {
+          const res = await fetch(form.action, { method: 'POST', body: new FormData(form), credentials: 'same-origin' });
+          if (!res.ok) throw new Error('status ' + res.status);
+          if (!this.swap(await res.text())) { window.location.assign(res.url || window.location.href); return; }
+          this.remote();
+          if (form.dataset.ws === 'first-timer') {
+            const d = document.getElementById('ws-detail');
+            if (d) d.scrollTop = 0;
+          }
+        } catch (err) {
+          form.submit();
+        } finally {
+          this.busy = false;
+        }
+      },
+    };
+  }
+</script>
+
+<div id="ws" class="flex flex-col gap-3 lg:h-[calc(100dvh-3.5rem-2rem)]"
+     x-data="attendanceWorkspace({ q: '{{ q|escapejs }}', base: '{{ detail_url|escapejs }}', markUrl: '{{ mark_url|escapejs }}' })"
+     x-on:submit="onSubmit($event)"
+     x-init="$nextTick(() => { if ($el.querySelector('#ws-pending [data-modal]')) $store.ui.openModal('same_person'); })">
+
+  {# Top bar: what this sheet is, the counts, and the buttons. One row on a wide screen. #}
+  <section class="flex shrink-0 items-center gap-3 glass-panel px-3 py-2" aria-label="Sheet summary">
+    <div id="ws-bar" class="flex min-w-0 flex-1 flex-wrap items-center gap-x-5 gap-y-2">
+      <a class="btn btn-ghost min-h-[44px] shrink-0 px-2 text-base" href="{{ list_url }}" aria-label="Back to attendance">&larr; Attendance</a>
+
+      <div class="min-w-0">
+        <h2 class="truncate text-lg font-semibold tracking-tight text-txt-primary">{{ sheet.label }}</h2>
+        <p class="truncate text-sm text-txt-secondary">
+          {{ sheet.attendance_date|date:"D, j M Y" }} &middot; {{ sheet.extension.name|title_case }} &middot; Taken by {% if sheet.taken_by %}{{ sheet.taken_by.full_name }}{% else %}not recorded{% endif %}
+        </p>
       </div>
+
       {% include 'attendance/_status_badge.html' with sheet=sheet %}
-    </div>
 
-    <div class="grid grid-cols-3 gap-3 text-center" aria-live="polite">
-      <div class="rounded-lg border border-border p-3">
-        <p class="text-2xl font-semibold tabular-nums text-txt-primary">{{ summary.total_present }}</p>
-        <p class="text-sm text-txt-secondary">Present</p>
-      </div>
-      <div class="rounded-lg border border-border p-3">
-        <p class="text-2xl font-semibold tabular-nums text-txt-primary">{{ summary.members_present }}</p>
-        <p class="text-sm text-txt-secondary">People marked</p>
-      </div>
-      <div class="rounded-lg border border-border p-3">
-        <p class="text-2xl font-semibold tabular-nums text-txt-primary">{{ summary.first_timers_count }}</p>
-        <p class="text-sm text-txt-secondary">First timers</p>
-      </div>
-    </div>
-    {% if summary.incomplete %}
-    <p class="rounded-lg border border-warning px-3 py-2 text-base text-txt-primary" role="status">
-      {{ summary.incomplete }} {% if summary.incomplete == 1 %}person needs{% else %}people need{% endif %} a gender and an age network. They are listed first below.
-    </p>
-    {% endif %}
-
-    <div class="flex flex-wrap items-start gap-3">
-      {% if can_review %}<a class="btn btn-secondary min-h-[44px] text-base" href="{% role_url 'sheet_review' sheet.pk %}">Review</a>{% endif %}
-      {% if can_upload %}
-      <div>{% include 'attendance/_upload_form.html' with sheet=sheet submit_token=submit_token upload_blocker=upload_blocker %}</div>
-      {% endif %}
-    </div>
-  </section>
-
-  {# Find and tick people. #}
-  <section id="find" class="card space-y-4" aria-labelledby="find-title">
-    <h2 id="find-title" class="text-lg font-semibold text-txt-primary">Mark someone present</h2>
-    <form method="get" action="{% role_url 'sheet_detail' sheet.pk %}#find" role="search" class="flex gap-2">
-      <label for="people-search" class="sr-only">Search by name</label>
-      <input id="people-search" type="search" name="q" value="{{ q }}" class="input min-w-0 flex-1 text-base"
-             placeholder="Type a name (3 letters or more)" autocomplete="off" autocapitalize="words" enterkeyhint="search">
-      <button type="submit" class="btn btn-primary min-h-[44px] text-base">Search</button>
-    </form>
-    {% if search_hint %}<p class="text-base text-txt-secondary" role="status">{{ search_hint }}</p>{% endif %}
-    {% if results %}
-    <ul class="divide-y divide-border overflow-hidden rounded-lg border border-border">
-      {% for person in results %}
-      <li class="flex flex-wrap items-center justify-between gap-3 px-4 py-3">
-        <div class="min-w-0">
-          <p class="truncate text-base font-medium text-txt-primary">{{ person.name }}</p>
-          <p class="text-sm text-txt-secondary">{{ person.person_type_label }} &middot; {{ person.home_extension }}{% if person.visitor %} (visitor){% endif %}{% if person.age_label %} &middot; {{ person.age_label }}{% endif %}</p>
+      <dl class="flex items-center gap-5 md:ml-auto" aria-live="polite">
+        <div class="flex flex-col-reverse items-center">
+          <dt class="text-sm text-txt-secondary">Present</dt>
+          <dd class="text-2xl font-semibold tabular-nums text-txt-primary">{{ summary.total_present }}</dd>
         </div>
-        {% if person.marked %}
-        <span class="rounded-full border border-success px-3 py-1 text-sm text-success">Marked</span>
-        {% else %}
-        <form method="post" action="{% role_url 'sheet_mark' sheet.pk %}">
+        <div class="flex flex-col-reverse items-center">
+          <dt class="text-sm text-txt-secondary">People</dt>
+          <dd class="text-2xl font-semibold tabular-nums text-txt-primary">{{ summary.members_present }}</dd>
+        </div>
+        <div class="flex flex-col-reverse items-center">
+          <dt class="text-sm text-txt-secondary">First timers</dt>
+          <dd class="text-2xl font-semibold tabular-nums text-txt-primary">{{ summary.first_timers_count }}</dd>
+        </div>
+      </dl>
+
+      <div class="flex flex-wrap items-center gap-2">
+        {% if summary.incomplete %}
+        <button type="button" class="min-h-[44px] rounded-lg border border-warning px-3 text-base text-txt-primary"
+                x-on:click="filter = 'needs'; tab = 'attendees'">
+          {{ summary.incomplete }} need{% if summary.incomplete == 1 %}s{% endif %} info
+        </button>
+        {% endif %}
+        {% if can_review %}<a class="btn btn-secondary min-h-[44px] text-base" href="{% role_url 'sheet_review' sheet.pk %}">Review</a>{% endif %}
+        {# Upload: saves the reviewed draft as the locked record. Asks in the confirmation modal; disabled, with the reason, until it can go. #}
+        {% if can_upload %}
+        <form method="post" action="{% role_url 'sheet_upload' sheet.pk %}" data-ws="upload" class="flex flex-wrap items-center gap-2"
+              data-ask-title="Upload this sheet?"
+              data-ask-text="{{ summary.total_present }} present will be saved as the final record and the sheet is locked. An admin can reopen it to correct it."
+              data-ask-detail="{{ sheet.label }}, {{ sheet.attendance_date|date:'j M Y' }}" data-ask-confirm="Upload">
           {% csrf_token %}
-          <input type="hidden" name="user_id" value="{{ person.id }}">
-          <button type="submit" class="btn btn-primary min-h-[44px] text-base" aria-label="Mark {{ person.name }} present">Mark present</button>
+          <input type="hidden" name="submit_token" value="{{ submit_token }}">
+          <button type="submit" class="btn btn-primary min-h-[44px] text-base"{% if upload_blocker %} disabled aria-describedby="upload-blocker"{% endif %}>
+            {% include 'includes/icon.html' with name='clipboard-document-check' class='size-5' %}
+            Upload
+          </button>
+          {% if upload_blocker %}<span id="upload-blocker" class="max-w-xs text-sm text-txt-secondary">{{ upload_blocker }}</span>{% endif %}
         </form>
         {% endif %}
-      </li>
-      {% endfor %}
-    </ul>
-    {% endif %}
+      </div>
+    </div>
+    <p x-show="busy" class="shrink-0 text-sm text-txt-secondary" role="status" style="display:none">Saving</p>
   </section>
 
-  {# The ticked list. People without a category come first, with the inline pick. #}
-  <section id="marked" class="card space-y-3 p-0" aria-labelledby="marked-title">
-    <h2 id="marked-title" class="px-5 pt-5 text-lg font-semibold text-txt-primary">Marked present <span class="text-base font-normal text-txt-secondary">({{ members|length }})</span></h2>
-    {% if members %}
-    <ul class="divide-y divide-border border-t border-border">
-      {% for member in members %}
-      <li class="px-5 py-3">
-        <div class="flex items-start justify-between gap-3">
-          <div class="min-w-0">
-            <p class="text-base font-medium text-txt-primary">{{ member.member_name }}{% if member.is_guest %} <span class="ml-1 rounded-full border border-highlight px-2 py-0.5 text-sm font-normal text-txt-secondary">Guest</span>{% endif %}{% if member.is_visitor %} <span class="ml-1 rounded-full border border-border-strong px-2 py-0.5 text-sm font-normal text-txt-secondary">Visitor</span>{% endif %}</p>
-            <p class="text-sm text-txt-secondary">
-              {{ member.home_extension_name|default:"-" }}
-              {% if not member.needs_category %}&middot; {{ member.gender_label }}, {{ member.age_label }}{% endif %}
-            </p>
+  {# Tabs, phone and tablet only. Same order as the panes on a wide screen. #}
+  <div class="grid shrink-0 grid-cols-3 gap-1 glass-panel p-1 lg:hidden" role="tablist" aria-label="Workspace sections">
+    <button type="button" role="tab" class="min-h-[44px] rounded-lg px-2 text-base"
+            x-bind:aria-selected="tab === 'detail' ? 'true' : 'false'"
+            x-bind:class="tab === 'detail' ? 'bg-accent text-on-accent' : 'text-txt-primary'"
+            x-on:click="tab = 'detail'">Details</button>
+    <button type="button" role="tab" class="min-h-[44px] rounded-lg px-2 text-base"
+            x-bind:aria-selected="tab === 'attendees' ? 'true' : 'false'"
+            x-bind:class="tab === 'attendees' ? 'bg-accent text-on-accent' : 'text-txt-primary'"
+            x-on:click="tab = 'attendees'">Attendees (<span x-text="attTotal()">0</span>)</button>
+    <button type="button" role="tab" class="min-h-[44px] rounded-lg px-2 text-base"
+            x-bind:aria-selected="tab === 'roster' ? 'true' : 'false'"
+            x-bind:class="tab === 'roster' ? 'bg-accent text-on-accent' : 'text-txt-primary'"
+            x-on:click="tab = 'roster'">Members</button>
+  </div>
+
+  <div class="flex min-h-0 flex-1 flex-col gap-3 lg:flex-row">
+
+    {# LEFT: add a first timer, or the details of the selected attendee. #}
+    <section aria-label="Details"
+             class="min-h-0 flex-col glass-panel lg:w-[30%] lg:min-w-[20rem] lg:shrink-0"
+             x-bind:class="[tab === 'detail' ? 'flex' : 'hidden', detailOpen ? 'lg:flex' : 'lg:hidden']">
+      <div id="ws-detail" class="min-h-0 flex-1 space-y-4 overflow-y-auto p-4">
+
+        {# Default view: add a first timer. #}
+        <div x-show="selected === null" class="space-y-4">
+          <div>
+            <h3 class="text-lg font-semibold text-txt-primary">Add a first timer</h3>
+            <p class="text-base text-txt-secondary">For someone who is not in the church yet. Church members are ticked in the list on the right.</p>
           </div>
-          <form method="post" action="{% role_url 'sheet_unmark' sheet.pk %}">
+          <form method="post" action="{% role_url 'sheet_first_timer_add' sheet.pk %}" data-ws="first-timer" class="space-y-4" novalidate
+                data-ask-title="Add this first timer?" data-ask-text="They will be added to the sheet as a first timer."
+                data-ask-fields="first_name,last_name" data-ask-confirm="Add first timer">
+            {% csrf_token %}
+            {% if form.non_field_errors %}
+            <div role="alert" class="rounded-xl border border-border/60 bg-surface-alt/50 p-3">
+              {% for error in form.non_field_errors %}<p class="field-error">{{ error }}</p>{% endfor %}
+            </div>
+            {% endif %}
+
+            <div class="grid gap-4 sm:grid-cols-2 lg:grid-cols-1 2xl:grid-cols-2">
+              <div>
+                <label class="label" for="{{ form.first_name.id_for_label }}">{{ form.first_name.label }}</label>
+                {{ form.first_name }}
+                {% for error in form.first_name.errors %}<p class="field-error">{{ error }}</p>{% endfor %}
+              </div>
+              <div>
+                <label class="label" for="{{ form.last_name.id_for_label }}">{{ form.last_name.label }}</label>
+                {{ form.last_name }}
+                {% for error in form.last_name.errors %}<p class="field-error">{{ error }}</p>{% endfor %}
+              </div>
+            </div>
+
+            <fieldset>
+              <legend class="label">Gender</legend>
+              <div class="grid grid-cols-2 gap-2">
+                {% include 'attendance/_choice_chips.html' with name='gender' choices=gender_choices selected=form.gender.value %}
+              </div>
+              {% for error in form.gender.errors %}<p class="field-error">{{ error }}</p>{% endfor %}
+            </fieldset>
+
+            <fieldset>
+              <legend class="label">Age network</legend>
+              <div class="grid grid-cols-2 gap-2">
+                {% include 'attendance/_choice_chips.html' with name='age_network' choices=age_choices selected=form.age_network.value %}
+              </div>
+              {% include 'attendance/_age_hint.html' %}
+              {% for error in form.age_network.errors %}<p class="field-error">{{ error }}</p>{% endfor %}
+            </fieldset>
+
+            <details class="rounded-lg border border-border px-4"{% if more_open %} open{% endif %}>
+              <summary class="flex min-h-[44px] cursor-pointer items-center text-base text-txt-secondary">Add a birth date or phone (optional)</summary>
+              <div class="grid gap-4 pb-3 pt-2">
+                <div>
+                  <label class="label" for="{{ form.birth_date.id_for_label }}">{{ form.birth_date.label }}</label>
+                  {{ form.birth_date }}
+                  <p class="field-help">A birth date sets the age network for you.</p>
+                  {% for error in form.birth_date.errors %}<p class="field-error">{{ error }}</p>{% endfor %}
+                </div>
+                <div>
+                  <label class="label" for="{{ form.phone_number.id_for_label }}">{{ form.phone_number.label }}</label>
+                  {{ form.phone_number }}
+                  {% for error in form.phone_number.errors %}<p class="field-error">{{ error }}</p>{% endfor %}
+                </div>
+                <div>
+                  <label class="label" for="{{ form.middle_name.id_for_label }}">{{ form.middle_name.label }}</label>
+                  {{ form.middle_name }}
+                  {% for error in form.middle_name.errors %}<p class="field-error">{{ error }}</p>{% endfor %}
+                </div>
+                <div>
+                  <label class="label" for="{{ form.suffix.id_for_label }}">{{ form.suffix.label }}</label>
+                  {{ form.suffix }}
+                  {% for error in form.suffix.errors %}<p class="field-error">{{ error }}</p>{% endfor %}
+                </div>
+              </div>
+            </details>
+
+            <button type="submit" class="btn btn-primary min-h-[44px] w-full text-base">
+              {% include 'includes/icon.html' with name='user-plus' class='size-5' %}
+              Add first timer
+            </button>
+          </form>
+        </div>
+
+        {# Details of a marked person. Account members are read-only; everyone else can be edited. #}
+        {% for member in members %}
+        <div data-key="m{{ member.pk }}" x-show="selected === 'm{{ member.pk }}'" style="display:none" class="space-y-4">
+          <div class="flex items-start justify-between gap-2">
+            <div class="min-w-0">
+              <h3 class="break-words text-lg font-semibold text-txt-primary">{{ member.member_name }}</h3>
+              <p class="text-sm text-txt-secondary">
+                {{ member.home_extension_name|default:"-" }} &middot;
+                {% if member.is_guest %}Guest{% elif member.has_account %}Has an account{% else %}No account{% endif %}{% if member.is_visitor %} &middot; Visitor{% endif %}
+              </p>
+            </div>
+            <button type="button" class="btn btn-ghost min-h-[44px] shrink-0 text-base" x-on:click="selected = null">Close</button>
+          </div>
+
+          {# A member with an account is read-only (the account decides), unless the account lacks a value; then only that value can be filled. #}
+          {% if member.has_account and not member.needs_category %}
+          <dl class="grid grid-cols-2 gap-3">
+            <div class="rounded-xl border border-border/60 bg-surface-alt/50 p-3">
+              <dt class="text-sm text-txt-secondary">Gender</dt>
+              <dd class="text-base font-medium text-txt-primary">{{ member.gender_label|default:"Not set" }}</dd>
+            </div>
+            <div class="rounded-xl border border-border/60 bg-surface-alt/50 p-3">
+              <dt class="text-sm text-txt-secondary">Age network</dt>
+              <dd class="text-base font-medium text-txt-primary">{{ member.age_label|default:"Not set" }}</dd>
+            </div>
+          </dl>
+          <p class="field-help">These come from the member's account, so they are not edited here.</p>
+          {% else %}
+          <form method="post" action="{% role_url 'sheet_member_category' sheet.pk %}" data-ws="category" class="space-y-4"
+                data-ask-title="Save changes?" data-ask-text="Their gender and age network will be updated on this sheet."
+                data-ask-detail="{{ member.member_name }}" data-ask-confirm="Save changes">
             {% csrf_token %}
             <input type="hidden" name="member_id" value="{{ member.pk }}">
-            <button type="submit" class="btn btn-ghost min-h-[44px] text-base" aria-label="Take {{ member.member_name }} off the sheet">Remove</button>
+            <fieldset>
+              <legend class="label">Gender</legend>
+              <div class="grid grid-cols-2 gap-2">
+                {% include 'attendance/_choice_chips.html' with name='gender' choices=gender_choices selected=member.gender %}
+              </div>
+            </fieldset>
+            <fieldset>
+              <legend class="label">Age network</legend>
+              <div class="grid grid-cols-2 gap-2">
+                {% include 'attendance/_choice_chips.html' with name='age_network' choices=age_choices selected=member.age_network %}
+              </div>
+              {% include 'attendance/_age_hint.html' %}
+            </fieldset>
+            <button type="submit" class="btn btn-primary min-h-[44px] w-full text-base">Save changes</button>
+          </form>
+          {% endif %}
+
+          <form method="post" action="{% role_url 'sheet_unmark' sheet.pk %}" data-ws="unmark"
+                data-ask-title="Take off the sheet?" data-ask-text="They will be removed from this sheet. You can add them again."
+                data-ask-detail="{{ member.member_name }}" data-ask-confirm="Remove">
+            {% csrf_token %}
+            <input type="hidden" name="member_id" value="{{ member.pk }}">
+            <button type="submit" class="btn btn-secondary min-h-[44px] w-full text-base">Take off the sheet</button>
           </form>
         </div>
-        {% if member.needs_category %}
-        <form method="post" action="{% role_url 'sheet_member_category' sheet.pk %}" class="mt-2 grid gap-2 sm:grid-cols-[1fr_1fr_auto]">
-          {% csrf_token %}
-          <input type="hidden" name="member_id" value="{{ member.pk }}">
-          <p class="text-sm font-medium text-warning sm:col-span-3">Needs a gender and an age network</p>
-          <select name="gender" class="input text-base" aria-label="Gender of {{ member.member_name }}">
-            <option value="">Gender</option>
-            {% for value, label in gender_choices %}<option value="{{ value }}"{% if member.gender == value %} selected{% endif %}>{{ label }}</option>{% endfor %}
-          </select>
-          <select name="age_network" class="input text-base" aria-label="Age network of {{ member.member_name }}">
-            <option value="">Age network</option>
-            {% for value, label in age_choices %}<option value="{{ value }}"{% if member.age_network == value %} selected{% endif %}>{{ label }}</option>{% endfor %}
-          </select>
-          <button type="submit" class="btn btn-secondary min-h-[44px] text-base">Save</button>
-        </form>
-        {% endif %}
-      </li>
-      {% endfor %}
-    </ul>
-    {% else %}
-    <p class="px-5 pb-5 text-base text-txt-secondary">Nobody is marked yet. Search for a name above.</p>
-    {% endif %}
-  </section>
+        {% endfor %}
 
-  {# First timers: quick form, the "more" fold, and the list. #}
-  <section id="first-timers" class="card space-y-4" aria-labelledby="first-timers-title"
-           {% if form.is_bound %}x-data x-init="$nextTick(() => $el.scrollIntoView({ block: 'start' }))"{% endif %}>
-    <h2 id="first-timers-title" class="text-lg font-semibold text-txt-primary">Add a first timer</h2>
-    <form method="post" action="{% role_url 'sheet_first_timer_add' sheet.pk %}" class="space-y-4" novalidate>
-      {% csrf_token %}
-      {% if form.non_field_errors %}
-      <div role="alert" class="rounded-lg border border-border p-3">
-        {% for error in form.non_field_errors %}<p class="field-error">{{ error }}</p>{% endfor %}
-      </div>
-      {% endif %}
-
-      <div class="grid gap-4 sm:grid-cols-2">
-        <div>
-          <label class="label" for="{{ form.first_name.id_for_label }}">{{ form.first_name.label }}</label>
-          {{ form.first_name }}
-          {% for error in form.first_name.errors %}<p class="field-error">{{ error }}</p>{% endfor %}
-        </div>
-        <div>
-          <label class="label" for="{{ form.last_name.id_for_label }}">{{ form.last_name.label }}</label>
-          {{ form.last_name }}
-          {% for error in form.last_name.errors %}<p class="field-error">{{ error }}</p>{% endfor %}
-        </div>
-      </div>
-
-      <fieldset>
-        <legend class="label">Gender</legend>
-        <div class="grid grid-cols-2 gap-2">
-          {% for value, label in gender_choices %}
-          <label class="block">
-            <input type="radio" name="gender" value="{{ value }}" class="peer sr-only"{% if form.gender.value == value %} checked{% endif %}>
-            <span class="flex min-h-[44px] cursor-pointer items-center justify-center rounded-lg border border-border-strong px-3 text-base text-txt-primary peer-checked:border-accent peer-checked:bg-accent peer-checked:text-on-accent peer-focus-visible:outline peer-focus-visible:outline-2 peer-focus-visible:outline-offset-2 peer-focus-visible:outline-accent">{{ label }}</span>
-          </label>
-          {% endfor %}
-        </div>
-        {% for error in form.gender.errors %}<p class="field-error">{{ error }}</p>{% endfor %}
-      </fieldset>
-
-      <fieldset>
-        <legend class="label">Age network</legend>
-        <div class="grid grid-cols-2 gap-2 sm:grid-cols-4">
-          {% for value, label in age_choices %}
-          <label class="block">
-            <input type="radio" name="age_network" value="{{ value }}" class="peer sr-only"{% if form.age_network.value == value %} checked{% endif %}>
-            <span class="flex min-h-[44px] cursor-pointer items-center justify-center rounded-lg border border-border-strong px-3 text-center text-base text-txt-primary peer-checked:border-accent peer-checked:bg-accent peer-checked:text-on-accent peer-focus-visible:outline peer-focus-visible:outline-2 peer-focus-visible:outline-offset-2 peer-focus-visible:outline-accent">{{ label }}</span>
-          </label>
-          {% endfor %}
-        </div>
-        <p class="field-help">A birth date, if you add one below, sets this for you.</p>
-        {% for error in form.age_network.errors %}<p class="field-error">{{ error }}</p>{% endfor %}
-      </fieldset>
-
-      <details class="rounded-lg border border-border px-4 py-2"{% if more_open %} open{% endif %}>
-        <summary class="flex min-h-[44px] cursor-pointer items-center text-base font-medium text-txt-primary">More details (optional)</summary>
-        <div class="grid gap-4 pb-3 pt-2 sm:grid-cols-2">
-          <div>
-            <label class="label" for="{{ form.middle_name.id_for_label }}">{{ form.middle_name.label }}</label>
-            {{ form.middle_name }}
-            {% for error in form.middle_name.errors %}<p class="field-error">{{ error }}</p>{% endfor %}
+        {# Details of a first timer. Editable when the view for it exists (can_edit_first_timer). #}
+        {% for visitor in first_timers %}
+        <div data-key="f{{ visitor.pk }}" x-show="selected === 'f{{ visitor.pk }}'" style="display:none" class="space-y-4">
+          <div class="flex items-start justify-between gap-2">
+            <div class="min-w-0">
+              <h3 class="break-words text-lg font-semibold text-txt-primary">{{ visitor.full_name }}</h3>
+              <p class="text-sm text-txt-secondary">{% if visitor.is_returning %}Guest, has visited before{% else %}First timer{% endif %}</p>
+            </div>
+            <button type="button" class="btn btn-ghost min-h-[44px] shrink-0 text-base" x-on:click="selected = null">Close</button>
           </div>
-          <div>
-            <label class="label" for="{{ form.suffix.id_for_label }}">{{ form.suffix.label }}</label>
-            {{ form.suffix }}
-            {% for error in form.suffix.errors %}<p class="field-error">{{ error }}</p>{% endfor %}
-          </div>
-          <div>
-            <label class="label" for="{{ form.birth_date.id_for_label }}">{{ form.birth_date.label }}</label>
-            {{ form.birth_date }}
-            {% for error in form.birth_date.errors %}<p class="field-error">{{ error }}</p>{% endfor %}
-          </div>
-          <div>
-            <label class="label" for="{{ form.phone_number.id_for_label }}">{{ form.phone_number.label }}</label>
-            {{ form.phone_number }}
-            {% for error in form.phone_number.errors %}<p class="field-error">{{ error }}</p>{% endfor %}
-          </div>
-        </div>
-      </details>
 
-      <button type="submit" class="btn btn-primary min-h-[44px] text-base">
-        {% include 'includes/icon.html' with name='user-plus' class='size-5' %}
-        Add first timer
-      </button>
-    </form>
-
-    {% if first_timers %}
-    <ul class="divide-y divide-border overflow-hidden rounded-lg border border-border">
-      {% for visitor in first_timers %}
-      <li class="flex items-center justify-between gap-3 px-4 py-3" {% if can_convert and not visitor.promoted %}oncontextmenu="event.preventDefault(); this.querySelector('[data-action-menu]').open = true;"{% endif %}>
-        <div class="min-w-0">
-          <p class="truncate text-base font-medium text-txt-primary">{{ visitor.full_name }}</p>
-          <p class="text-sm text-txt-secondary">{{ visitor.gender_label }}, {{ visitor.age_label }}</p>
-        </div>
-        <div class="flex flex-wrap items-center justify-end gap-2">
-          {% if can_convert and not visitor.promoted %}
-          {% include 'attendance/_convert_button.html' with ft=visitor %}
-          {% elif visitor.promoted %}
-          <span class="text-sm text-txt-secondary">Member record</span>
-          {% endif %}
-          {% if not visitor.promoted %}
-          <form method="post" action="{% role_url 'sheet_first_timer_remove' sheet.pk %}"
-                data-confirm="This first timer and the details you typed will be removed from the sheet."
-                data-confirm-title="Remove this first timer?" data-confirm-text="Remove" data-confirm-danger>
+          {% if can_edit_first_timer and not visitor.promoted %}
+          <form method="post" action="{% role_url 'sheet_first_timer_edit' sheet.pk %}" data-ws="first-timer-edit" class="space-y-4" novalidate
+                data-ask-title="Save changes?" data-ask-text="Their name, gender and age network will be updated on this sheet."
+                data-ask-detail="{{ visitor.full_name }}" data-ask-confirm="Save changes">
             {% csrf_token %}
             <input type="hidden" name="first_timer_id" value="{{ visitor.pk }}">
-            <button type="submit" class="btn btn-ghost min-h-[44px] text-base" aria-label="Remove {{ visitor.full_name }}">Remove</button>
+            <div class="grid gap-4 sm:grid-cols-2 lg:grid-cols-1 2xl:grid-cols-2">
+              <div>
+                <label class="label" for="ft-first-{{ visitor.pk }}">First name</label>
+                <input id="ft-first-{{ visitor.pk }}" class="input w-full text-base" name="first_name" value="{{ visitor.first_name }}" autocomplete="off">
+              </div>
+              <div>
+                <label class="label" for="ft-last-{{ visitor.pk }}">Last name</label>
+                <input id="ft-last-{{ visitor.pk }}" class="input w-full text-base" name="last_name" value="{{ visitor.last_name }}" autocomplete="off">
+              </div>
+            </div>
+            <fieldset>
+              <legend class="label">Gender</legend>
+              <div class="grid grid-cols-2 gap-2">
+                {% include 'attendance/_choice_chips.html' with name='gender' choices=gender_choices selected=visitor.gender %}
+              </div>
+            </fieldset>
+            <fieldset>
+              <legend class="label">Age network</legend>
+              <div class="grid grid-cols-2 gap-2">
+                {% include 'attendance/_choice_chips.html' with name='age_network' choices=age_choices selected=visitor.age_network %}
+              </div>
+              {% include 'attendance/_age_hint.html' %}
+            </fieldset>
+            <button type="submit" class="btn btn-primary min-h-[44px] w-full text-base">Save changes</button>
           </form>
+          {% else %}
+          <dl class="grid grid-cols-2 gap-3">
+            <div class="rounded-xl border border-border/60 bg-surface-alt/50 p-3">
+              <dt class="text-sm text-txt-secondary">Gender</dt>
+              <dd class="text-base font-medium text-txt-primary">{{ visitor.gender_label }}</dd>
+            </div>
+            <div class="rounded-xl border border-border/60 bg-surface-alt/50 p-3">
+              <dt class="text-sm text-txt-secondary">Age network</dt>
+              <dd class="text-base font-medium text-txt-primary">{{ visitor.age_label }}</dd>
+            </div>
+          </dl>
+          {% endif %}
+
+          <div class="flex flex-wrap items-center gap-2">
+            {% if can_convert and not visitor.promoted %}
+            {% include 'attendance/_convert_button.html' with ft=visitor %}
+            {% elif visitor.promoted %}
+            <span class="text-sm text-txt-secondary">Member record</span>
+            {% endif %}
+            <form method="post" action="{% role_url 'sheet_first_timer_remove' sheet.pk %}" data-ws="remove-first-timer"
+                    data-ask-title="{% if visitor.promoted %}Take off the sheet?{% else %}Remove this first timer?{% endif %}"
+                    data-ask-text="{% if visitor.promoted %}This visit is deleted, including their first visit in the member's history. The member record stays.{% else %}This first timer and the details you typed will be removed from the sheet.{% endif %}"
+                    data-ask-detail="{{ visitor.full_name }}" data-ask-confirm="Remove">
+              {% csrf_token %}
+              <input type="hidden" name="first_timer_id" value="{{ visitor.pk }}">
+              <button type="submit" class="btn btn-secondary min-h-[44px] text-base">Take off the sheet</button>
+            </form>
+          </div>
+        </div>
+        {% endfor %}
+      </div>
+    </section>
+
+    {# MIDDLE: everyone on the sheet. Select a row for details, remove from here. #}
+    <section aria-labelledby="attendees-title"
+             class="min-h-0 min-w-0 flex-1 flex-col glass-panel"
+             x-bind:class="tab === 'attendees' ? 'flex' : 'hidden lg:flex'">
+      <div class="shrink-0 space-y-3 border-b border-border/50 p-3">
+        <div class="flex flex-wrap items-center justify-between gap-2">
+          <h2 id="attendees-title" class="text-lg font-semibold text-txt-primary">Attendees <span class="text-base font-normal text-txt-secondary">(<span x-text="attTotal()">0</span>)</span></h2>
+          <button type="button" class="btn btn-secondary hidden min-h-[44px] text-base lg:inline-flex"
+                  x-on:click="detailOpen = !detailOpen" x-bind:aria-pressed="detailOpen ? 'true' : 'false'"
+                  x-text="detailOpen ? 'Hide details' : 'Show details'">Hide details</button>
+        </div>
+        <div class="flex flex-wrap items-center gap-2">
+          <label for="attendee-search" class="sr-only">Search attendees by name</label>
+          <input id="attendee-search" type="search" class="input min-w-[10rem] flex-1 text-base" x-model="aq"
+                 placeholder="Search attendees" autocomplete="off">
+          <div class="flex flex-wrap gap-2" role="group" aria-label="Show">
+            <button type="button" class="min-h-[44px] rounded-xl border px-3 text-base transition-colors"
+                    x-bind:class="filter === 'all' ? 'border-accent bg-accent text-on-accent' : 'border-border-strong text-txt-primary'"
+                    x-bind:aria-pressed="filter === 'all' ? 'true' : 'false'" x-on:click="filter = 'all'">All</button>
+            <button type="button" class="min-h-[44px] rounded-xl border px-3 text-base transition-colors"
+                    x-bind:class="filter === 'member' ? 'border-accent bg-accent text-on-accent' : 'border-border-strong text-txt-primary'"
+                    x-bind:aria-pressed="filter === 'member' ? 'true' : 'false'" x-on:click="filter = 'member'">Members</button>
+            <button type="button" class="min-h-[44px] rounded-xl border px-3 text-base transition-colors"
+                    x-bind:class="filter === 'first_timer' ? 'border-accent bg-accent text-on-accent' : 'border-border-strong text-txt-primary'"
+                    x-bind:aria-pressed="filter === 'first_timer' ? 'true' : 'false'" x-on:click="filter = 'first_timer'">First timers</button>
+            <button type="button" class="min-h-[44px] rounded-xl border px-3 text-base transition-colors" style="display:none"
+                    x-show="needsCount() > 0"
+                    x-bind:class="filter === 'needs' ? 'border-accent bg-accent text-on-accent' : 'border-warning text-txt-primary'"
+                    x-bind:aria-pressed="filter === 'needs' ? 'true' : 'false'" x-on:click="filter = 'needs'">Needs info</button>
+          </div>
+        </div>
+        <p class="text-sm text-txt-secondary">Select a name to see or edit their details.</p>
+      </div>
+
+      <div class="max-h-[65dvh] min-h-0 flex-1 overflow-y-auto lg:max-h-none">
+        <ul id="ws-attendees">
+          {% for member in members %}
+          <li data-kind="member" data-pk="{{ member.pk }}" data-needs="{% if member.needs_category %}1{% else %}0{% endif %}" data-name="{{ member.member_name|lower }}"
+              class="border-b border-border/50{% if member.needs_category %} border-l-4 border-l-warning{% endif %}"
+              x-show="showRow($el)" x-bind:class="selected === 'm{{ member.pk }}' ? 'bg-accent-soft/60' : ''">
+            <div class="flex items-center gap-2 pr-2">
+              <button type="button" class="flex min-h-[56px] min-w-0 flex-1 items-center px-4 py-2 text-left focus-visible:outline focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-accent"
+                      x-on:click="select('m{{ member.pk }}')">
+                <span class="min-w-0">
+                  <span class="block text-base font-medium text-txt-primary">{{ member.member_name }}{% if member.is_guest %} <span class="ml-1 rounded-full border border-highlight px-2 py-0.5 text-sm font-normal text-txt-secondary">Guest</span>{% endif %}{% if member.is_visitor %} <span class="ml-1 rounded-full border border-border-strong px-2 py-0.5 text-sm font-normal text-txt-secondary">Visitor</span>{% endif %}</span>
+                  <span class="block truncate text-sm text-txt-secondary">
+                    {% if member.needs_category %}<span class="text-warning">Needs a gender and an age network</span>{% else %}{{ member.home_extension_name|default:"-" }} &middot; {{ member.gender_label }}, {{ member.age_label }}{% endif %}
+                  </span>
+                </span>
+              </button>
+              <form method="post" action="{% role_url 'sheet_unmark' sheet.pk %}" data-ws="unmark" class="shrink-0"
+                    data-ask-title="Take off the sheet?" data-ask-text="They will be removed from this sheet. You can add them again."
+                    data-ask-detail="{{ member.member_name }}" data-ask-confirm="Remove">
+                {% csrf_token %}
+                <input type="hidden" name="member_id" value="{{ member.pk }}">
+                <button type="submit" class="btn btn-ghost min-h-[44px] text-base" aria-label="Take {{ member.member_name }} off the sheet">Remove</button>
+              </form>
+            </div>
+          </li>
+          {% endfor %}
+
+          {% for visitor in first_timers %}
+          <li data-kind="{% if visitor.is_returning %}member{% else %}first_timer{% endif %}" data-pk="{{ visitor.pk }}" data-needs="0" data-name="{{ visitor.full_name|lower }}"
+              class="border-b border-border/50"
+              x-show="showRow($el)" x-bind:class="selected === 'f{{ visitor.pk }}' ? 'bg-accent-soft/60' : ''">
+            <div class="flex items-center gap-2 pr-2">
+              <button type="button" class="flex min-h-[56px] min-w-0 flex-1 items-center px-4 py-2 text-left focus-visible:outline focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-accent"
+                      x-on:click="select('f{{ visitor.pk }}')">
+                <span class="min-w-0">
+                  <span class="block text-base font-medium text-txt-primary">{{ visitor.full_name }} <span class="ml-1 rounded-full border border-highlight px-2 py-0.5 text-sm font-normal text-txt-secondary">{% if visitor.is_returning %}Guest{% else %}First timer{% endif %}</span></span>
+                  <span class="block truncate text-sm text-txt-secondary">{{ visitor.gender_label }}, {{ visitor.age_label }}{% if visitor.promoted %} &middot; Member record{% endif %}</span>
+                </span>
+              </button>
+              <form method="post" action="{% role_url 'sheet_first_timer_remove' sheet.pk %}" data-ws="remove-first-timer" class="shrink-0"
+                    data-ask-title="{% if visitor.promoted %}Take off the sheet?{% else %}Remove this first timer?{% endif %}"
+                    data-ask-text="{% if visitor.promoted %}This visit is deleted, including their first visit in the member's history. The member record stays.{% else %}This first timer and the details you typed will be removed from the sheet.{% endif %}"
+                    data-ask-detail="{{ visitor.full_name }}" data-ask-confirm="Remove">
+                {% csrf_token %}
+                <input type="hidden" name="first_timer_id" value="{{ visitor.pk }}">
+                <button type="submit" class="btn btn-ghost min-h-[44px] text-base" aria-label="Remove {{ visitor.full_name }}">Remove</button>
+              </form>
+            </div>
+          </li>
+          {% endfor %}
+        </ul>
+
+        <p x-show="attTotal() === 0" class="px-4 py-6 text-base text-txt-secondary" style="display:none">Nobody is on the sheet yet. Tick names in the member list and add them, or add a first timer.</p>
+        <div x-show="attTotal() > 0 && attShown() === 0" class="space-y-3 px-4 py-6" style="display:none">
+          <p class="text-base text-txt-secondary">No one matches.</p>
+          <button type="button" class="btn btn-secondary min-h-[44px] text-base" x-on:click="aq = ''; filter = 'all'">Show everyone</button>
+        </div>
+      </div>
+    </section>
+
+    {# RIGHT: church members who are not on the sheet yet. Tick, then confirm. #}
+    <section aria-labelledby="roster-title"
+             class="min-h-0 flex-col glass-panel lg:w-[20%] lg:min-w-[16rem] lg:shrink-0"
+             x-bind:class="tab === 'roster' ? 'flex' : 'hidden lg:flex'">
+      <div class="shrink-0 space-y-2 border-b border-border/50 p-3">
+        <h2 id="roster-title" class="text-lg font-semibold text-txt-primary">Members <span class="text-base font-normal text-txt-secondary">(<span x-text="rosterShown()">0</span>)</span></h2>
+        <label for="people-search" class="sr-only">Search members by name</label>
+        <input id="people-search" type="search" class="input w-full min-w-0 text-base" x-model="q"
+               x-on:input.debounce.300ms="remote()"
+               placeholder="Search by name" autocomplete="off" autocapitalize="words">
+      </div>
+
+      <div class="max-h-[65dvh] min-h-0 flex-1 overflow-y-auto lg:max-h-none">
+        <ul id="ws-roster-list">
+          {% for person in roster %}
+          <li data-id="{{ person.id }}" data-name="{{ person.name|lower }}" data-label="{{ person.name }}"
+              data-meta="{{ person.person_type_label }} &middot; {{ person.home_extension }}"
+              class="border-b border-border/50" x-show="matchRoster($el.dataset.name)">
+            <div class="flex items-center pr-2">
+            <label class="flex min-h-[52px] min-w-0 flex-1 cursor-pointer items-center gap-3 px-3 py-2 transition-colors hover:bg-accent-soft/60">
+              <input type="checkbox" value="{{ person.id }}" class="size-5 shrink-0 accent-accent" aria-label="Select {{ person.name }}"
+                     x-bind:checked="isPicked($el.value)" x-on:change="toggle($el)">
+              <span class="min-w-0">
+                <span class="block truncate text-base font-medium text-txt-primary">{{ person.name }}</span>
+                <span class="block truncate text-sm text-txt-secondary">{{ person.person_type_label }} &middot; {{ person.home_extension }}</span>
+              </span>
+            </label>
+            <button type="button" class="btn btn-secondary min-h-[44px] shrink-0 px-3 text-base" aria-label="Add {{ person.name }} to attendance" x-on:click="askOne($el)">Add</button>
+          </div>
+          </li>
+          {% endfor %}
+        </ul>
+
+        <p x-show="rosterShown() === 0 && otherShown() === 0" class="px-4 py-4 text-base text-txt-secondary" style="display:none"
+           x-text="q.trim() ? 'No one matches that name.' : 'Everyone in this list is on the sheet.'"></p>
+
+        {# People outside the list (other extensions), found by the server from 3 letters. Anyone already marked is left out. #}
+        <div id="ws-results">
+          {% if search_hint %}<p class="px-4 py-3 text-base text-txt-secondary" role="status">{{ search_hint }}</p>{% endif %}
+          {% if results %}
+          <p class="border-y border-border px-4 py-2 text-sm font-medium text-txt-secondary" x-show="otherShown() > 0">More people</p>
+          <ul>
+            {% for person in results %}{% if not person.marked %}
+            <li data-id="{{ person.id }}" data-label="{{ person.name }}"
+                data-meta="{{ person.person_type_label }} &middot; {{ person.home_extension }}{% if person.visitor %} (visitor){% endif %}"
+                class="border-b border-border/50" x-show="!inRoster($el.dataset.id)">
+              <div class="flex items-center pr-2">
+            <label class="flex min-h-[52px] min-w-0 flex-1 cursor-pointer items-center gap-3 px-3 py-2 transition-colors hover:bg-accent-soft/60">
+                <input type="checkbox" value="{{ person.id }}" class="size-5 shrink-0 accent-accent" aria-label="Select {{ person.name }}"
+                       x-bind:checked="isPicked($el.value)" x-on:change="toggle($el)">
+                <span class="min-w-0">
+                  <span class="block truncate text-base font-medium text-txt-primary">{{ person.name }}</span>
+                  <span class="block truncate text-sm text-txt-secondary">{{ person.person_type_label }} &middot; {{ person.home_extension }}{% if person.visitor %} (visitor){% endif %}</span>
+                </span>
+              </label>
+            <button type="button" class="btn btn-secondary min-h-[44px] shrink-0 px-3 text-base" aria-label="Add {{ person.name }} to attendance" x-on:click="askOne($el)">Add</button>
+          </div>
+            </li>
+            {% endif %}{% endfor %}
+          </ul>
           {% endif %}
         </div>
-      </li>
-      {% endfor %}
-    </ul>
-    {% endif %}
-  </section>
+      </div>
 
-  <details class="card">
-    <summary class="flex min-h-[44px] cursor-pointer items-center text-lg font-semibold text-txt-primary">Breakdown by gender and age</summary>
-    <div class="pt-2">{% include 'attendance/_summary_table.html' with table=table %}</div>
-  </details>
+      {# Appears once someone is ticked. Nothing is saved until the window is confirmed. #}
+      <div class="shrink-0 space-y-2 border-t border-border p-3" x-show="pickedCount() > 0" style="display:none">
+        <button type="button" class="btn btn-primary min-h-[44px] w-full text-base" x-on:click="askConfirm()">
+          Add <span x-text="pickedCount()">0</span> to attendance
+        </button>
+        <button type="button" class="btn btn-ghost min-h-[44px] w-full text-base" x-on:click="picked = {}">Clear ticks</button>
+      </div>
+    </section>
+  </div>
+
+  {# Confirmation modals (includes/modal.html through the modal tag). Nothing is saved until Confirm. #}
+
+  {# Adding members: several ticked, or one row's Add button. #}
+  {% modal "add_people" title="Add to attendance" %}
+  <div class="space-y-4">
+    <p class="text-base text-txt-secondary">
+      <span x-text="confirmList().length">0</span> <span x-text="confirmList().length === 1 ? 'person' : 'people'">people</span>
+      will be marked present on {{ sheet.label }}.
+    </p>
+    <ul class="max-h-60 divide-y divide-border overflow-y-auto rounded-lg border border-border">
+      <template x-for="p in confirmList()" x-bind:key="p.id">
+        <li class="px-3 py-2">
+          <p class="truncate text-base font-medium text-txt-primary" x-text="p.name"></p>
+          <p class="truncate text-sm text-txt-secondary" x-text="p.meta"></p>
+        </li>
+      </template>
+    </ul>
+    <p x-show="addError" class="field-error" role="alert" x-text="addError" style="display:none"></p>
+    <div class="flex justify-end gap-3">
+      <button type="button" class="btn btn-secondary min-h-[44px] text-base" x-on:click="$store.ui.closeModal()" x-bind:disabled="adding">Cancel</button>
+      <button type="button" class="btn btn-primary min-h-[44px] text-base" x-on:click="addPicked()" x-bind:disabled="adding">
+        <span x-text="adding ? 'Adding' : 'Confirm'">Confirm</span>
+      </button>
+    </div>
+  </div>
+  {% endmodal %}
+
+  {# Every other important button: adding a first timer, saving changes, taking someone off the sheet. The form carries the wording. #}
+  {% modal "confirm_action" title="Please confirm" %}
+  <div class="space-y-4">
+    <div class="space-y-1">
+      <p class="text-base font-medium text-txt-primary" x-text="action.title"></p>
+      <p class="text-base text-txt-secondary" x-show="action.message" x-text="action.message"></p>
+    </div>
+    <p class="rounded-lg border border-border px-3 py-2 text-base font-medium text-txt-primary" x-show="action.detail" x-text="action.detail" style="display:none"></p>
+    <div class="flex justify-end gap-3">
+      <button type="button" class="btn btn-secondary min-h-[44px] text-base" x-on:click="$store.ui.closeModal()">Cancel</button>
+      <button type="button" class="btn btn-primary min-h-[44px] text-base" x-on:click="confirmAction()" x-text="action.confirm">Confirm</button>
+    </div>
+  </div>
+  {% endmodal %}
+
+  {# "Same person?": comes back from a first-timer post that found someone with the same name (nothing was saved yet). #}
+  <div id="ws-pending">
+    {% if pending %}
+    {% modal "same_person" title="Same person?" %}
+    <div class="space-y-4">
+      <p class="text-base text-txt-secondary">
+        Is <span class="font-medium text-txt-primary">{{ pending.name }}</span> already in the church? If it is the same person, mark them present instead of adding a first timer.
+      </p>
+      <ul class="max-h-72 divide-y divide-border overflow-y-auto rounded-lg border border-border">
+        {% for match in pending.matches %}
+        <li class="space-y-2 px-3 py-3">
+          <div class="min-w-0">
+            <p class="truncate text-base font-medium text-txt-primary">{{ match.name }}</p>
+            <p class="text-sm text-txt-secondary">{{ match.person_type_label }} &middot; {{ match.home_extension }}{% if match.age_label %} &middot; {{ match.age_label }}{% endif %}{% if match.archived %} &middot; Archived person{% endif %}</p>
+          </div>
+          {% if not match.active %}
+          <p class="text-sm text-txt-secondary">A leader must restore or unsuspend this person first.</p>
+          {% else %}
+          <form method="post" action="{{ mark_url }}" data-ws="mark">
+            {% csrf_token %}
+            <input type="hidden" name="user_id" value="{{ match.id }}">
+            <input type="hidden" name="gender" value="{{ pending.gender }}">
+            <input type="hidden" name="age_network" value="{{ pending.age_network }}">
+            <button type="submit" class="btn btn-primary min-h-[44px] w-full text-base">Yes, mark present</button>
+          </form>
+          {% endif %}
+        </li>
+        {% endfor %}
+      </ul>
+      <form method="post" action="{% role_url 'sheet_first_timer_add' sheet.pk %}" data-ws="first-timer" class="flex flex-wrap items-center justify-end gap-3">
+        {% csrf_token %}
+        {% for name, value in pending.fields %}<input type="hidden" name="{{ name }}" value="{{ value }}">{% endfor %}
+        <input type="hidden" name="confirm_new" value="on">
+        <button type="button" class="btn btn-ghost min-h-[44px] text-base" x-on:click="$store.ui.closeModal()">Cancel</button>
+        <button type="submit" class="btn btn-secondary min-h-[44px] text-base">No, add as a new first timer</button>
+      </form>
+    </div>
+    {% endmodal %}
+    {% endif %}
+  </div>
 </div>
 {% endblock %}

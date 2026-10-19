@@ -69,38 +69,200 @@
 
 /* Reusable pieces, built only from the tokens above. */
 @layer components {
+  /* Shared glass recipe: translucent tint of the surface, blur, a faint
+     light edge and a lit top rim. Shadows are layered (tight contact shadow
+     plus a wide soft one) so elements feel raised without looking heavy. */
+
   .btn {
-    @apply inline-flex items-center justify-center gap-2 rounded-lg px-4 py-2.5 text-sm font-medium
-           transition-colors disabled:pointer-events-none disabled:opacity-50
+    @apply relative inline-flex items-center justify-center gap-2 rounded-xl px-4 py-2.5 text-sm font-medium
+           disabled:pointer-events-none disabled:opacity-50
            focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-accent;
+    transition-property: background-color, background-image, border-color, color, box-shadow, transform, filter;
+    transition-duration: 180ms;
+    transition-timing-function: cubic-bezier(0.2, 0, 0, 1);
   }
-  .btn-primary   { @apply bg-primary text-on-primary hover:bg-primary-hover; }
-  .btn-secondary { @apply border border-border-strong bg-surface text-txt-primary hover:bg-surface-alt; }
-  .btn-ghost     { @apply text-txt-secondary hover:bg-surface-alt hover:text-txt-primary; }
+  .btn:active { transform: translateY(1px) scale(0.985); }
+
+  /* Solid actions: soft top-to-bottom gradient, lit rim, tinted shadow. */
+  .btn-primary {
+    @apply text-on-primary;
+    background-image: linear-gradient(
+      to bottom,
+      color-mix(in oklab, var(--color-primary) 88%, white),
+      var(--color-primary)
+    );
+    box-shadow:
+      inset 0 1px 0 color-mix(in oklab, white 30%, transparent),
+      0 1px 2px color-mix(in oklab, var(--color-primary) 40%, transparent),
+      0 6px 16px -4px color-mix(in oklab, var(--color-primary) 45%, transparent);
+  }
+  .btn-primary:hover {
+    background-image: linear-gradient(
+      to bottom,
+      color-mix(in oklab, var(--color-primary-hover) 88%, white),
+      var(--color-primary-hover)
+    );
+    transform: translateY(-1px);
+    box-shadow:
+      inset 0 1px 0 color-mix(in oklab, white 34%, transparent),
+      0 2px 4px color-mix(in oklab, var(--color-primary) 40%, transparent),
+      0 10px 22px -4px color-mix(in oklab, var(--color-primary) 55%, transparent);
+  }
+
+  /* Glass button. */
+  .btn-secondary {
+    @apply text-txt-primary backdrop-blur-md;
+    background-color: color-mix(in oklab, var(--color-surface) 60%, transparent);
+    border: 1px solid color-mix(in oklab, var(--color-border-strong) 70%, transparent);
+    box-shadow:
+      inset 0 1px 0 color-mix(in oklab, white 22%, transparent),
+      0 1px 2px color-mix(in oklab, black 8%, transparent),
+      0 4px 12px -4px color-mix(in oklab, black 14%, transparent);
+  }
+  .btn-secondary:hover {
+    background-color: color-mix(in oklab, var(--color-surface-alt) 75%, transparent);
+    border-color: color-mix(in oklab, var(--color-accent) 55%, transparent);
+    transform: translateY(-1px);
+    box-shadow:
+      inset 0 1px 0 color-mix(in oklab, white 28%, transparent),
+      0 2px 4px color-mix(in oklab, black 10%, transparent),
+      0 8px 18px -4px color-mix(in oklab, black 18%, transparent);
+  }
+
+  /* Quiet button: only shows a frosted pill on hover. */
+  .btn-ghost {
+    @apply text-txt-secondary hover:text-txt-primary;
+  }
+  .btn-ghost:hover {
+    background-color: color-mix(in oklab, var(--color-surface-alt) 65%, transparent);
+    backdrop-filter: blur(8px);
+    box-shadow: inset 0 1px 0 color-mix(in oklab, white 14%, transparent);
+  }
+
   /* Destructive actions (delete). Uses the error token; text color flips with the mode. */
-  .btn-danger    { @apply bg-error text-on-primary hover:opacity-90; }
-  .btn-highlight { @apply bg-highlight text-on-highlight hover:bg-highlight-soft; }
+  .btn-danger {
+    @apply text-on-primary;
+    background-image: linear-gradient(
+      to bottom,
+      color-mix(in oklab, var(--color-error) 88%, white),
+      var(--color-error)
+    );
+    box-shadow:
+      inset 0 1px 0 color-mix(in oklab, white 28%, transparent),
+      0 1px 2px color-mix(in oklab, var(--color-error) 40%, transparent),
+      0 6px 16px -4px color-mix(in oklab, var(--color-error) 45%, transparent);
+  }
+  .btn-danger:hover { filter: brightness(1.06); transform: translateY(-1px); }
+
+  .btn-highlight {
+    @apply text-on-highlight;
+    background-image: linear-gradient(
+      to bottom,
+      var(--color-highlight-soft),
+      var(--color-highlight)
+    );
+    box-shadow:
+      inset 0 1px 0 color-mix(in oklab, white 45%, transparent),
+      0 1px 2px color-mix(in oklab, var(--color-highlight) 45%, transparent),
+      0 6px 16px -4px color-mix(in oklab, var(--color-highlight) 50%, transparent);
+  }
+  .btn-highlight:hover { filter: brightness(1.05); transform: translateY(-1px); }
 
   .label { @apply mb-1.5 block text-sm font-medium text-txt-primary; }
+
+  /* Frosted field with a slight inset so it reads as recessed, then lifts into a glow on focus. */
   .input {
-    @apply block w-full rounded-lg border border-border-strong bg-surface px-3 py-2.5 text-sm
-           text-txt-primary placeholder:text-txt-muted
-           focus-visible:border-accent focus-visible:outline-2 focus-visible:outline-accent;
+    @apply block w-full rounded-xl px-3 py-2.5 text-sm text-txt-primary placeholder:text-txt-muted
+           backdrop-blur-sm
+           focus-visible:outline-none;
+    background-color: color-mix(in oklab, var(--color-surface) 65%, transparent);
+    border: 1px solid color-mix(in oklab, var(--color-border-strong) 75%, transparent);
+    box-shadow:
+      inset 0 1px 2px color-mix(in oklab, black 8%, transparent),
+      0 1px 0 color-mix(in oklab, white 12%, transparent);
+    transition: border-color 160ms ease, box-shadow 160ms ease, background-color 160ms ease;
   }
+  .input:hover { border-color: color-mix(in oklab, var(--color-accent) 45%, transparent); }
+  .input:focus-visible {
+    background-color: color-mix(in oklab, var(--color-surface) 85%, transparent);
+    border-color: var(--color-accent);
+    box-shadow:
+      inset 0 1px 2px color-mix(in oklab, black 6%, transparent),
+      0 0 0 4px color-mix(in oklab, var(--color-accent) 20%, transparent),
+      0 6px 16px -6px color-mix(in oklab, var(--color-accent) 40%, transparent);
+  }
+
   /* Django adds aria-invalid="true" to a field that has errors, so forms need no extra class. */
-  .input-error, .input[aria-invalid="true"] { @apply border-error; }
+  .input-error, .input[aria-invalid="true"] {
+    border-color: var(--color-error);
+  }
+  .input-error:focus-visible, .input[aria-invalid="true"]:focus-visible {
+    border-color: var(--color-error);
+    box-shadow:
+      0 0 0 4px color-mix(in oklab, var(--color-error) 20%, transparent),
+      0 6px 16px -6px color-mix(in oklab, var(--color-error) 40%, transparent);
+  }
   .field-error { @apply mt-1.5 text-sm text-error; }
   .field-help  { @apply mt-1.5 text-sm text-txt-secondary; }
 
-  .card { @apply rounded-xl border border-border bg-surface p-6; }
+  /* Glass panel: translucent surface, blur, light edge, lit top rim, soft layered shadow. */
+  .card {
+    @apply rounded-2xl p-6 backdrop-blur-xl;
+    background-color: color-mix(in oklab, var(--color-surface) 70%, transparent);
+    border: 1px solid color-mix(in oklab, var(--color-border) 70%, transparent);
+    box-shadow:
+      inset 0 1px 0 color-mix(in oklab, white 18%, transparent),
+      0 1px 2px color-mix(in oklab, black 6%, transparent),
+      0 12px 32px -12px color-mix(in oklab, black 22%, transparent);
+    transition: transform 200ms cubic-bezier(0.2, 0, 0, 1), box-shadow 200ms ease, border-color 200ms ease;
+  }
+  /* Optional: add alongside .card for clickable cards. */
+  .card-interactive:hover {
+    transform: translateY(-2px);
+    border-color: color-mix(in oklab, var(--color-accent) 40%, transparent);
+    box-shadow:
+      inset 0 1px 0 color-mix(in oklab, white 22%, transparent),
+      0 2px 4px color-mix(in oklab, black 8%, transparent),
+      0 18px 40px -12px color-mix(in oklab, var(--color-primary) 35%, transparent);
+  }
+
+    /* Frosted panel for the workspace (same recipe as .card, without the padding). */
+  .glass-panel {
+    @apply rounded-2xl backdrop-blur-xl;
+    background-color: color-mix(in oklab, var(--color-surface) 70%, transparent);
+    border: 1px solid color-mix(in oklab, var(--color-border) 70%, transparent);
+    box-shadow:
+      inset 0 1px 0 color-mix(in oklab, white 16%, transparent),
+      0 1px 2px color-mix(in oklab, black 6%, transparent),
+      0 12px 32px -16px color-mix(in oklab, black 22%, transparent);
+  }
+
+  /* Browsers without backdrop-filter get a more opaque tint so text stays readable. */
+  @supports not ((backdrop-filter: blur(1px)) or (-webkit-backdrop-filter: blur(1px))) {
+    .card, .btn-secondary, .input {
+      background-color: color-mix(in oklab, var(--color-surface) 94%, transparent);
+    }
+  }
+
+  /* No lifting or press effects for people who prefer reduced motion. */
+  @media (prefers-reduced-motion: reduce) {
+    .btn, .card, .input { transition: none; }
+    .btn:active, .btn:hover, .card-interactive:hover { transform: none; }
+  }
 }
 
 /* Signed-in pages (base_app.html marks its root with data-app-shell) use a slightly larger
    text size: 106.25% of the browser default, so 17px instead of 16px. Everything in Tailwind
    is in rem, so spacing and icons grow with it. Public and login pages are untouched. */
-@layer base {
-  html:has([data-app-shell]) { font-size: 106.25%; }
-}
+  @layer base {
+    body {
+      background-color: var(--color-bg);
+      background-image:
+        radial-gradient(60rem 40rem at 10% -10%, color-mix(in oklab, var(--color-accent) 16%, transparent), transparent),
+        radial-gradient(50rem 40rem at 100% 0%, color-mix(in oklab, var(--color-primary) 14%, transparent), transparent);
+      background-attachment: fixed;
+    }
+  }
 
 .logo-mask {
   display: inline-block;

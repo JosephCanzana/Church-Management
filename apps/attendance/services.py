@@ -25,6 +25,8 @@ from datetime import date
 from django.db import transaction
 from django.db.models import Q
 from django.utils import timezone
+from django.core.exceptions import PermissionDenied
+
 
 from apps.accounts.models import Extension, Gender, PersonType, Role, Status, User, UserExtensionHistory
 from apps.accounts.services.presence import mark_attended, remember_age_network
@@ -445,18 +447,16 @@ def update_first_timer(actor, sheet, first_timer_id, data):
         row.save()
     return row
 
-
 def remove_first_timer(actor, sheet, first_timer_id):
-    """Take a first timer off the sheet. Returns True if removed, False if they were not on it."""
+    """Take a first timer off the draft sheet. Returns True if removed, False if they were not on it.
+
+    A first timer who has since become a member (a member record or an account) can be removed too. Only this
+    visit is deleted, never the person, and that visit is also the "First visit" entry in the person's
+    history, so a mistaken entry can be undone. An uploaded sheet cannot be changed here (`_lock_draft`
+    refuses it; reopen the sheet first).
+    """
     with transaction.atomic():
         locked = _lock_draft(actor, sheet)
-        row = AttendanceFirstTimer.objects.select_related("guest").filter(attendance=locked, pk=first_timer_id).first()
-        if row is not None and (
-                row.converted_user_id or row.guest_id and row.guest.person_type != PersonType.GUEST):
-            # The row is the member's "First visit" in their history: removing it would erase it.
-            raise ServiceError(
-                f"{row.full_name} has become a member, so this first visit stays on the sheet."
-            )
         removed, _ = AttendanceFirstTimer.objects.filter(attendance=locked, pk=first_timer_id).delete()
     return bool(removed)
 
@@ -784,3 +784,32 @@ def reopen_sheet(actor, sheet_id, *, token, request=None):
             before=frozen, after={"status": Attendance.Status.DRAFT},
         )
     return ReopenResult(sheet=locked)
+
+
+
+@transaction.atomic
+def edit_first_timer(actor, sheet, first_timer_id, *, first_name, last_name, gender=None, age_network=None):
+    """Change the name, gender and age network of one first timer on a draft sheet (this row only).
+
+    The sheet row is locked first, so an upload that lands at the same moment either finishes before this
+    (and this is refused as "not a draft") or after it. Raises `PermissionDenied` when the actor may not edit
+    the draft, and `ServiceError` for a missing row or a bad value.
+    """
+    locked = Attendance.objects.select_for_update().get(pk=sheet.pk)
+    if not permissions.can_edit_draft(actor, locked):
+        raise PermissionDenied
+    row = AttendanceFirstTimer.objects.filter(pk=first_timer_id, attendance=locked).first()
+    if row is None:
+        raise ServiceError("That first timer was not on the sheet.")
+    first_name = title_case(" ".join((first_name or "").split()))
+    last_name = title_case(" ".join((last_name or "").split()))
+    if not first_name:
+        raise ServiceError("Type a first name.")
+    if gender not in Gender.values:
+        raise ServiceError("Pick a gender.")
+    if age_network not in AgeNetwork.values:
+        raise ServiceError("Pick an age network.")
+    row.first_name, row.last_name = first_name, last_name
+    row.gender, row.age_network = gender, age_network
+    row.save(update_fields=["first_name", "last_name", "gender", "age_network"])
+    return row

@@ -27,8 +27,9 @@ from django.contrib.auth.decorators import login_required
 from django.core.exceptions import PermissionDenied
 from django.core.paginator import Paginator
 from django.db.models import Count
+from django.db.models.functions import Lower
 from django.shortcuts import redirect, render
-from django.urls import reverse
+from django.urls import NoReverseMatch, reverse
 from django.views.decorators.cache import never_cache
 from django.views.decorators.http import require_http_methods
 
@@ -248,6 +249,7 @@ def _decorate_member(row, sheet):
     # A visitor is just someone whose home extension is not the sheet's (nothing extra is stored).
     row.is_visitor = row.home_extension_id is not None and row.home_extension_id != sheet.extension_id
     row.is_guest = row.person_type == PersonType.GUEST
+    row.has_account = row.person_type == PersonType.MEMBER_ACCOUNT
     return row
 
 
@@ -261,6 +263,56 @@ def _decorate_first_timer(row):
         )
     )
     return row
+
+
+def _returning_first_timers(sheet, first_timers):
+    """Ids of the first-timer rows on this sheet whose person attended before (a guest now, not a first timer).
+
+    A row is returning when the same guest record, or the same first name, last name, gender and age network,
+    appears on another sheet dated on or before this one. Read-only; the stored rows are not changed.
+    """
+    if not first_timers:
+        return set()
+    earlier = {"attendance__attendance_date__lte": sheet.attendance_date}
+    guest_ids = {row.guest_id for row in first_timers if row.guest_id}
+    seen_guests = set()
+    if guest_ids:
+        seen_guests |= set(
+            AttendanceFirstTimer.objects.filter(guest_id__in=guest_ids, **earlier)
+            .exclude(attendance=sheet).values_list("guest_id", flat=True)
+        )
+        seen_guests |= set(
+            AttendanceMember.objects.filter(user_id__in=guest_ids, **earlier)
+            .exclude(attendance=sheet).values_list("user_id", flat=True)
+        )
+    lasts = {row.last_name.strip().lower() for row in first_timers}
+    seen_names = {
+        (first.strip().lower(), last.strip().lower(), gender, network)
+        for first, last, gender, network in (
+            AttendanceFirstTimer.objects.exclude(attendance=sheet).filter(**earlier)
+            .annotate(last_lower=Lower("last_name")).filter(last_lower__in=lasts)
+            .values_list("first_name", "last_name", "gender", "age_network")
+        )
+    }
+    returning = set()
+    for row in first_timers:
+        key = (row.first_name.strip().lower(), row.last_name.strip().lower(), row.gender, row.age_network)
+        if row.guest_id in seen_guests or key in seen_names:
+            returning.add(row.pk)
+    return returning
+
+
+def _can_edit_first_timer(request, sheet):
+    """True when the first-timer edit page exists in this area (so the workspace can show its form).
+
+    Reversing the URL means the form appears by itself once `sheet_first_timer_edit` is routed, and a missing
+    route can never crash the workspace.
+    """
+    try:
+        reverse(f"{request.resolver_match.namespace}:sheet_first_timer_edit", kwargs={"pk": sheet.pk})
+    except NoReverseMatch:
+        return False
+    return permissions.can_edit_draft(request.user, sheet)
 
 
 def sheet_action(anchor=""):
@@ -344,6 +396,12 @@ def _workspace_context(request, sheet, form=None, pending=None):
         _decorate_first_timer(row)
         for row in AttendanceFirstTimer.objects.select_related("guest").filter(attendance=sheet).order_by("last_name", "first_name", "pk")
     ]
+    returning = _returning_first_timers(sheet, first_timers)
+    for row in first_timers:
+        row.is_returning = row.pk in returning
+    returning = _returning_first_timers(sheet, first_timers)
+    for row in first_timers:
+        row.is_returning = row.pk in returning
     summary = summary_for(sheet)  # a draft is counted live from its rows
     form = form or FirstTimerForm()
     blocker = ""
@@ -361,6 +419,7 @@ def _workspace_context(request, sheet, form=None, pending=None):
         "table": summary_table(summary.summary),
         "members": members,
         "first_timers": first_timers,
+        "can_edit_first_timer": _can_edit_first_timer(request, sheet),
         "form": form,
         "pending": pending,
         # The "more" fold opens by itself when it holds something (an error or a value to keep).
@@ -549,11 +608,23 @@ def sheet_unmark(request, sheet):
 
 @sheet_action("#marked")
 def sheet_member_category(request, sheet):
-    """Save the gender and/or age network picked inline on one ticked row (the row only, never the person)."""
-    services.set_member_category(
-        request.user, sheet, _to_int(request.POST.get("member_id")),
-        gender=request.POST.get("gender") or None, age_network=request.POST.get("age_network") or None,
-    )
+    """Save the gender and/or age network picked inline on one ticked row (the row only, never the person).
+
+    A member with an account gets their gender and age network from the account, so a value the account
+    already has is never changed here; only a missing one can be filled in.
+    """
+    member_id = _to_int(request.POST.get("member_id"))
+    gender = request.POST.get("gender") or None
+    age_network = request.POST.get("age_network") or None
+    row = AttendanceMember.objects.filter(pk=member_id, attendance=sheet).first()
+    if row is not None and row.person_type == PersonType.MEMBER_ACCOUNT:
+        if row.gender in Gender.values:
+            gender = None
+        if row.age_network in AgeNetwork.values:
+            age_network = None
+        if gender is None and age_network is None:
+            raise ServiceError("The gender and age network of a member with an account come from the account.")
+    services.set_member_category(request.user, sheet, member_id, gender=gender, age_network=age_network)
     messages.success(request, "Saved.")
 
 
@@ -564,6 +635,17 @@ def sheet_first_timer_remove(request, sheet):
         messages.success(request, "First timer removed.")
     else:
         messages.info(request, "That first timer was not on the sheet.")
+
+
+@sheet_action("#first-timers")
+def sheet_first_timer_edit(request, sheet):
+    """Save the name, gender and age network of one first timer or returning guest (this sheet's row only)."""
+    row = services.edit_first_timer(
+        request.user, sheet, _to_int(request.POST.get("first_timer_id")),
+        first_name=request.POST.get("first_name", ""), last_name=request.POST.get("last_name", ""),
+        gender=request.POST.get("gender") or None, age_network=request.POST.get("age_network") or None,
+    )
+    messages.success(request, f"Saved: {row.full_name}.")
 
 
 @attendance_screen

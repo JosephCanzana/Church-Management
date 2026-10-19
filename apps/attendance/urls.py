@@ -14,4 +14,5 @@ urlpatterns = [
     *sheet_urlpatterns,
     # Brick 14: the person's own history, identical for all four roles (not mounted under any role area).
     path("mine/", views.my_attendance, name="mine"),
+    path("<int:pk>/first-timers/edit/", views.sheet_first_timer_edit, name="sheet_first_timer_edit"),
 ]
