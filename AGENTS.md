@@ -666,12 +666,30 @@ The source plan `docs/attendance.md` is not present in this checkout; the defaul
   Both lock the sheet row, re-check permission on the locked row, and are idempotent (a repeat gives a friendly
   `ServiceError`), so they need no one-time token. Audit actions: `attendance.archive` (a draft, no alert),
   `attendance.archive_uploaded` and `attendance.force_delete`; they carry the old status and counts only (no names), and the
-  last two have a `notification_rule` (notifications migration `0002_seed_attendance_archive_rules`) that alerts admins.
-  Views `sheet_archive` and `sheet_force_delete` (POST, `sheet_action`; routes `archive/` and `force-delete/` under a sheet,
-  names `sheet_archive` and `sheet_force_delete`) redirect to the list. The buttons live in
-  `attendance/_sheet_danger_actions.html` (`data-confirm` forms, `.btn-danger`), shown by the `can_archive` and
-  `can_force_delete` context flags that `_danger_flags` adds to the detail, workspace and review contexts. The sheet list
-  already hides archived sheets by default (`status=current`); the Archived choice of the status filter shows them.
+  last two have a `notification_rule` (core migration `0004_seed_attendance_archive_rules`, after `0003_submission_token`; never edit `0002_seed_and_triggers`) that alerts admins.
+  **Restore** (`restore_sheet(actor, sheet_id, *, request=None)`, rule `can_restore`): admin and super-admin any archived
+  sheet; a coordinator only an archived sheet of their own extension that was a DRAFT when archived (`uploaded_at` empty;
+  a reopen clears it), so they can undo their own archive but never bring an uploaded sheet's numbers back. Archiving keeps
+  `uploaded_at`, so a sheet returns as UPLOADED when it has one (its numbers count on the dashboards again) and as a DRAFT
+  otherwise; `archived_at` is cleared in the same save (the purge trigger clears `purge_at`). Audit `attendance.restore`
+  (status only, no alert).
+  Views `sheet_archive`, `sheet_restore` and `sheet_force_delete` (POST, `sheet_action`; routes `archive/`, `restore/` and
+  `force-delete/` under a sheet, names `sheet_archive`, `sheet_restore`, `sheet_force_delete`). A form on the list posts
+  `next` (the list's own URL with its filters and page: `views._list_next` accepts only this area's list path, never another
+  page or site) so the person stays on the same filters; from a sheet's own page Archive and Delete land on the list and
+  Restore lands on the restored sheet. The sheet's own page uses `attendance/_sheet_danger_actions.html` (`data-confirm`
+  forms, `.btn-danger`; Restore asks nothing), shown by the `can_archive`, `can_restore` and `can_force_delete` flags that
+  `_danger_flags` adds to the detail, workspace and review contexts. Do not write a template tag inside an HTML comment in
+  that partial: Django runs it.
+  **Row menu on the sheet list** (`attendance/sheet_list.html`): each row with something allowed (`has_actions`, set with
+  `can_archive`, `can_restore`, `can_force_delete` by `views._with_actions`) has a three-dots button and the same menu on
+  right click or long press (Open, Open in new tab, then Restore, Archive, Delete permanently as allowed). ONE Alpine
+  component on the `<ul>` holds the open menu (`openId`) and its position; menus are `position: fixed`, clamped into the
+  viewport once they are displayed (`x-show` shows a tick late, so placement waits for it), and close on Escape (focus
+  goes back to the button), Tab, an outside click, a scroll or a resize. Arrow keys move between items. Use the object form
+  of `x-bind:style` there, because a string form would wipe the `display: none` that `x-show` sets. Rows without actions
+  keep the browser's own menu. The sheet list already hides archived sheets by default (`status=current`); the Archived
+  choice of the status filter shows them.
 - **Guest promotion** (`convert_first_timer` in `attendance/services.py`): one-time token, lock the sheet and first-timer row,
   promote its linked guest in place through `accounts.services.users.promote_guest`, then set `converted_user` on every first-timer
   row linked to that same person. A legacy first-timer row without a guest link gets one guest record before promotion. The
