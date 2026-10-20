@@ -367,8 +367,9 @@ class UserForm(forms.Form):
         widget=forms.TextInput(attrs={"class": "input", "placeholder": "Jr., Sr., III", "autocomplete": "off"}),
     )
     birth_date = forms.DateField(
-        required=False,
+        label="Birth date",
         widget=forms.DateInput(attrs={"class": "input", "type": "date"}, format="%Y-%m-%d"),
+        error_messages={"required": "Enter a birth date."},
     )
     # Required. People saved before the rule may still have none; they are forced to pick one the
     # next time a leader edits them. (The member's own profile page does not show it in v1.)
@@ -376,6 +377,13 @@ class UserForm(forms.Form):
         required=True, label="Gender", choices=[("", "Choose a gender"), *Gender.choices],
         widget=forms.Select(attrs={"class": "input"}),
         error_messages={"required": "Choose a gender."},
+    )
+    email = forms.EmailField(
+        max_length=254, label="Email",
+        widget=forms.EmailInput(attrs={
+            "class": "input", "autocomplete": "off",
+            "inputmode": "email", "autocapitalize": "none",
+        }),
     )
     role = forms.ChoiceField(widget=forms.Select(attrs={"class": "input", "x-model": "role"}))
     # The page renders a dropdown; the server still checks the selected extension.
@@ -386,33 +394,34 @@ class UserForm(forms.Form):
     # Set by the confirmation dialog when a coordinator may replace the current one.
     replace_coordinator = forms.BooleanField(required=False, widget=forms.HiddenInput())
 
-    # Optional contact details (so a coordinator can follow someone up). The address has the
+    # Contact details: the phone and the address are required except street and building
+    # number (so a coordinator can follow someone up). The address has the
     # same parts as an extension; the page turns the Philippine ones into cascading dropdowns.
     phone_number = forms.CharField(
-        max_length=25, strip=True, required=False, label="Phone number",
+        max_length=25, strip=True, label="Phone number",
         widget=forms.TextInput(attrs={
             "class": "input font-mono", "inputmode": "tel", "autocomplete": "off",
             "placeholder": "0917 123 4567",
         }),
     )
     country = forms.ChoiceField(
-        required=False, label="Country", choices=[],
+        label="Country", choices=[], initial=PHILIPPINES,
         widget=forms.Select(attrs={"class": "input", "x-model": "country", "autocomplete": "off"}),
     )
     province = forms.CharField(
-        max_length=150, required=False, label="Province",
+        max_length=150, label="Province",
         widget=forms.TextInput(attrs={"class": "input", "autocomplete": "off"}),
     )
     municipality = forms.CharField(
-        max_length=150, required=False, label="Municipality",
+        max_length=150, label="Municipality",
         widget=forms.TextInput(attrs={"class": "input", "autocomplete": "off"}),
     )
     barangay = forms.CharField(
-        max_length=150, required=False, label="Barangay",
+        max_length=150, label="Barangay",
         widget=forms.TextInput(attrs={"class": "input", "autocomplete": "off"}),
     )
     postal_code = forms.CharField(
-        max_length=10, required=False, label="Postal code",
+        max_length=10, label="Postal code",
         widget=forms.TextInput(attrs={
             "class": "input font-mono", "maxlength": "10", "inputmode": "numeric", "autocomplete": "off",
         }),
@@ -432,7 +441,7 @@ class UserForm(forms.Form):
         self.exclude_pk = exclude_pk
         # The person's saved address, so an old value that is no longer in the list can stay.
         self.saved_address = saved_address
-        self.fields["country"].choices = [("", "Not given")] + [(c, c) for c in COUNTRIES]
+        self.fields["country"].choices = [("", "Choose a country")] + [(c, c) for c in COUNTRIES]
         # A coordinator only ever works inside their own extension: it is fixed here and
         # again in the service, whatever the browser posts.
         self.fixed_extension = None
@@ -486,9 +495,20 @@ class UserForm(forms.Form):
     def clean_suffix(self):
         return normalize_suffix(self.cleaned_data.get("suffix"))
 
+    def clean_birth_date(self):
+        value = self.cleaned_data["birth_date"]
+        if value > timezone.localdate():
+            raise ValidationError("Birth date cannot be in the future.")
+        if value < BIRTH_DATE_EARLIEST:
+            raise ValidationError("Enter a valid birth date.")
+        return value
+
+    def clean_email(self):
+        return self.cleaned_data["email"].strip().lower()
+
     def clean_phone_number(self):
         value = clean_phone(self.cleaned_data.get("phone_number"))
-        if value and not is_valid_phone(value):
+        if not is_valid_phone(value):
             raise ValidationError(PHONE_MESSAGE)
         return value
 
@@ -531,16 +551,13 @@ class UserForm(forms.Form):
         elif role:
             cleaned["extension"] = None
 
-        # The address is optional, but whatever is filled in must make sense.
+        # The address is required (street and building number aside); check it as the
+        # registration form does.
         address = {name: cleaned.get(name) or "" for name in ADDRESS_FIELDS}
-        if any(address.values()):
-            if not address["country"]:
-                if "country" not in self.errors:
-                    self.add_error("country", "Choose a country for the address, or clear it.")
-            else:
-                for field, message in check_address(address, self.saved_address).items():
-                    if field not in self.errors:
-                        self.add_error(field, message)
+        if all(address[k] for k in ("country", "province", "municipality", "barangay", "postal_code")):
+            for field, message in check_address(address, self.saved_address).items():
+                if field not in self.errors:
+                    self.add_error(field, message)
 
         names_ok = cleaned.get("first_name") and cleaned.get("last_name") and not any(
             n in self.errors for n in ("first_name", "middle_name", "last_name", "birth_date")
