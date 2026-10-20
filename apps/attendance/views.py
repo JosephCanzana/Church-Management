@@ -13,7 +13,8 @@ Three guards, all required (hiding a link is not access control):
 Someone out of reach of a sheet sees "no longer exists", exactly like a deleted one.
 
 Views stay thin: validate the form, call a service, show a toast. Business rules live in `services.py`.
-Built screen by screen: list, create, the draft workspace, the read-only review, reopen and the A4 print page.
+Built screen by screen: list, create, the draft workspace, the read-only review, reopen, archive, restore and
+force delete, and the A4 print page.
 
 The workspace uses plain POST forms and a redirect (no JavaScript needed): search is a GET (`?q=`), every
 tap (mark, remove, category, first timer, upload) is a POST handled by a thin view that calls ONE service.
@@ -119,6 +120,21 @@ def _with_counts(sheets):
     return rows
 
 
+def _with_actions(sheets, viewer):
+    """Attach what the row menu (three dots and right click) offers on each listed sheet.
+
+    `can_archive`, `can_restore` and `can_force_delete` come from the same permission functions the services use,
+    and `has_actions` is true when the menu has anything to offer. Only a hint for the screen: every service
+    checks again.
+    """
+    for sheet in sheets:
+        sheet.can_archive = permissions.can_archive(viewer, sheet)
+        sheet.can_restore = permissions.can_restore(viewer, sheet)
+        sheet.can_force_delete = permissions.can_force_delete(viewer, sheet)
+        sheet.has_actions = sheet.can_archive or sheet.can_restore or sheet.can_force_delete
+    return sheets
+
+
 def _list_context(params, viewer):
     """Everything the sheet list needs, from a QueryDict of filters.
 
@@ -158,7 +174,7 @@ def _list_context(params, viewer):
 
     paginator = Paginator(queryset, PAGE_SIZE)
     page = paginator.get_page(params.get("page"))
-    page.object_list = _with_counts(page.object_list)
+    page.object_list = _with_actions(_with_counts(page.object_list), viewer)
     without_page = params.copy()
     without_page.pop("page", None)
     return {
@@ -183,7 +199,10 @@ def _list_context(params, viewer):
 @require_http_methods(["GET"])
 def sheet_list(request):
     """Sheets the person may open, newest first, with date range, status and (admin) extension filters."""
-    return render(request, LIST_TEMPLATE, _list_context(request.GET, request.user))
+    context = _list_context(request.GET, request.user)
+    # The row menu posts this back as `next`, so an action keeps the person on the same filters and page.
+    context["return_to"] = request.get_full_path()
+    return render(request, LIST_TEMPLATE, context)
 
 
 # ----------------------------------------------------------------- create
@@ -242,6 +261,18 @@ def _to_int(value):
         return int(value)
     except (TypeError, ValueError):
         return None
+
+
+def _danger_flags(request, sheet):
+    """Whether to show the Archive, Restore and Delete buttons (`attendance/_sheet_danger_actions.html`).
+
+    Only a hint for the screen: `services.archive_sheet` and `services.force_delete_sheet` check again.
+    """
+    return {
+        "can_archive": permissions.can_archive(request.user, sheet),
+        "can_restore": permissions.can_restore(request.user, sheet),
+        "can_force_delete": permissions.can_force_delete(request.user, sheet),
+    }
 
 
 def _decorate_member(row, sheet):
@@ -318,6 +349,24 @@ def _can_edit_first_timer(request, sheet):
     return permissions.can_edit_draft(request.user, sheet)
 
 
+def _list_next(request):
+    """The sheet-list URL (with its filters and page) a list form posted as `next`, or None.
+
+    Only THIS area's own list URL is accepted (the exact path, optionally with a query string), never another
+    page or site, so a forged `next` cannot redirect anywhere else.
+    """
+    target = request.POST.get("next", "")
+    list_url = reverse(f"{request.resolver_match.namespace}:sheet_list")
+    if target == list_url or target.startswith(f"{list_url}?"):
+        return target
+    return None
+
+
+def _list_redirect(request):
+    """Back to the list the person came from (same filters), else the plain list."""
+    return redirect(_list_next(request) or reverse(f"{request.resolver_match.namespace}:sheet_list"))
+
+
 def sheet_action(anchor=""):
     """Decorator for the POST-only views that act on one sheet: load it, run the view, report refusals.
 
@@ -342,7 +391,8 @@ def sheet_action(anchor=""):
             else:
                 if response is not None:
                     return response
-            return _back(request, sheet, anchor)
+            # A form on the list says where it came from (`next`); everything else goes back to the sheet.
+            return _list_redirect(request) if _list_next(request) else _back(request, sheet, anchor)
 
         return attendance_screen(require_http_methods(["POST"])(wrapped))
 
@@ -438,6 +488,7 @@ def _workspace_context(request, sheet, form=None, pending=None):
         "convert_token": new_submission_token() if permissions.can_convert(request.user, sheet) else "",
     }
     context.update(_search_context(request, sheet, members))
+    context.update(_danger_flags(request, sheet))
     return context
 
 
@@ -461,7 +512,9 @@ def sheet_detail(request, pk):
         return _render_workspace(request, sheet)
     if permissions.can_review(request.user, sheet):
         return redirect(_sheet_url(request, sheet, "sheet_review"))
-    return render(request, DETAIL_TEMPLATE, {"sheet": sheet, "summary": summary_for(sheet)})
+    return render(request, DETAIL_TEMPLATE, {
+        "sheet": sheet, "summary": summary_for(sheet), **_danger_flags(request, sheet),
+    })
 
 
 # ----------------------------------------------------------------- review
@@ -508,6 +561,7 @@ def sheet_review(request, pk):
         # Brick 10: the convert buttons on the first-timer lines.
         "can_convert": permissions.can_convert(request.user, sheet),
         "convert_token": new_submission_token() if permissions.can_convert(request.user, sheet) else "",
+        **_danger_flags(request, sheet),
     })
 
 
@@ -740,6 +794,48 @@ def sheet_reopen(request, sheet):
         messages.info(request, "This sheet was already reopened.")
     else:
         messages.success(request, "Sheet reopened. Correct it, then the coordinator uploads it again.")
+
+
+# ------------------------------------------------------- archive and force delete
+@sheet_action()
+def sheet_archive(request, sheet):
+    """Archive a draft or uploaded sheet (`services.archive_sheet`; a coordinator: a draft of their own extension).
+
+    The confirm dialog is a UX guard; the service enforces the rule. No token: archiving twice is harmless (the
+    repeat gets "already archived"). Lands on the list it came from (the sheet is now hidden unless the Archived
+    filter is on), or the plain list when it came from the sheet's own page.
+    """
+    services.archive_sheet(request.user, sheet.pk, request=request)
+    messages.success(request, f"Archived: {sheet.label}, {sheet.attendance_date:%d %b %Y}.")
+    return _list_redirect(request)
+
+
+@sheet_action()
+def sheet_restore(request, sheet):
+    """Bring an archived sheet back (`services.restore_sheet`; a coordinator: one archived as a draft).
+
+    It returns as a draft or as uploaded, whatever it was when archived. From the list the person stays on the
+    list; from the sheet's own page they land on the restored sheet.
+    """
+    restored = services.restore_sheet(request.user, sheet.pk, request=request)
+    messages.success(
+        request,
+        f"Restored: {restored.label}, {restored.attendance_date:%d %b %Y} ({restored.get_status_display().lower()}).",
+    )
+    return _list_redirect(request) if _list_next(request) else None
+
+
+@sheet_action()
+def sheet_force_delete(request, sheet):
+    """Permanently delete an ARCHIVED sheet (`services.force_delete_sheet`; admin or super-admin only).
+
+    A draft or uploaded sheet is refused by the service ("archive it first"). Nothing can be undone, so the
+    confirm dialog is marked as danger. Lands on the list it came from, else the plain list.
+    """
+    label, day = sheet.label, sheet.attendance_date
+    services.force_delete_sheet(request.user, sheet.pk, request=request)
+    messages.success(request, f"Deleted permanently: {label}, {day:%d %b %Y}.")
+    return _list_redirect(request)
 
 
 # ---------------------------------------------------------- promote first timer

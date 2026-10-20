@@ -1,0 +1,43 @@
+<!--
+attendance/_sheet_danger_actions.html
+The Archive, Restore and Delete permanently buttons for one sheet. Archive and Delete are POST forms with the
+global confirm dialog (data-confirm, see static/js/ui.js); Restore asks nothing (it is easy to undo by archiving
+again). The dialog is a UX guard, the services enforce the rules again.
+Usage: include this file inside a template that has sheet, can_archive, can_restore and can_force_delete in its
+context (the sheet views add them through _danger_flags). Do not write the include tag in this comment: Django
+runs template tags even inside an HTML comment.
+Shows nothing when none is allowed. Delete only appears on an archived sheet (archive first), Restore only too.
+Posted from the sheet's own page there is no next field, so Archive and Delete land on the list and Restore lands
+back on the restored sheet. Links go through role_url so the same file serves superadmin, admin_area and
+coordinator_area.
+-->
+{% load people_tags %}
+{% if can_archive or can_restore or can_force_delete %}
+<div class="flex flex-wrap items-center gap-2">
+  {% if can_restore %}
+  <form method="post" action="{% role_url 'sheet_restore' sheet.pk %}">
+    {% csrf_token %}
+    <button type="submit" class="btn btn-primary">Restore</button>
+  </form>
+  {% endif %}
+  {% if can_archive %}
+  <form method="post" action="{% role_url 'sheet_archive' sheet.pk %}"
+        data-confirm="{% if sheet.status == 'uploaded' %}Archive this uploaded sheet? Its numbers leave the dashboards and the admins are notified.{% else %}Archive this draft sheet? It leaves the sheet list.{% endif %}"
+        data-confirm-title="Archive sheet"
+        data-confirm-text="Archive">
+    {% csrf_token %}
+    <button type="submit" class="btn btn-secondary">Archive</button>
+  </form>
+  {% endif %}
+  {% if can_force_delete %}
+  <form method="post" action="{% role_url 'sheet_force_delete' sheet.pk %}"
+        data-confirm="Delete this sheet permanently? Its ticks and first timers are removed for good. The people stay. This cannot be undone."
+        data-confirm-title="Delete permanently"
+        data-confirm-text="Delete permanently"
+        data-confirm-danger="true">
+    {% csrf_token %}
+    <button type="submit" class="btn btn-danger">Delete permanently</button>
+  </form>
+  {% endif %}
+</div>
+{% endif %}

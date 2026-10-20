@@ -27,4 +27,7 @@ urlpatterns = [
     path("sheets/<int:pk>/first-timers/convert/", views.sheet_first_timer_convert, name="sheet_first_timer_convert"),
     path("sheets/<int:pk>/upload/", views.sheet_upload, name="sheet_upload"),
     path("sheets/<int:pk>/reopen/", views.sheet_reopen, name="sheet_reopen"),
+    path("<int:pk>/archive/", views.sheet_archive, name="sheet_archive"),
+    path("<int:pk>/force-delete/", views.sheet_force_delete, name="sheet_force_delete"),
+    path("<int:pk>/restore/", views.sheet_restore, name="sheet_restore"),
 ]

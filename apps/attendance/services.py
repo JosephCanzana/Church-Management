@@ -23,7 +23,7 @@ from dataclasses import dataclass, field
 from datetime import date
 
 from django.db import transaction
-from django.db.models import Q
+from django.db.models import ProtectedError, Q, RestrictedError
 from django.utils import timezone
 from django.core.exceptions import PermissionDenied
 
@@ -40,8 +40,8 @@ from apps.core.text import clean_suffix, clean_text, title_case
 from .age import AgeNetwork, age_network_for, effective_age_network
 from .models import Attendance, AttendanceFirstTimer, AttendanceMember
 from .permissions import (
-    can_convert, can_create, can_edit_draft, can_reopen, can_set_taken_by, can_upload, can_view, has_attendance_role,
-    require,
+    can_archive, can_convert, can_create, can_edit_draft, can_force_delete, can_reopen, can_restore, can_set_taken_by,
+    can_upload, can_view, has_attendance_role, require,
 )
 from .summary import build_summary, incomplete_rows
 
@@ -785,6 +785,128 @@ def reopen_sheet(actor, sheet_id, *, token, request=None):
         )
     return ReopenResult(sheet=locked)
 
+
+
+# ------------------------------------------------------- archive and force delete
+def archive_sheet(actor, sheet_id, *, request=None):
+    """Archive a draft or uploaded sheet and return it. Logs `attendance.archive` (a draft) or
+    `attendance.archive_uploaded` (an uploaded sheet: it takes counted numbers out of the dashboards, so only
+    that action has a `notification_rule` that alerts the admins).
+
+    Admin or super-admin: a draft or an uploaded sheet. Coordinator: a draft of their own extension only
+    (`can_archive`). ONE transaction: lock the sheet row, re-check permission on the locked row, then set
+    `status` and `archived_at` together (a database constraint ties them) with `archived_at` in
+    `update_fields`, so the purge trigger sets `purge_at`. The frozen counts of an uploaded sheet are kept
+    (an archived sheet can still be read by an admin) but the sheet leaves the dashboards and the repeat-visitor
+    count, which read uploaded sheets only. `last_attended_at` is NOT rolled back. Repeating the action on an
+    archived sheet is a friendly ServiceError, so a double tap is harmless.
+    The audit row carries the old status and, for an uploaded sheet, the three frozen counts (no names).
+    """
+    with transaction.atomic():
+        locked = Attendance.objects.select_for_update().filter(pk=sheet_id).first()
+        if locked is None:
+            raise ServiceError("This sheet no longer exists.")
+        require(can_view, actor, locked)
+        if locked.status == Attendance.Status.ARCHIVED:
+            raise ServiceError("This sheet is already archived.")
+        require(can_archive, actor, locked)
+
+        before = {"status": locked.status}
+        was_uploaded = locked.status == Attendance.Status.UPLOADED
+        if was_uploaded:
+            before.update(
+                members_present=locked.members_present,
+                first_timers_count=locked.first_timers_count,
+                total_present=locked.total_present,
+            )
+        locked.status = Attendance.Status.ARCHIVED
+        locked.archived_at = timezone.now()
+        locked.save(update_fields=["status", "archived_at"])
+
+        log_action(
+            "attendance.archive_uploaded" if was_uploaded else "attendance.archive",
+            actor=actor, request=request,
+            entity_type="attendance", entity_id=locked.pk, entity_label=str(locked),
+            extension_id=locked.extension_id,
+            before=before, after={"status": Attendance.Status.ARCHIVED},
+        )
+    return locked
+
+
+def restore_sheet(actor, sheet_id, *, request=None):
+    """Bring an ARCHIVED sheet back and return it. Logs `attendance.restore` (ids and status only, no alert).
+
+    Admin or super-admin: any archived sheet. Coordinator: one of their own extension that was a draft when
+    archived (`can_restore`). ONE transaction: lock the sheet row, re-check permission on the locked row, then
+    clear `archived_at` and set the status back together (a database constraint ties them; the purge trigger
+    clears `purge_at`). Archiving keeps `uploaded_at`, the frozen counts and the summary, and a reopen clears
+    them, so `uploaded_at` tells what the sheet was: set means it returns as UPLOADED (its numbers count on the
+    dashboards again), empty means it returns as a DRAFT. The unique extension, date and label never clashes,
+    because an archived sheet kept holding it. A repeat on a sheet that is no longer archived is a friendly
+    ServiceError, so a double tap is harmless.
+    """
+    with transaction.atomic():
+        locked = Attendance.objects.select_for_update().filter(pk=sheet_id).first()
+        if locked is None:
+            raise ServiceError("This sheet no longer exists.")
+        require(can_view, actor, locked)
+        if locked.status != Attendance.Status.ARCHIVED:
+            raise ServiceError("This sheet is not archived.")
+        require(can_restore, actor, locked)
+
+        locked.status = Attendance.Status.UPLOADED if locked.uploaded_at else Attendance.Status.DRAFT
+        locked.archived_at = None
+        locked.save(update_fields=["status", "archived_at"])
+
+        log_action(
+            "attendance.restore", actor=actor, request=request,
+            entity_type="attendance", entity_id=locked.pk, entity_label=str(locked),
+            extension_id=locked.extension_id,
+            before={"status": Attendance.Status.ARCHIVED}, after={"status": locked.status},
+        )
+    return locked
+
+
+def force_delete_sheet(actor, sheet_id, *, request=None):
+    """Permanently delete an ARCHIVED sheet and its ticks and first-timer rows. Logs `attendance.force_delete`.
+
+    Admin or super-admin only (`can_force_delete`). A draft or uploaded sheet is refused with a message to
+    archive it first. ONE transaction: lock the sheet row, re-check on the locked row, write the audit row
+    BEFORE deleting (counts only, no names), then delete the child rows and the sheet through the ORM
+    (never raw SQL). People are never deleted: guests created from first timers stay as people records, and
+    their `last_attended_at` is untouched. If another table still protects the sheet (a tithes record linked
+    to it), nothing is deleted, the audit row rolls back with it and the person gets a friendly message.
+    """
+    try:
+        with transaction.atomic():
+            locked = Attendance.objects.select_for_update().filter(pk=sheet_id).first()
+            if locked is None:
+                raise ServiceError("This sheet no longer exists.")
+            require(can_view, actor, locked)
+            if locked.status != Attendance.Status.ARCHIVED:
+                raise ServiceError("Archive this sheet first. Only an archived sheet can be deleted permanently.")
+            require(can_force_delete, actor, locked)
+
+            members = AttendanceMember.objects.filter(attendance=locked)
+            first_timers = AttendanceFirstTimer.objects.filter(attendance=locked)
+            log_action(
+                "attendance.force_delete", actor=actor, request=request,
+                entity_type="attendance", entity_id=locked.pk, entity_label=str(locked),
+                extension_id=locked.extension_id,
+                before={
+                    "status": locked.status,
+                    "members_present": locked.members_present,
+                    "first_timers_count": locked.first_timers_count,
+                    "total_present": locked.total_present,
+                    "member_rows": members.count(),
+                    "first_timer_rows": first_timers.count(),
+                },
+            )
+            members.delete()
+            first_timers.delete()
+            locked.delete()
+    except (ProtectedError, RestrictedError):
+        raise ServiceError("This sheet is still used by another record, so it cannot be deleted.")
 
 
 @transaction.atomic

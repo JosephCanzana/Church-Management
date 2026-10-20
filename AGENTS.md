@@ -14,8 +14,7 @@ buddies, prayer requests, events, resources, notifications and audit logging.
     `pages` content is managed) and the redesigned login page.
   - Accounts: login (`/accounts/login/`, `/accounts/logout/`), forced password change (`/accounts/change-password/`), profile
     (`/accounts/profile/`), `role_required` (`accounts/decorators.py`).
-  - Super-admin extension management (`/superadmin/extensions/`). Admins may also archive, restore and delete
-    extensions (see Super-admin management, "Extension permissions").
+  - Super-admin extension management (`/superadmin/extensions/`).
   - People management for three roles, one set of screens with role-based rules: super-admin (`/superadmin/users/`),
     admin (`/admin/users/`) and coordinator (`/coordinator/users/`); optional contact details (suffix, phone, address);
     special member roles with per-extension limits (`/admin/special-roles/`, `/superadmin/special-roles/`); default
@@ -307,12 +306,10 @@ with. Only create a new app if the answer is "none".
 - **Special-role limits** are enforced in a transaction with the extension row
   locked. An extension with no limit row for a role cannot give that role to anyone until an admin sets one.
 - **Uploaded attendance/tithes** are locked; only an admin reopens them
-  (logged and alerts admins). Force delete of people is super admin only.
-  Extensions are the exception: super-admin and admin may archive, restore and delete them. Archived rows only, logged
-  before deleting; delete files from disk first.
+  (logged and alerts admins). Force delete is super admin only, archived rows
+  only, logged before deleting; delete files from disk first.
 - **Privacy:** never write passwords, tokens, goal text, notes, prayer text or
-  tithe amounts to `audit_log` or `notification.data`. The one place a plain default password may exist is the
-  `PasswordInfo` handed to the show-once dialog (see User management, "Passwords"). Notifications say that
+  tithe amounts to `audit_log` or `notification.data`. Notifications say that
   something happened; the linked page does the permission check. Anonymous
   prayer requests hide the sender in UI/API but keep `user_id`.
 - **Enumeration:** forgot-password always shows the same message.
@@ -396,15 +393,6 @@ with. Only create a new app if the answer is "none".
   Business rules: `accounts/services/__init__.py` (extension section). Who may do what: `accounts/permissions.py`.
   Shared archive / restore / force-delete helpers and `ServiceError`: `core/services.py`.
 - **Two guards, both required:** `@role_required(Role.SUPER_ADMIN)` on the view guards the page; every service starts
-- **Extension permissions are split per action** (`accounts/permissions.py`):
-  - `can_manage_extensions` / `require_extension_manager`: create, edit, assign coordinators. Super-admin only.
-  - `can_archive_extensions` / `require_extension_archiver`: archive and restore. Super-admin and admin.
-  - `can_delete_extensions` / `require_extension_deleter`: delete. Super-admin and admin.
-  Each service calls the check that matches its action: archive, restore and `bulk_archive_extensions` use the archiver;
-  delete and `bulk_delete_extensions` use the deleter; everything else uses the manager. The view decorator on those
-  routes must allow `Role.SUPER_ADMIN, Role.ADMIN`, and templates gate the buttons with the specific function, not
-  `can_manage_extensions`. The extension invariants below still apply to admins (no archive while non-archived people
-  belong to it; only archived extensions can be deleted).
   with a check from `accounts/permissions.py` and guards the action. To open a screen to another role, change the
   permission function and add routes, not the services.
 - **Role home URLs live in ONE place:** `accounts/decorators.py` (`ROLE_HOME_NAMES`, `home_url_for`, `role_required`).
@@ -472,15 +460,7 @@ with. Only create a new app if the answer is "none".
   special roles are cleared) and `transfer_people_in` (max 100, one transaction per person, one-time token, skipped
   rows explained). Only members and coordinators belong to an extension; admins and super-admins never do.
   Route: `/superadmin/extensions/<pk>/people/add/`.
-- **Passwords:** shown once, never stored, logged or put in the session. The Password column of the show-once dialog is
-  `PasswordInfo.display` (`services/users.py`): `typed` shows "The password you typed", `generated` the generated value,
-  `none` "No password (cannot sign in)", and `default` the REAL default password when the actor may see it, else the text
-  "The default password". `_set_initial_password` fills it through `_default_plain_for_display(actor, role)`, which checks
-  `default_password_view_roles(actor)`, reads `default_password_row(actor, role).plain` and returns "" when it may not or
-  cannot be shown (saved before encryption, key changed). It does NOT call `reveal_default_password`, so creating, granting
-  an account or resetting writes no `default_password.view` audit row. The plain value lives only in the `PasswordInfo`
-  passed to the template context: never log it, audit it, put it in a message or the session (declare `value` with
-  `repr=False`). Order used: typed (min 8 characters; only the
+- **Passwords:** shown once, never stored, logged or put in the session. Order used: typed (min 8 characters; only the
   super-admin and admin may type one), else the default that applies to the acting person (see People screens for admin and
   coordinator), else a generated 12-character password. A reset forces a change at next login and ends the person's
   sessions (the hash changes). "Skip password change" on create (`skip_password_change`) is for test accounts that should not go through the change-password
@@ -580,17 +560,7 @@ with. Only create a new app if the answer is "none".
   `accounts/people/default_passwords.html` (super-admin and admin; an admin with none of their own for a role sees that the
   global one is used). A coordinator has no screen: the "Default password" button on their people list POSTs to
   `coordinator_area:default_password_show` (`reveal_default_password`), which shows the global member password read-only in
-  the show-once dialog and writes the audit row `default_password.view` (who looked, never the password). The dialog has
-  the columns Name, Account ID and Password, with one row per member of the coordinator's own extension who still has a
-  temporary password (`member_account`, role member, not archived, `must_change_password=True`). With none, one generic
-  row "New members and password resets" is shown. Known limits: if the global default changes after a member was
-  created, the dialog shows the new default next to that member (no per-user default version is stored); a generated
-  password is hashed and can never be shown again. The dialog has
-  the columns Name, Account ID and Password, with one row per member of the coordinator's own extension who still has a
-  temporary password (`member_account`, role member, not archived, `must_change_password=True`). With none, one generic
-  row "New members and password resets" is shown. Known limits: if the global default changes after a member was
-  created, the dialog shows the new default next to that member (no per-user default version is stored); a generated
-  password is hashed and can never be shown again. Each default is
+  the show-once dialog and writes the audit row `default_password.view` (who looked, never the password). Each default is
   stored as a hash plus an encrypted copy (`DefaultPassword.password_encrypted`, key `DEFAULT_PASSWORD_KEY`).
 
 ## Attendance
@@ -685,6 +655,23 @@ The source plan `docs/attendance.md` is not present in this checkout; the defaul
   `last_attended_at` is NOT rolled back; the next upload only moves it forward. A reopened sheet leaves the dashboards (they
   count uploaded sheets only) until it is uploaded again. This is the ONLY way to edit an uploaded sheet: reopen, change it with
   the draft services, then the coordinator uploads again. The view puts `new_submission_token()` in the form.
+- **Archive and force delete** (`archive_sheet(actor, sheet_id, *, request=None)` and `force_delete_sheet(actor, sheet_id, *,
+  request=None)` in `attendance/services.py`; rules `can_archive` and `can_force_delete` in `attendance/permissions.py`).
+  Archive: admin and super-admin on a draft or uploaded sheet; a coordinator on a DRAFT of their own extension only; special
+  members never. It sets `status` and `archived_at` together (`save(update_fields=[...])`, so the purge trigger sets `purge_at`),
+  keeps the frozen counts, and the sheet leaves the dashboards and the repeat-visitor count (uploaded sheets only).
+  `last_attended_at` is NOT rolled back. Force delete: admin and super-admin on an ARCHIVED sheet only (archive first); this
+  is the one place where an admin, not only the super-admin, may force delete. It writes the audit row first, then deletes the
+  tick and first-timer rows and the sheet through the ORM; people (including guests made from first timers) are never deleted.
+  Both lock the sheet row, re-check permission on the locked row, and are idempotent (a repeat gives a friendly
+  `ServiceError`), so they need no one-time token. Audit actions: `attendance.archive` (a draft, no alert),
+  `attendance.archive_uploaded` and `attendance.force_delete`; they carry the old status and counts only (no names), and the
+  last two have a `notification_rule` (notifications migration `0002_seed_attendance_archive_rules`) that alerts admins.
+  Views `sheet_archive` and `sheet_force_delete` (POST, `sheet_action`; routes `archive/` and `force-delete/` under a sheet,
+  names `sheet_archive` and `sheet_force_delete`) redirect to the list. The buttons live in
+  `attendance/_sheet_danger_actions.html` (`data-confirm` forms, `.btn-danger`), shown by the `can_archive` and
+  `can_force_delete` context flags that `_danger_flags` adds to the detail, workspace and review contexts. The sheet list
+  already hides archived sheets by default (`status=current`); the Archived choice of the status filter shows them.
 - **Guest promotion** (`convert_first_timer` in `attendance/services.py`): one-time token, lock the sheet and first-timer row,
   promote its linked guest in place through `accounts.services.users.promote_guest`, then set `converted_user` on every first-timer
   row linked to that same person. A legacy first-timer row without a guest link gets one guest record before promotion. The

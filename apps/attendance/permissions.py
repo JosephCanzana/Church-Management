@@ -17,6 +17,9 @@ Permission table (S = special member, C = coordinator, A = admin or super-admin)
     save and upload                      C who created the draft (own extension) | A any | S no
   open an uploaded sheet               C read-only | A read-only | S no
   reopen an uploaded sheet             A only
+  archive a sheet                      A any draft or uploaded sheet | C own extension, DRAFT only | S no
+  force delete a sheet                 A, archived sheets only (archive first) | C no | S no
+  restore an archived sheet            A any | C own extension, only a sheet archived as a DRAFT | S no
   promote a first timer's guest        C own extension | A any (draft or uploaded sheet) | S no
   print or save as PDF                 any sheet the person can open
 
@@ -123,6 +126,49 @@ def can_upload(actor, sheet):
 def can_reopen(actor, sheet):
     """May `actor` send an uploaded sheet back to draft? Admin or super-admin only."""
     return _signed_in(actor) and actor.role in _ADMINS and sheet.status == Attendance.Status.UPLOADED
+
+
+def can_archive(actor, sheet):
+    """May `actor` archive this sheet?
+
+    Admin or super-admin: a draft or an uploaded sheet, any extension. Coordinator: a DRAFT of their own
+    extension only (never an uploaded sheet). Special members never. An archived sheet cannot be archived again.
+    """
+    if not _signed_in(actor) or sheet.status == Attendance.Status.ARCHIVED:
+        return False
+    if actor.role in _ADMINS:
+        return True
+    return (
+        actor.role == Role.COORDINATOR
+        and sheet.status == Attendance.Status.DRAFT
+        and _own_extension(actor, sheet.extension_id)
+    )
+
+
+def can_force_delete(actor, sheet):
+    """May `actor` permanently delete this sheet? Admin or super-admin, on an ARCHIVED sheet only.
+
+    A draft or uploaded sheet must be archived first, so a delete is always a second, deliberate step.
+    """
+    return _signed_in(actor) and actor.role in _ADMINS and sheet.status == Attendance.Status.ARCHIVED
+
+
+def can_restore(actor, sheet):
+    """May `actor` bring this ARCHIVED sheet back? Mirrors `can_archive`.
+
+    Admin or super-admin: any archived sheet. Coordinator: an archived sheet of their own extension that was a
+    DRAFT when archived (it never had an upload: `uploaded_at` is empty, because a reopen clears it), so a
+    coordinator can undo their own archive but never bring an uploaded sheet's numbers back. Special members never.
+    """
+    if not _signed_in(actor) or sheet.status != Attendance.Status.ARCHIVED:
+        return False
+    if actor.role in _ADMINS:
+        return True
+    return (
+        actor.role == Role.COORDINATOR
+        and sheet.uploaded_at is None
+        and _own_extension(actor, sheet.extension_id)
+    )
 
 
 def can_convert(actor, sheet):

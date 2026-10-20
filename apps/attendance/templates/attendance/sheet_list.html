@@ -3,9 +3,17 @@ attendance/sheet_list.html
 The list of attendance sheets, shared by every role that may open attendance.
 Extends base_app.html and fills: title, page_title, content.
 Context (attendance.views._list_context): form (filters), page, total, querystring, show_extension,
-show_extension_filter, show_status_filter, can_create, active_filters. Each sheet on the page carries
-members_shown, first_timers_shown and total_shown (frozen numbers when uploaded, live ones for a draft).
+show_extension_filter, show_status_filter, can_create, active_filters, return_to (this page's own URL with its
+filters, posted back as `next` so an action keeps the person here). Each sheet on the page carries
+members_shown, first_timers_shown and total_shown (frozen numbers when uploaded, live ones for a draft), and
+can_archive, can_restore, can_force_delete and has_actions (`_with_actions`).
 Links go through role_url so the same file serves superadmin, admin_area, coordinator_area and attendance.
+
+Row menu: a sheet with has_actions gets a three-dots button AND the same menu on right click (or a long press on
+touch). ONE Alpine component on the <ul> holds which menu is open (`openId`) and where (`x`, `y`); each row only
+renders its own menu (fixed position, so the list's rounded overflow never clips it). Every action is a POST form
+with the global confirm dialog (`data-confirm`, static/js/ui.js); the dialog is a UX guard, the services check again.
+Restore asks nothing (it is easy to undo by archiving again). Rows without actions keep the browser's own menu.
 -->
 {% extends 'base_app.html' %}
 {% load ui_tags people_tags %}
@@ -33,11 +41,51 @@ Links go through role_url so the same file serves superadmin, admin_area, coordi
 </div>
 
 {% if page.object_list %}
-<ul class="divide-y divide-border overflow-hidden rounded-xl border border-border bg-surface">
+<ul class="divide-y divide-border overflow-hidden rounded-xl border border-border bg-surface"
+    x-data="{
+      openId: null, x: 0, y: 0,
+      show(id, x, y) {
+        this.x = Math.max(8, Math.min(x, window.innerWidth - 232)); this.y = y; this.openId = id;
+        requestAnimationFrame(() => this.place(id, x, y, 0));
+      },
+      place(id, x, y, tries) {
+        const menu = document.getElementById('sheet-menu-' + id);
+        if (!menu || this.openId !== id) return;
+        if (!menu.offsetWidth &amp;&amp; tries < 20) { requestAnimationFrame(() => this.place(id, x, y, tries + 1)); return; }
+        this.x = Math.max(8, Math.min(x, window.innerWidth - menu.offsetWidth - 8));
+        this.y = Math.max(8, Math.min(y, window.innerHeight - menu.offsetHeight - 8));
+        const first = menu.querySelector('[role=menuitem]');
+        if (first) first.focus({ preventScroll: true });
+      },
+      toggle(id, button) {
+        if (this.openId === id) { this.openId = null; return; }
+        const box = button.getBoundingClientRect();
+        this.show(id, box.right - 224, box.bottom + 4);
+      },
+      step(dir) {
+        const menu = document.getElementById('sheet-menu-' + this.openId);
+        if (!menu) return;
+        const items = Array.from(menu.querySelectorAll('[role=menuitem]'));
+        if (!items.length) return;
+        items[(items.indexOf(document.activeElement) + dir + items.length) % items.length].focus();
+      },
+      escape() {
+        if (this.openId === null) return;
+        const trigger = document.getElementById('sheet-trigger-' + this.openId);
+        this.openId = null;
+        if (trigger) trigger.focus();
+      }
+    }"
+    x-on:click.window="if (openId !== null &amp;&amp; !$event.target.closest('[data-menu], [data-menu-trigger]')) openId = null"
+    x-on:contextmenu.window="if (openId !== null &amp;&amp; !$event.target.closest('[data-menu], [data-has-menu]')) openId = null"
+    x-on:keydown.escape.window="escape()"
+    x-on:resize.window="openId = null"
+    x-on:scroll.window.capture.passive="openId = null">
   {% for sheet in page.object_list %}
-  <li>
+  <li class="flex items-stretch transition-colors hover:bg-txt-primary/5"
+      {% if sheet.has_actions %}data-has-menu x-on:contextmenu.prevent="show({{ sheet.pk }}, $event.clientX, $event.clientY)"{% endif %}>
     <a href="{% role_url 'sheet_detail' sheet.pk %}"
-       class="flex min-h-[44px] flex-wrap items-center gap-x-4 gap-y-2 px-4 py-3 transition-colors hover:bg-txt-primary/5 focus-visible:outline focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-accent">
+       class="flex min-h-[44px] min-w-0 flex-1 flex-wrap items-center gap-x-4 gap-y-2 px-4 py-3 focus-visible:outline focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-accent">
       <div class="min-w-0 flex-1">
         <p class="truncate text-base font-semibold text-txt-primary">{{ sheet.label }}</p>
         <p class="text-sm text-txt-secondary">
@@ -50,6 +98,68 @@ Links go through role_url so the same file serves superadmin, admin_area, coordi
         <p class="text-sm text-txt-secondary">{{ sheet.members_shown }} people marked, {{ sheet.first_timers_shown }} first timers</p>
       </div>
     </a>
+
+    {% if sheet.has_actions %}
+    <div class="flex items-center pr-2">
+      {# The three dots are an inline SVG on purpose: a name missing from the icon sprite would leave the button blank. #}
+      <button type="button" id="sheet-trigger-{{ sheet.pk }}" data-menu-trigger
+              class="btn btn-ghost min-h-[44px] min-w-[44px] justify-center !px-2"
+              aria-label="Actions for {{ sheet.label }}, {{ sheet.attendance_date|date:'j F Y' }}"
+              aria-haspopup="menu" x-bind:aria-expanded="openId === {{ sheet.pk }}"
+              x-on:click="toggle({{ sheet.pk }}, $el)">
+        <svg class="size-5" viewBox="0 0 20 20" fill="currentColor" aria-hidden="true">
+          <circle cx="10" cy="4" r="1.6"/><circle cx="10" cy="10" r="1.6"/><circle cx="10" cy="16" r="1.6"/>
+        </svg>
+      </button>
+    </div>
+
+    <div id="sheet-menu-{{ sheet.pk }}" data-menu role="menu" x-cloak x-show="openId === {{ sheet.pk }}"
+         aria-label="Actions for {{ sheet.label }}"
+         class="fixed z-30 w-56 rounded-xl border border-border bg-surface p-1 shadow-lg"
+         x-bind:style="{ left: x + 'px', top: y + 'px' }"
+         x-on:keydown.arrow-down.prevent="step(1)" x-on:keydown.arrow-up.prevent="step(-1)"
+         x-on:keydown.tab="openId = null" x-on:contextmenu.prevent.stop x-on:click="openId = null">
+      <a role="menuitem" tabindex="-1" href="{% role_url 'sheet_detail' sheet.pk %}"
+         class="flex min-h-[40px] w-full items-center rounded-lg px-3 py-2 text-left text-base text-txt-primary hover:bg-txt-primary/5 focus-visible:outline focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-accent">Open</a>
+      <a role="menuitem" tabindex="-1" href="{% role_url 'sheet_detail' sheet.pk %}" target="_blank" rel="noopener"
+         class="flex min-h-[40px] w-full items-center rounded-lg px-3 py-2 text-left text-base text-txt-primary hover:bg-txt-primary/5 focus-visible:outline focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-accent">Open in new tab</a>
+      <div role="separator" class="my-1 border-t border-border"></div>
+
+      {% if sheet.can_restore %}
+      <form method="post" action="{% role_url 'sheet_restore' sheet.pk %}" role="none">
+        {% csrf_token %}
+        <input type="hidden" name="next" value="{{ return_to }}">
+        <button type="submit" role="menuitem" tabindex="-1"
+                class="flex min-h-[40px] w-full items-center rounded-lg px-3 py-2 text-left text-base text-txt-primary hover:bg-txt-primary/5 focus-visible:outline focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-accent">Restore</button>
+      </form>
+      {% endif %}
+
+      {% if sheet.can_archive %}
+      <form method="post" action="{% role_url 'sheet_archive' sheet.pk %}" role="none"
+            data-confirm="{% if sheet.status == 'uploaded' %}Archive this uploaded sheet? Its numbers leave the dashboards and the admins are notified.{% else %}Archive this draft sheet? It leaves the sheet list.{% endif %}"
+            data-confirm-title="Archive sheet"
+            data-confirm-text="Archive">
+        {% csrf_token %}
+        <input type="hidden" name="next" value="{{ return_to }}">
+        <button type="submit" role="menuitem" tabindex="-1"
+                class="flex min-h-[40px] w-full items-center rounded-lg px-3 py-2 text-left text-base text-txt-primary hover:bg-txt-primary/5 focus-visible:outline focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-accent">Archive</button>
+      </form>
+      {% endif %}
+
+      {% if sheet.can_force_delete %}
+      <form method="post" action="{% role_url 'sheet_force_delete' sheet.pk %}" role="none"
+            data-confirm="Delete {{ sheet.label }}, {{ sheet.attendance_date|date:'j M Y' }} permanently? Its ticks and first timers are removed for good. The people stay. This cannot be undone."
+            data-confirm-title="Delete permanently"
+            data-confirm-text="Delete permanently"
+            data-confirm-danger="true">
+        {% csrf_token %}
+        <input type="hidden" name="next" value="{{ return_to }}">
+        <button type="submit" role="menuitem" tabindex="-1"
+                class="flex min-h-[40px] w-full items-center rounded-lg px-3 py-2 text-left text-base text-error hover:bg-txt-primary/5 focus-visible:outline focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-accent">Delete permanently</button>
+      </form>
+      {% endif %}
+    </div>
+    {% endif %}
   </li>
   {% endfor %}
 </ul>
