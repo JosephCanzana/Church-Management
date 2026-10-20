@@ -67,10 +67,11 @@
 /* Keeps Alpine-controlled elements (modals, bars) hidden until Alpine has started. */
 [x-cloak] { display: none !important; }
 
-/* Reusable pieces, built only from the tokens above.
-   Design direction: flat content surfaces (cards, panels, fields) with glassy,
-   raised actions (buttons). Blur is kept on buttons only. */
+/* Reusable pieces, built only from the tokens above. */
 @layer components {
+  /* Shared glass recipe: translucent tint of the surface, blur, a faint
+     light edge and a lit top rim. Shadows are layered (tight contact shadow
+     plus a wide soft one) so elements feel raised without looking heavy. */
 
   .btn {
     @apply relative inline-flex items-center justify-center gap-2 rounded-xl px-4 py-2.5 text-sm font-medium
@@ -169,19 +170,26 @@
 
   .label { @apply mb-1.5 block text-sm font-medium text-txt-primary; }
 
-  /* Flat field: solid surface, crisp border, soft focus ring. No blur. */
+  /* Frosted field with a slight inset so it reads as recessed, then lifts into a glow on focus. */
   .input {
     @apply block w-full rounded-xl px-3 py-2.5 text-sm text-txt-primary placeholder:text-txt-muted
+           backdrop-blur-sm
            focus-visible:outline-none;
-    background-color: var(--color-surface);
-    border: 1px solid var(--color-border-strong);
-    box-shadow: inset 0 1px 1px color-mix(in oklab, black 4%, transparent);
+    background-color: color-mix(in oklab, var(--color-surface) 65%, transparent);
+    border: 1px solid color-mix(in oklab, var(--color-border-strong) 75%, transparent);
+    box-shadow:
+      inset 0 1px 2px color-mix(in oklab, black 8%, transparent),
+      0 1px 0 color-mix(in oklab, white 12%, transparent);
     transition: border-color 160ms ease, box-shadow 160ms ease, background-color 160ms ease;
   }
-  .input:hover { border-color: color-mix(in oklab, var(--color-accent) 45%, var(--color-border-strong)); }
+  .input:hover { border-color: color-mix(in oklab, var(--color-accent) 45%, transparent); }
   .input:focus-visible {
+    background-color: color-mix(in oklab, var(--color-surface) 85%, transparent);
     border-color: var(--color-accent);
-    box-shadow: 0 0 0 3px color-mix(in oklab, var(--color-accent) 20%, transparent);
+    box-shadow:
+      inset 0 1px 2px color-mix(in oklab, black 6%, transparent),
+      0 0 0 4px color-mix(in oklab, var(--color-accent) 20%, transparent),
+      0 6px 16px -6px color-mix(in oklab, var(--color-accent) 40%, transparent);
   }
 
   /* Django adds aria-invalid="true" to a field that has errors, so forms need no extra class. */
@@ -190,39 +198,48 @@
   }
   .input-error:focus-visible, .input[aria-invalid="true"]:focus-visible {
     border-color: var(--color-error);
-    box-shadow: 0 0 0 3px color-mix(in oklab, var(--color-error) 20%, transparent);
+    box-shadow:
+      0 0 0 4px color-mix(in oklab, var(--color-error) 20%, transparent),
+      0 6px 16px -6px color-mix(in oklab, var(--color-error) 40%, transparent);
   }
   .field-error { @apply mt-1.5 text-sm text-error; }
   .field-help  { @apply mt-1.5 text-sm text-txt-secondary; }
 
-  /* Flat card: solid surface, 1px border, one soft shadow. No blur. */
+  /* Glass panel: translucent surface, blur, light edge, lit top rim, soft layered shadow. */
   .card {
-    @apply rounded-2xl p-6;
-    background-color: var(--color-surface);
-    border: 1px solid var(--color-border);
-    box-shadow: 0 1px 2px color-mix(in oklab, black 5%, transparent);
+    @apply rounded-2xl p-6 backdrop-blur-xl;
+    background-color: color-mix(in oklab, var(--color-surface) 70%, transparent);
+    border: 1px solid color-mix(in oklab, var(--color-border) 70%, transparent);
+    box-shadow:
+      inset 0 1px 0 color-mix(in oklab, white 18%, transparent),
+      0 1px 2px color-mix(in oklab, black 6%, transparent),
+      0 12px 32px -12px color-mix(in oklab, black 22%, transparent);
     transition: transform 200ms cubic-bezier(0.2, 0, 0, 1), box-shadow 200ms ease, border-color 200ms ease;
   }
   /* Optional: add alongside .card for clickable cards. */
   .card-interactive:hover {
     transform: translateY(-2px);
-    border-color: color-mix(in oklab, var(--color-accent) 40%, var(--color-border));
+    border-color: color-mix(in oklab, var(--color-accent) 40%, transparent);
     box-shadow:
-      0 1px 2px color-mix(in oklab, black 6%, transparent),
-      0 12px 28px -12px color-mix(in oklab, var(--color-primary) 30%, transparent);
+      inset 0 1px 0 color-mix(in oklab, white 22%, transparent),
+      0 2px 4px color-mix(in oklab, black 8%, transparent),
+      0 18px 40px -12px color-mix(in oklab, var(--color-primary) 35%, transparent);
   }
 
-  /* Same flat recipe as .card, without the padding. */
+    /* Frosted panel for the workspace (same recipe as .card, without the padding). */
   .glass-panel {
-    @apply rounded-2xl;
-    background-color: var(--color-surface);
-    border: 1px solid var(--color-border);
-    box-shadow: 0 1px 2px color-mix(in oklab, black 5%, transparent);
+    @apply rounded-2xl backdrop-blur-xl;
+    background-color: color-mix(in oklab, var(--color-surface) 70%, transparent);
+    border: 1px solid color-mix(in oklab, var(--color-border) 70%, transparent);
+    box-shadow:
+      inset 0 1px 0 color-mix(in oklab, white 16%, transparent),
+      0 1px 2px color-mix(in oklab, black 6%, transparent),
+      0 12px 32px -16px color-mix(in oklab, black 22%, transparent);
   }
 
-  /* Only the buttons still use blur, so only they need the fallback. */
+  /* Browsers without backdrop-filter get a more opaque tint so text stays readable. */
   @supports not ((backdrop-filter: blur(1px)) or (-webkit-backdrop-filter: blur(1px))) {
-    .btn-secondary {
+    .card, .btn-secondary, .input {
       background-color: color-mix(in oklab, var(--color-surface) 94%, transparent);
     }
   }
@@ -237,18 +254,20 @@
 /* Signed-in pages (base_app.html marks its root with data-app-shell) use a slightly larger
    text size: 106.25% of the browser default, so 17px instead of 16px. Everything in Tailwind
    is in rem, so spacing and icons grow with it. Public and login pages are untouched. */
-@layer base {
-  body {
-    background-color: var(--color-bg);
-    background-image:
-      radial-gradient(60rem 40rem at 10% -10%, color-mix(in oklab, var(--color-accent) 16%, transparent), transparent),
-      radial-gradient(50rem 40rem at 100% 0%, color-mix(in oklab, var(--color-primary) 14%, transparent), transparent);
-    background-attachment: fixed;
+  @layer base {
+    body {
+      background-color: var(--color-bg);
+      background-image:
+        radial-gradient(60rem 40rem at 10% -10%, color-mix(in oklab, var(--color-accent) 16%, transparent), transparent),
+        radial-gradient(50rem 40rem at 100% 0%, color-mix(in oklab, var(--color-primary) 14%, transparent), transparent);
+      background-attachment: fixed;
+    }
   }
-}
 
 .logo-mask {
   display: inline-block;
   background-color: currentColor;
   mask: var(--logo-url) center / contain no-repeat;
+
+
 }
