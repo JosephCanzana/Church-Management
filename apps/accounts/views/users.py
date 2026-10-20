@@ -57,8 +57,7 @@ PAGE_SIZE = 25
 RETURN_QS_MAX = 1000               # longest "return to this filtered list" string accepted
 SECRETS_HEADERS = ["Name", "Account ID", "Password"]
 SECRETS_MESSAGE = (
-    "This is the only time the password is shown. Copy it now and give it to the person "
-    "through a private channel. They will be asked to change it."
+    "This are the important account credantial"
 )
 
 LIST_TEMPLATE = "accounts/people/user_list.html"
@@ -603,16 +602,33 @@ def default_password_show(request):
         url = _url(request, "user_list")
         query = return_to.urlencode()
         return redirect(f"{url}?{query}" if query else url)
+
     context = _list_context(return_to, request.user)
     context["submit_token"] = new_submission_token()
+
+    members = (
+        User.objects
+        .filter(
+            extension_id=request.user.extension_id,
+            role=Role.MEMBER,
+            person_type=PersonType.MEMBER_ACCOUNT,
+            must_change_password=True,          # still on the default password
+        )
+        .exclude(status=Status.ARCHIVED)
+        .order_by("last_name", "first_name")
+    )
+    rows = [[m.full_name, m.username, plain] for m in members]
+    if not rows:
+        rows = [["New members and password resets", "", plain]]
+
     context["secrets"] = {
         "title": "Member password",
         "message": (
-            "This is the password new members get, and the one given when you reset a member's password. "
-            "They must change it the first time they sign in. Share it only with the member."
+            "This is the password each member below was given. They must change it the first "
+            "time they sign in. Share it only with that member."
         ),
-        "headers": ["For", "Password"],
-        "rows": [["New members and password resets", plain]],
+        "headers": ["Name", "Username", "Password"],
+        "rows": rows,
     }
     return render(request, LIST_TEMPLATE, context)
 

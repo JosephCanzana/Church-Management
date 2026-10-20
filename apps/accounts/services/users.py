@@ -58,14 +58,21 @@ MIN_PASSWORD_LENGTH = 8
 # No 0/O, 1/l/I: generated passwords get read aloud and typed by hand.
 PASSWORD_ALPHABET = "abcdefghijkmnpqrstuvwxyzABCDEFGHJKLMNPQRSTUVWXYZ23456789"
 
+def _default_plain_for_display(actor, role):
+    """The plain default password to show once, or "" when it may not or cannot be shown."""
+    if role not in default_password_view_roles(actor):
+        return ""
+    row = default_password_row(actor, role)
+    return (row.plain if row else None) or ""
 
 # ------------------------------------------------------------------ passwords
+@dataclass
 @dataclass
 class PasswordInfo:
     """How a password was chosen, and what (if anything) may be shown once."""
 
     kind: str                 # "typed" | "default" | "generated" | "none" (cannot sign in)
-    value: str = ""           # the plain text, only for "generated"
+    value: str = ""           # the plain text, for "generated" and "default"
 
     @property
     def display(self):
@@ -73,7 +80,7 @@ class PasswordInfo:
         if self.kind == "generated":
             return self.value
         if self.kind == "default":
-            return "The default password"
+            return self.value or "The default password"   # real value when we have it
         if self.kind == "none":
             return "No password (cannot sign in)"
         return "The password you typed"
@@ -168,7 +175,7 @@ def _set_initial_password(actor, person, typed):
     stored = _default_password_hash(actor, person.role)
     if stored:
         person.password = stored          # already a hash; copied, never decoded
-        return PasswordInfo("default")
+        return PasswordInfo("default", _default_plain_for_display(actor, person.role))
     value = generate_strong_password()
     person.set_password(value)
     return PasswordInfo("generated", value)
