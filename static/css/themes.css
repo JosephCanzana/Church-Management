@@ -10,14 +10,14 @@
   --color-on-primary:     #04182E;
 
   --color-bg:             #061A2E;
-  --color-surface:        #0C2540;
-  --color-surface-alt:    #133456;
+  --color-surface:        #0E2A48;  /* was #0C2540: slightly lighter so flat cards separate from the page */
+  --color-surface-alt:    #153859;
 
   --color-txt-primary:    #F1F7FD;
   --color-txt-secondary:  #BFD3E8;
   --color-txt-muted:      #85A3C6;
 
-  --color-border:         #25507F;
+  --color-border:         #1F4670;  /* was #25507F: flat cards carry a full border now, so it can be a bit calmer */
   --color-border-strong:  color-mix(in oklab, var(--color-border) 80%, var(--color-txt-muted));
 
   --color-success:        #4ADE80;
@@ -32,4 +32,11 @@
 
   --color-highlight:      #D4AF56;
   --color-on-highlight:   #0B1220;
+}
+
+/* Inputs are now solid, so on a dark card they would blend into it.
+   Sink them to the page color so they read as recessed. */
+:root.dark .input,
+:root[data-mode="dark"] .input {
+  background-color: var(--color-bg);
 }
