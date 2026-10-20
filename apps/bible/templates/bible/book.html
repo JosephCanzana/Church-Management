@@ -18,8 +18,9 @@ Context: version, statuses, book (Book), chapters (range of chapter numbers). --
     <ul class="grid grid-cols-5 gap-2 sm:grid-cols-8 md:grid-cols-10">
       {% for number in chapters %}
         <li>
+          {# Flat solid tile: no blur, no shadow, only color changes on hover (Psalms has 150 of these). #}
           <a href="{% url 'bible:chapter' book.osis_id number %}"
-             class="flex aspect-square items-center justify-center rounded-lg border border-txt-primary/10 bg-gradient-to-br from-surface/80 to-surface/50 font-mono text-base text-txt-primary shadow-[0_2px_8px_-2px_rgb(0_0_0/0.12),inset_0_1px_0_rgb(255_255_255/0.35)] backdrop-blur transition hover:-translate-y-0.5 hover:border-accent/40 hover:bg-accent/10 hover:shadow-[0_8px_20px_-6px_rgb(0_0_0/0.2),inset_0_1px_0_rgb(255_255_255/0.35)] focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-accent motion-reduce:transition-none motion-reduce:hover:translate-y-0"
+             class="flex aspect-square items-center justify-center rounded-lg border border-border bg-surface font-mono text-base text-txt-primary transition-colors duration-100 hover:border-accent/50 hover:bg-accent/10 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-accent motion-reduce:transition-none"
              aria-label="{{ book.name }} chapter {{ number }}">{{ number }}</a>
         </li>
       {% endfor %}

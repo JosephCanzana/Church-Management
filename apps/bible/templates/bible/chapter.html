@@ -15,7 +15,7 @@ Next posts to bible:finish (after=next), which counts the chapter as read, moves
   {% include "bible/_version_picker.html" %}
 
   {% if locked_reason %}
-    <section class="flex items-start gap-4 rounded-xl border border-txt-primary/10 bg-gradient-to-br from-surface/80 to-surface/50 p-5 shadow-[0_10px_30px_-8px_rgb(0_0_0/0.2),inset_0_1px_0_rgb(255_255_255/0.35)] backdrop-blur-xl" role="status">
+    <section class="flex items-start gap-4 rounded-xl border border-border bg-surface p-5 shadow-sm" role="status">
       <span class="flex size-10 shrink-0 items-center justify-center rounded-lg bg-warning/15 text-warning" aria-hidden="true">{% include "includes/icon.html" with name="lock-closed" class="size-5" %}</span>
       <div class="min-w-0">
         <h2 class="text-lg font-semibold tracking-tight text-txt-primary">{{ version.label }} is locked right now</h2>
@@ -24,7 +24,7 @@ Next posts to bible:finish (after=next), which counts the chapter as read, moves
       </div>
     </section>
   {% elif missing %}
-    <section class="flex items-start gap-4 rounded-xl border border-txt-primary/10 bg-gradient-to-br from-surface/80 to-surface/50 p-5 shadow-[0_10px_30px_-8px_rgb(0_0_0/0.2),inset_0_1px_0_rgb(255_255_255/0.35)] backdrop-blur-xl" role="status">
+    <section class="flex items-start gap-4 rounded-xl border border-border bg-surface p-5 shadow-sm" role="status">
       <span class="flex size-10 shrink-0 items-center justify-center rounded-lg bg-info/15 text-info" aria-hidden="true">
         <svg viewBox="0 0 24 24" class="size-5 fill-current"><path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm1 15h-2v-6h2v6zm0-8h-2V7h2v2z"/></svg>
       </span>
@@ -34,8 +34,8 @@ Next posts to bible:finish (after=next), which counts the chapter as read, moves
       </div>
     </section>
   {% else %}
-    <article class="overflow-hidden rounded-xl border border-txt-primary/10 bg-gradient-to-br from-surface/85 to-surface/55 shadow-[0_24px_60px_-16px_rgb(0_0_0/0.3),0_4px_12px_rgb(0_0_0/0.06),inset_0_1px_0_rgb(255_255_255/0.4)] backdrop-blur-xl" lang="{{ version.language }}">
-      <header class="flex flex-wrap items-center justify-between gap-x-4 gap-y-2 border-b border-txt-primary/10 bg-surface/30 px-6 py-4">
+    <article class="overflow-hidden rounded-xl border border-border bg-surface shadow-sm" lang="{{ version.language }}">
+      <header class="flex flex-wrap items-center justify-between gap-x-4 gap-y-2 border-b border-border bg-surface-alt px-6 py-4">
         <h2 class="text-xl font-semibold tracking-tight text-txt-primary">{{ book.name }} {{ chapter }}</h2>
         <div class="flex items-center gap-2">
           {% if already_read %}
@@ -57,7 +57,7 @@ Next posts to bible:finish (after=next), which counts the chapter as read, moves
           {% for number, verse_text in text.verses %}<span><sup class="mr-1 font-mono text-xs font-medium text-accent">{{ number }}</sup>{{ verse_text }}</span> {% endfor %}
         </p>
       </div>
-      {% if version.notice %}<p class="border-t border-txt-primary/10 bg-surface/20 px-6 py-3 text-sm text-txt-secondary">{{ version.notice }}{% if version.notice_url %} <a href="{{ version.notice_url }}" target="_blank" rel="noopener noreferrer" class="underline">www.esv.org</a>{% endif %}</p>{% endif %}
+      {% if version.notice %}<p class="border-t border-border bg-surface-alt px-6 py-3 text-sm text-txt-secondary">{{ version.notice }}{% if version.notice_url %} <a href="{{ version.notice_url }}" target="_blank" rel="noopener noreferrer" class="underline">www.esv.org</a>{% endif %}</p>{% endif %}
     </article>
   {% endif %}
 
