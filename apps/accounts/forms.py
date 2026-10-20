@@ -633,14 +633,11 @@ class UserFilterForm(forms.Form):
         choices=[("", "Anyone"), ("tithes_offering", "Tithes member"), ("attendance", "Attendance member")],
         widget=forms.Select(attrs={"class": "input"}),
     )
-    # Blank means "Members" (people with an account): the People screens list them by default. The
-    # guests and no-account members are also reachable from here, and have their own screen (GuestFilterForm).
+    # Blank means every member: people with an account and members without one. Guests are never
+    # listed here: they have their own screen (GuestFilterForm).
     person_type = forms.ChoiceField(
         required=False, label="Type", initial="",
-        choices=[
-            ("", "Members"), (PersonType.MEMBER_RECORD, "Members (no account)"),
-            (PersonType.GUEST, "Guests"), ("all", "All types"),
-        ],
+        choices=[("", "All members"), (PersonType.MEMBER_RECORD, "Members (no account)")],
         widget=forms.Select(attrs={"class": "input"}),
     )
     # The "Needs password change" tag as a filter (`must_change_password`; only people with an account have it).
@@ -658,17 +655,15 @@ class UserFilterForm(forms.Form):
 class GuestFilterForm(UserFilterForm):
     """Search, filters and sort for the guests and no-account members screen (GET parameters).
 
-    Same fields as the people list, minus the role (they are all members) and the special role (they
-    hold none); the type choices are the two types that never sign in.
+    Same fields as the people list, minus the role, the special role, the password filter and the
+    type (this screen lists guests only).
     """
 
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
         del self.fields["role"], self.fields["special_role"], self.fields["needs_change"]
-        self.fields["person_type"].choices = [
-            ("", "Guests and members (no account)"), (PersonType.GUEST, "Guests"),
-            (PersonType.MEMBER_RECORD, "Members (no account)"),
-        ]
+        # This screen lists guests only, so there is no type filter.
+        del self.fields["person_type"]
 
 
 class DefaultPasswordsForm(forms.Form):

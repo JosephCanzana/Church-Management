@@ -33,7 +33,7 @@ from apps.core.text import name_case, suffix_case, title_case
 from ..address import ADDRESS_FIELDS, canonical_country
 from ..decorators import role_required
 from ..forms import GuestFilterForm, UserCreateForm, UserFilterForm, UserForm
-from ..models import NO_ACCOUNT_TYPES, PersonType, Role, Status, User, UserExtensionHistory
+from ..models import PersonType, Role, Status, User, UserExtensionHistory
 from ..permissions import (
     EDIT, allowed_bulk_actions, can_assign_special_roles, can_change_placement, require_can_act,
 )
@@ -95,8 +95,8 @@ BULK_BUTTONS = {
     "restore": dict(label="Restore", icon="arrow-uturn-left", past="restored", danger=False,
                     title="Restore {n} selected?",
                     message="They are brought back from the archive."),
-    "promote": dict(label="Promote", icon="user-plus", past="promoted", danger=False,
-                    title="Promote {n} selected?",
+    "promote": dict(label="Make member", icon="user-plus", past="moved to members", danger=False,
+                    title="Make {n} selected members?",
                     message="Guests become members without an account. Anyone who is not an active guest is skipped."),
     "delete": dict(label="Delete", icon="trash", past="deleted", danger=True,
                    title="Delete {n} selected permanently?",
@@ -185,7 +185,7 @@ def _form_initial(person):
         "first_name": name_case(person.first_name), "middle_name": name_case(person.middle_name),
         "last_name": name_case(person.last_name), "suffix": suffix_case(person.suffix),
         "birth_date": person.birth_date, "gender": person.gender,
-        "phone_number": person.phone_number,
+        "phone_number": person.phone_number, "email": person.email,
         "role": person.role, "extension": person.extension_id,
         "postal_code": person.postal_code,
         "country": canonical_country(person.country) or title_case(person.country),
@@ -227,9 +227,12 @@ def _list_context(params, viewer):
     queryset = User.objects.for_user(viewer).select_related("extension").exclude(pk=viewer.pk)
     if needs_change:
         queryset = queryset.filter(person_type=PersonType.MEMBER_ACCOUNT, must_change_password=True)
-    # The People screens list people with an account unless the Type filter says otherwise.
-    if person_type != "all":
-        queryset = queryset.filter(person_type=person_type or PersonType.MEMBER_ACCOUNT)
+    # The People list shows every member, with or without an account, and never guests. The Type
+    # filter can narrow it to members without an account.
+    if person_type == PersonType.MEMBER_RECORD:
+        queryset = queryset.filter(person_type=PersonType.MEMBER_RECORD)
+    else:
+        queryset = queryset.filter(person_type__in=[PersonType.MEMBER_ACCOUNT, PersonType.MEMBER_RECORD])
     if status == "current":
         queryset = queryset.exclude(status=Status.ARCHIVED)
     elif status != "all":
@@ -284,10 +287,11 @@ def user_list(request):
 
 # ------------------------------------------------------ guests and no-account members
 GUESTS_TEMPLATE = "accounts/people/guest_list.html"
+GUESTS_RESULTS_TEMPLATE = "accounts/people/_guest_list_results.html"
 
 
 def _guest_context(params, viewer):
-    """Everything the guests screen needs: guests and members without an account `viewer` may see.
+    """Everything the guests screen needs: the guests `viewer` may see.
 
     Same scoping as the People screens (`for_user`), so a coordinator only sees their own extension.
     `viewer` is never a guest, but is left out anyway, like on the People list.
@@ -299,13 +303,12 @@ def _guest_context(params, viewer):
     form.is_valid()
     data = getattr(form, "cleaned_data", {})
     status = data.get("status") or "current"
-    person_type = data.get("person_type") or ""
     extension = data.get("extension")
     sort = data.get("sort") or "last_name"
 
     queryset = (
         User.objects.for_user(viewer).select_related("extension").exclude(pk=viewer.pk)
-        .filter(person_type__in=[person_type] if person_type else NO_ACCOUNT_TYPES)
+        .filter(person_type=PersonType.GUEST)
     )
     if status == "current":
         queryset = queryset.exclude(status=Status.ARCHIVED)
@@ -334,7 +337,7 @@ def _guest_context(params, viewer):
         "querystring": without_page.urlencode(),
         "full_querystring": params.urlencode(),
         "active_filters": sum([
-            bool(data.get("q")), status != "current", bool(person_type),
+            bool(data.get("q")), status != "current",
             extension is not None, sort != "last_name",
         ]),
     }
@@ -344,9 +347,11 @@ def _guest_context(params, viewer):
 @never_cache
 @require_http_methods(["GET"])
 def guest_list(request):
-    """Guests and members without an account: search, filters, paging and the per-person buttons."""
+    """Guests: search, filters, paging and the per-person buttons."""
     context = _guest_context(request.GET, request.user)
     context["submit_token"] = new_submission_token()
+    if request.headers.get("X-Requested-With") == "XMLHttpRequest":
+        return render(request, GUESTS_RESULTS_TEMPLATE, context)
     return render(request, GUESTS_TEMPLATE, context)
 
 

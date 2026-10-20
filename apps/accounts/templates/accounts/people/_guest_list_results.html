@@ -1,0 +1,97 @@
+<!--
+accounts/people/_guest_list_results.html
+Reusable results fragment for the guest list (same look as _user_list_results.html).
+Context: page, total, active_filters, form, status, bulk_buttons, submit_token,
+full_querystring and querystring. Included by guest_list.html and returned for
+XHR search requests.
+-->
+{% load people_tags ui_tags %}
+<div id="guest-results" data-active-filters="{{ active_filters }}">
+  <div class="flex flex-wrap items-center justify-between gap-3">
+    <p class="text-sm text-txt-secondary">{{ total }} {% if total == 1 %}guest{% else %}guests{% endif %}</p>
+  </div>
+
+  {% if page.object_list %}
+  <form id="bulk-form" method="post" action="{% role_url 'user_bulk' %}"
+        x-show="selected.length" x-cloak style="display:none" x-transition
+        class="sticky top-16 z-20 mt-4 flex flex-wrap items-center gap-2 rounded-xl border border-border-strong bg-surface-alt px-4 py-3"
+        role="region" aria-label="Actions for the selected guests">
+    {% csrf_token %}
+    <input type="hidden" name="submit_token" value="{{ submit_token }}">
+    <input type="hidden" name="back" value="guests">
+    <input type="hidden" name="qs" value="{{ full_querystring }}">
+    <p class="mr-2 text-sm font-medium" aria-live="polite"><span x-text="selected.length"></span> selected</p>
+    {% for b in bulk_buttons %}
+    <button type="submit" name="action" value="{{ b.value }}"
+            class="btn {% if b.danger %}btn-danger{% else %}btn-secondary{% endif %}"
+            x-show="count('{{ b.applies }}') > 0" x-cloak style="display:none"
+            :data-confirm="'{{ b.message|escapejs }}'"
+            :data-confirm-title="'{{ b.title|escapejs }}'.replace('{n}', count('{{ b.applies }}'))"
+            data-confirm-text="{{ b.label }}"{% if b.danger %} data-confirm-danger{% endif %}>
+      {% include 'includes/icon.html' with name=b.icon class='size-4' %}
+      {{ b.label }} <span x-text="`(${count('{{ b.applies }}')})`"></span>
+    </button>
+    {% endfor %}
+    <button type="button" class="btn btn-ghost ml-auto" @click="selected = []">Clear selection</button>
+  </form>
+
+  <div class="mt-4 flex items-center gap-3 px-1">
+    <label class="inline-flex cursor-pointer items-center gap-2 text-sm text-txt-secondary">
+      <input type="checkbox" class="size-5 rounded border-border-strong accent-[var(--color-accent)]"
+             :checked="allSelected" @change="toggleAll($event.target.checked)">
+      Select everyone on this page
+    </label>
+  </div>
+
+  <ul class="card mt-2 divide-y divide-border overflow-hidden p-0">
+    <li class="hidden grid-cols-[auto_minmax(0,2fr)_minmax(0,1.5fr)_9rem_7.5rem_2.5rem] items-center gap-x-4 px-5 py-3 text-sm text-txt-secondary lg:grid" aria-hidden="true">
+      <span class="size-5"></span><span>Name</span><span>Extension</span><span>Last attended</span><span>Status</span><span></span>
+    </li>
+    {% for person in page.object_list %}
+    {% person_actions person as can %}
+    <li class="relative grid grid-cols-[auto_minmax(0,1fr)_auto] items-center gap-x-4 gap-y-1 px-5 py-3.5 transition-colors hover:bg-surface-alt lg:grid-cols-[auto_minmax(0,2fr)_minmax(0,1.5fr)_9rem_7.5rem_2.5rem]"
+        :class="selected.includes('{{ person.pk }}') && 'bg-surface-alt'"
+        data-row data-id="{{ person.pk }}" data-name="{{ person.full_name }}" data-status="{{ person.status }}"
+        data-can="{% for a in can %}{{ a }} {% endfor %}"
+        data-detail-url="{% role_url 'user_detail' person.pk %}"
+        {% if 'edit' in can %}data-edit-url="{% role_url 'user_edit' person.pk %}"{% endif %}
+        {% if 'promote' in can %}data-promote-url="{% role_url 'user_promote' person.pk %}"{% endif %}
+        {% if 'archive' in can %}data-archive-url="{% role_url 'user_archive' person.pk %}"{% endif %}
+        {% if 'restore' in can %}data-restore-url="{% role_url 'user_restore' person.pk %}"{% endif %}
+        {% if 'suspend' in can %}data-suspend-url="{% role_url 'user_suspend' person.pk %}"{% endif %}
+        {% if 'unsuspend' in can %}data-unsuspend-url="{% role_url 'user_unsuspend' person.pk %}"{% endif %}
+        @contextmenu.prevent="openMenu($event, $el)">
+      <input type="checkbox" form="bulk-form" name="ids" value="{{ person.pk }}" x-model="selected"
+             class="relative z-10 size-5 shrink-0 rounded border-border-strong accent-[var(--color-accent)]"
+             aria-label="Select {{ person.full_name }}">
+      <div class="min-w-0">
+        <a href="{% role_url 'user_detail' person.pk %}"
+           class="block truncate font-medium text-txt-primary after:absolute after:inset-0 after:content-[''] hover:underline focus-visible:outline-2 focus-visible:outline-accent">{{ person.full_name }}</a>
+        <p class="font-mono text-sm text-txt-secondary">{{ person.account_id }}</p>
+        <p class="mt-1 flex flex-wrap gap-1.5">{% person_tags person with_status=False %}</p>
+      </div>
+      <button type="button" class="btn btn-ghost relative z-10 -mr-2 px-2 lg:order-last"
+              @click.stop="openMenu($event, $el.closest('[data-row]'), true)"
+              aria-haspopup="menu" aria-label="Actions for {{ person.full_name }}">
+        {% include 'includes/icon.html' with name='ellipsis-vertical' class='size-5' %}
+      </button>
+      <p class="col-start-2 min-w-0 truncate text-sm text-txt-secondary lg:col-auto">{% if person.extension %}{{ person.extension.name|title_case }}{% else %}No extension{% endif %}</p>
+      <p class="col-start-2 text-sm text-txt-secondary lg:col-auto">{% if person.last_attended_at %}<span class="lg:hidden">Last attended </span>{{ person.last_attended_at|date:"j M Y" }}{% else %}Not yet{% endif %}</p>
+      <span class="col-start-2 w-fit rounded-full border px-2.5 py-0.5 text-xs lg:col-auto
+        {% if person.status == 'suspended' %}border-warning text-warning
+        {% elif person.status == 'archived' %}border-border bg-surface-alt text-txt-secondary
+        {% elif person.status == 'active' %}border-success text-success
+        {% else %}border-border-strong text-txt-secondary{% endif %}">{{ person.get_status_display }}</span>
+    </li>
+    {% endfor %}
+  </ul>
+  {% include 'includes/pagination.html' with page=page querystring=querystring %}
+  {% else %}
+  <div class="card mt-6 text-center">
+    <p class="font-medium text-txt-primary">No guests found</p>
+    <p class="mt-1 text-sm text-txt-secondary">
+      {% if active_filters %}Try a different search or filter.{% else %}Guests appear here after they attend.{% endif %}
+    </p>
+  </div>
+  {% endif %}
+</div>
