@@ -763,26 +763,88 @@ PHOTO_MAX_BYTES = 2 * 1024 * 1024
 PHOTO_FORMATS = {"JPEG", "PNG", "WEBP"}
 BIRTH_DATE_EARLIEST = date(1900, 1, 1)
 
-
 class ProfileDetailsForm(forms.Form):
-    """The only details a person edits themselves: birth date and photo.
+    """What a person edits about THEMSELVES: birth date, phone, address and photo.
 
-    user -- the signed-in person. Needed because a birth date that is already
-    set cannot be removed. The photo is optional: leaving it empty keeps the
-    current one. Shape checks only (size, format); the service re-encodes it.
+    user -- the signed-in person. A birth date that is already set cannot be removed, and an old
+    address value that is not in the Philippine list may stay until changed (`saved_address`).
+    Phone and address are OPTIONAL here, but a filled address needs a country. The photo is
+    optional too: empty keeps the current one. Shape checks only; the service repeats the rules.
     """
+
+    #: Phone and address parts, handed to the service as one `contact` dict.
+    CONTACT_KEYS = ("phone_number", *ADDRESS_FIELDS)
 
     birth_date = forms.DateField(
         required=False,
         widget=forms.DateInput(attrs={"class": "input", "type": "date"}, format="%Y-%m-%d"),
+    )
+    phone_number = forms.CharField(
+        max_length=25, strip=True, required=False, label="Phone number",
+        widget=forms.TextInput(attrs={
+            "class": "input font-mono", "inputmode": "tel", "autocomplete": "tel",
+            "placeholder": "0917 123 4567",
+        }),
+    )
+    country = forms.ChoiceField(
+        required=False, label="Country", choices=[],
+        widget=forms.Select(attrs={"class": "input", "autocomplete": "country-name"}),
+    )
+    province = forms.CharField(
+        max_length=150, strip=True, required=False, label="Province",
+        widget=forms.TextInput(attrs={"class": "input", "autocomplete": "off"}),
+    )
+    municipality = forms.CharField(
+        max_length=150, strip=True, required=False, label="Municipality",
+        widget=forms.TextInput(attrs={"class": "input", "autocomplete": "off"}),
+    )
+    barangay = forms.CharField(
+        max_length=150, strip=True, required=False, label="Barangay",
+        widget=forms.TextInput(attrs={"class": "input", "autocomplete": "off"}),
+    )
+    postal_code = forms.CharField(
+        max_length=10, strip=True, required=False, label="Postal code",
+        widget=forms.TextInput(attrs={
+            "class": "input font-mono", "maxlength": "10", "inputmode": "numeric", "autocomplete": "postal-code",
+        }),
+    )
+    street = forms.CharField(
+        max_length=150, strip=True, required=False, label="Street",
+        widget=forms.TextInput(attrs={"class": "input", "autocomplete": "off"}),
+    )
+    building_number = forms.CharField(
+        max_length=50, strip=True, required=False, label="Building number",
+        widget=forms.TextInput(attrs={"class": "input", "autocomplete": "off"}),
     )
     photo = forms.ImageField(required=False)
 
     def __init__(self, *args, user, **kwargs):
         super().__init__(*args, **kwargs)
         self.user = user
-        self.fields["birth_date"].initial = user.birth_date
+        self.saved_address = {name: getattr(user, name) for name in ADDRESS_FIELDS}
+        self.fields["country"].choices = [("", "Choose a country")] + [(c, c) for c in COUNTRIES]
         self.fields["birth_date"].widget.attrs["max"] = timezone.localdate().isoformat()
+        self.initial.update({
+            "birth_date": user.birth_date,
+            "phone_number": user.phone_number,
+            "country": canonical_country(user.country),
+            "province": title_case(user.province),
+            "municipality": title_case(user.municipality),
+            "barangay": title_case(user.barangay),
+            "postal_code": user.postal_code,
+            "street": title_case(user.street),
+            "building_number": title_case(user.building_number),
+        })
+
+    @property
+    def address_state(self):
+        """Current country/province/municipality/barangay for the page's JavaScript."""
+        return {name: self[name].value() or "" for name in HIERARCHY}
+
+    @property
+    def contact(self):
+        """Cleaned phone and address, in one dict for the service."""
+        return {name: self.cleaned_data.get(name) or "" for name in self.CONTACT_KEYS}
 
     def clean_birth_date(self):
         value = self.cleaned_data.get("birth_date")
@@ -796,6 +858,35 @@ class ProfileDetailsForm(forms.Form):
             raise ValidationError("Enter a valid birth date.")
         return value
 
+    def clean_phone_number(self):
+        value = clean_phone(self.cleaned_data.get("phone_number"))
+        if not is_valid_phone(value):
+            raise ValidationError(PHONE_MESSAGE)
+        return value
+
+    # Address text is stored lowercase with single spaces, like everywhere else.
+    def clean_country(self):
+        return clean_text(self.cleaned_data.get("country"))
+
+    def clean_province(self):
+        return clean_text(self.cleaned_data.get("province"))
+
+    def clean_municipality(self):
+        return clean_text(self.cleaned_data.get("municipality"))
+
+    def clean_barangay(self):
+        return clean_text(self.cleaned_data.get("barangay"))
+
+    def clean_street(self):
+        return clean_text(self.cleaned_data.get("street"))
+
+    def clean_building_number(self):
+        return clean_text(self.cleaned_data.get("building_number"))
+
+    def clean_postal_code(self):
+        """Single spaces only; the case is left alone (foreign codes like 'SW1A 1AA')."""
+        return " ".join((self.cleaned_data.get("postal_code") or "").split())
+
     def clean_photo(self):
         photo = self.cleaned_data.get("photo")
         if not photo:
@@ -807,7 +898,18 @@ class ProfileDetailsForm(forms.Form):
             raise ValidationError("Use a JPG, PNG or WebP photo.")
         return photo
 
-
+    def clean(self):
+        cleaned = super().clean()
+        address = {name: cleaned.get(name) or "" for name in ADDRESS_FIELDS}
+        if any(address.values()):
+            if not address["country"]:
+                if "country" not in self.errors:
+                    self.add_error("country", "Choose a country for the address, or clear the address.")
+            else:
+                for field, message in check_address(address, self.saved_address).items():
+                    if field not in self.errors:
+                        self.add_error(field, message)
+        return cleaned
 class ProfileEmailForm(forms.Form):
     """One email address to verify (a new one, or a replacement for the current one)."""
 

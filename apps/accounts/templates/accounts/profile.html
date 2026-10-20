@@ -1,24 +1,29 @@
 <!--
   accounts/profile.html: the signed-in person's own profile (details, email, password).
   Extends: base_app.html (fills title, page_title and content). Page content uses h2 and below.
-  Context: details_form, email_form, password_form (bound forms come back after an error),
-  resend_wait (seconds until another link may be requested), verify_minutes (link lifetime),
-  has_photo. The signed-in person is `user` (auth context processor).
+  Context: details_form (birth date, phone, address, photo; has address_state), email_form,
+  password_form (bound forms come back after an error), resend_wait (seconds until another link
+  may be requested), verify_minutes (link lifetime), has_photo. The signed-in person is `user`.
   Layout: two columns from lg up (details on the left; email and password on the right), one column below.
   Every action is its own POST form with data-confirm, so ui.js asks first. The dialog is only
   a UX guard: the services re-check everything. Show passwords uses Alpine (x-cloak).
   The resend countdown is Alpine too; the server enforces the real cooldown.
   The photo picker is a styled label over a visually hidden file input (peer), so it is keyboard accessible.
+  The address picker (addressForm, in extra_js) turns province, municipality and barangay into
+  cascading dropdowns for the Philippines; its starting values come from the address-state JSON.
   The "Forgot password?" link is a placeholder (href #) until reset is built.
   Note: this comment contains no template tags on purpose.
 -->
 {% extends "base_app.html" %}
+{% load static %}
 {% load ui_tags %}
 
 {% block title %}Your profile{% endblock %}
 {% block page_title %}Your profile{% endblock %}
 
 {% block content %}
+{{ details_form.address_state|json_script:"address-state" }}
+
 <div class="grid w-full gap-6 lg:grid-cols-[minmax(0,1.2fr)_minmax(0,1fr)]">
 
   {# ------------------------------------------------------------ details #}
@@ -103,6 +108,62 @@
           </div>
         {% endif %}
       </div>
+
+      <div>
+        <label for="{{ details_form.phone_number.id_for_label }}" class="label text-base">{{ details_form.phone_number.label }}<span class="font-normal text-txt-secondary"> (optional)</span></label>
+        {{ details_form.phone_number }}
+        {% for error in details_form.phone_number.errors %}<p class="mt-2 text-base text-error" role="alert">{{ error }}</p>{% endfor %}
+        <p class="mt-1 text-base text-txt-secondary">Only you and your leaders can see this.</p>
+      </div>
+
+      {# ---- Home address: cascading Philippine dropdowns, plain inputs for other countries #}
+      <section class="space-y-4 border-t border-border pt-5" aria-labelledby="address-heading"
+               x-data="addressForm({ url: '{% static 'data/ph_address.json' %}', state: JSON.parse(document.getElementById('address-state').textContent) })">
+        <div>
+          <h3 id="address-heading" class="label text-base">Home address</h3>
+          <p class="text-base text-txt-secondary">Leave it empty, or fill it in. A filled address needs a country.</p>
+        </div>
+        <p class="text-base text-txt-secondary" x-show="loading" x-cloak style="display:none">Loading the Philippine address list…</p>
+        <p class="text-base text-error" x-show="failed" x-cloak style="display:none" role="alert">
+          The address list could not be loaded, so type the values instead. Reload the page to try again.
+        </p>
+
+        <div class="grid gap-4 sm:grid-cols-2">
+          <div>
+            <label for="id_country" class="label text-base">{{ details_form.country.label }}</label>
+            <select id="id_country" name="country" class="input" x-model="country" @change="onCountry($event)"
+                    {% if details_form.country.errors %}aria-invalid="true"{% endif %}>
+              {% for value, label in details_form.country.field.choices %}
+              <option value="{{ value }}"{% if details_form.country.value == value %} selected{% endif %}>{{ label }}</option>
+              {% endfor %}
+            </select>
+            {% for error in details_form.country.errors %}<p class="mt-2 text-base text-error" role="alert">{{ error }}</p>{% endfor %}
+          </div>
+
+          {% include "accounts/superadmin/_cascade_field.html" with field=details_form.province key="province" placeholder="Choose a province" options="provinces" parent="false" on_change="province = $event.target.value; municipality = ''; barangay = ''" %}
+          {% include "accounts/superadmin/_cascade_field.html" with field=details_form.municipality key="municipality" placeholder="Choose a municipality" options="municipalities" parent="!province" on_change="municipality = $event.target.value; barangay = ''" %}
+          {% include "accounts/superadmin/_cascade_field.html" with field=details_form.barangay key="barangay" placeholder="Choose a barangay" options="barangays" parent="!municipality" on_change="barangay = $event.target.value" %}
+
+          <div>
+            <label for="{{ details_form.postal_code.id_for_label }}" class="label text-base">{{ details_form.postal_code.label }}</label>
+            {{ details_form.postal_code }}
+            {% for error in details_form.postal_code.errors %}<p class="mt-2 text-base text-error" role="alert">{{ error }}</p>{% endfor %}
+          </div>
+          <div>
+            <label for="{{ details_form.building_number.id_for_label }}" class="label text-base">{{ details_form.building_number.label }}<span class="font-normal text-txt-secondary"> (optional)</span></label>
+            {{ details_form.building_number }}
+            {% for error in details_form.building_number.errors %}<p class="mt-2 text-base text-error" role="alert">{{ error }}</p>{% endfor %}
+          </div>
+          <div class="sm:col-span-2">
+            <label for="{{ details_form.street.id_for_label }}" class="label text-base">{{ details_form.street.label }}<span class="font-normal text-txt-secondary"> (optional)</span></label>
+            <div :class="usePicker && !barangay ? 'opacity-60' : ''"
+                 x-effect="$el.querySelector('input, select, textarea').disabled = usePicker && !barangay">
+              {{ details_form.street }}
+            </div>
+            {% for error in details_form.street.errors %}<p class="mt-2 text-base text-error" role="alert">{{ error }}</p>{% endfor %}
+          </div>
+        </div>
+      </section>
 
       <button type="submit" class="btn btn-primary">Save details</button>
     </form>
@@ -250,4 +311,91 @@
 
   </div>
 </div>
+{% endblock %}
+
+{% block extra_js %}
+<script>
+document.addEventListener('alpine:init', () => {
+  // Cascading address: the Philippine list is one JSON file, {province: {municipality: [barangay, ...]}},
+  // the same file the server checks against. The dropdowns are only used once it has loaded and the
+  // country is the Philippines; otherwise (another country, a failed download, no JavaScript) the
+  // plain text inputs stay in use.
+  Alpine.data('addressForm', (cfg) => ({
+    country: cfg.state.country || '', province: cfg.state.province || '',
+    municipality: cfg.state.municipality || '', barangay: cfg.state.barangay || '',
+    data: {}, loaded: false, loading: false, failed: false,
+
+    get isPH() { return this.country.trim().toLowerCase() === 'philippines'; },
+    get usePicker() { return this.loaded && this.isPH; },
+    get provinces() { return this.sorted(this.data); },
+    get municipalities() { return this.sorted(this.child(this.data, this.province)); },
+    get barangays() {
+      const list = this.child(this.child(this.data, this.province), this.municipality);
+      return Array.isArray(list) ? [...list].sort((a, b) => a.localeCompare(b)) : [];
+    },
+
+    sorted(obj) { return obj && !Array.isArray(obj) ? Object.keys(obj).sort((a, b) => a.localeCompare(b)) : []; },
+    // Case-insensitive lookup: saved values are lowercase, the list is in title case.
+    key(obj, value) {
+      if (!obj || Array.isArray(obj) || !value) return null;
+      const v = String(value).trim().toLowerCase();
+      return Object.keys(obj).find(k => k.toLowerCase() === v) || null;
+    },
+    child(obj, value) { const k = this.key(obj, value); return k === null ? null : obj[k]; },
+
+    // Phone and postal code only accept digits. The phone allows a leading +; the postal code is
+    // capped at 4 digits for the Philippines and free otherwise.
+    lockNumeric(form, name, rule, autocomplete) {
+      const input = form.querySelector(`[name="${name}"]`);
+      if (!input) return;
+      input.setAttribute('autocomplete', autocomplete);
+      const clean = () => {
+        const r = rule();
+        if (!r) { input.removeAttribute('maxlength'); input.inputMode = 'text'; return; }
+        input.inputMode = r.plus ? 'tel' : 'numeric';
+        if (r.max) input.maxLength = r.max;
+        const lead = r.plus && input.value.trim().startsWith('+') ? '+' : '';
+        const next = lead + input.value.replace(/\D/g, '');
+        if (next !== input.value) input.value = next;
+      };
+      input.addEventListener('input', clean);
+      this.$watch('country', clean);
+      clean();
+    },
+
+    onCountry() {
+      this.province = ''; this.municipality = ''; this.barangay = '';
+      this.$root.querySelectorAll('fieldset input').forEach(input => { input.value = ''; });
+      if (this.isPH) this.load();
+    },
+
+    async load() {
+      if (this.loaded || this.loading) return;
+      this.loading = true; this.failed = false;
+      try {
+        const response = await fetch(cfg.url);
+        if (!response.ok) throw new Error(response.status);
+        this.data = await response.json();
+      } catch (error) { this.failed = true; }
+      finally { this.loading = false; }
+      // Show saved values in the list's own spelling so the right option is selected.
+      const p = this.key(this.data, this.province); if (p) this.province = p;
+      const m = this.key(this.child(this.data, this.province), this.municipality); if (m) this.municipality = m;
+      const list = this.child(this.child(this.data, this.province), this.municipality);
+      const b = Array.isArray(list) ? list.find(x => x.toLowerCase() === this.barangay.trim().toLowerCase()) : null;
+      if (b) this.barangay = b;
+      this.loaded = Object.keys(this.data).length > 0;
+    },
+
+    init() {
+      const form = this.$root.closest('form');
+      this.$nextTick(() => {
+        this.lockNumeric(form, 'phone_number', () => ({ plus: true, max: 16 }), 'tel');
+        this.lockNumeric(form, 'postal_code', () => this.isPH ? { max: 4 } : null, 'postal-code');
+      });
+      if (this.isPH) return this.load();
+    },
+  }));
+});
+</script>
 {% endblock %}

@@ -52,6 +52,7 @@ def details_view(request):
             changed = svc.update_details(
                 request, request.user,
                 birth_date=form.cleaned_data["birth_date"], photo=form.cleaned_data["photo"],
+                contact=form.contact,
             )
         except ServiceError as exc:
             form.add_error(None, str(exc))

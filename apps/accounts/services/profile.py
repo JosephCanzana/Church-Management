@@ -42,7 +42,8 @@ from apps.core.services import ServiceError
 
 from ..models import EmailToken, User
 from ..signals import email_released
-from .users import duplicate_message
+from .users import CONTACT_FIELDS, check_contact, duplicate_message
+from ..address import ADDRESS_FIELDS
 
 logger = logging.getLogger(__name__)
 
@@ -136,12 +137,13 @@ def _process_photo(upload):
     return ContentFile(buffer.getvalue())
 
 
-def update_details(request, user, *, birth_date, photo=None):
-    """Save a new birth date and/or a new photo. Returns True if anything changed.
+def update_details(request, user, *, birth_date, photo=None, contact=None):
+    """Save birth date, phone, address and/or a new photo. Returns True if anything changed.
 
-    The birth date is part of the duplicate-name rule (same name is allowed only
-    with different birth dates), so a change is checked with `duplicate_message`.
-    The old photo file is deleted from disk after the change is committed.
+    The birth date is part of the duplicate-name rule, so a change is checked with
+    `duplicate_message`. `contact` is the cleaned phone and address (`ProfileDetailsForm.contact`);
+    it is checked with `check_contact`. Phone and address are private: the audit row lists only
+    the NAMES of the fields that changed. The old photo file is deleted after the commit.
     """
     with transaction.atomic():
         person = _lock_user(user.pk)
@@ -165,6 +167,16 @@ def update_details(request, user, *, birth_date, photo=None):
             person.birth_date = birth_date
             fields.append("birth_date")
 
+        if contact is not None:
+            new = {name: contact.get(name, getattr(person, name)) or "" for name in CONTACT_FIELDS}
+            check_contact(new, existing={name: getattr(person, name) for name in ADDRESS_FIELDS})
+            changed = [name for name in CONTACT_FIELDS if new[name] != (getattr(person, name) or "")]
+            for name in changed:
+                setattr(person, name, new[name])
+            if changed:
+                after["contact_fields_changed"] = changed      # names only, never the values
+                fields.extend(changed)
+
         old_photo = None
         if photo is not None:
             content = _process_photo(photo)
@@ -184,7 +196,6 @@ def update_details(request, user, *, birth_date, photo=None):
             before=before or None, after=after, **_entity(person),
         )
     return True
-
 
 def remove_photo(request, user):
     """Delete the profile photo. Returns False when there was none (already done)."""
