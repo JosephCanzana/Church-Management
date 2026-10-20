@@ -219,19 +219,7 @@
     change it at next login.
   </p>
   {% may_type_password as may_type %}
-  {% if may_type %}
-  <div>
-    <label for="reset-password-value" class="label">Password <span class="font-normal text-txt-secondary">(optional)</span></label>
-    <input id="reset-password-value" type="password" name="password" class="input"
-           autocomplete="new-password" minlength="8">
-    <p class="field-help">
-      {% if request.user.role == 'admin' %}Leave empty to use your default password for this role, else the global one, or a generated one if there is none.
-      {% else %}Leave empty to use your default password for this role, or a generated one if you have none.{% endif %}
-    </p>
-  </div>
-  {% else %}
-  <p class="text-sm text-txt-secondary">They get the global member password.</p>
-  {% endif %}
+  <p class="text-sm text-txt-secondary">They get the default password.</p>
   <div class="flex justify-end">
     <button type="submit" class="btn btn-primary">Reset password</button>
   </div>
