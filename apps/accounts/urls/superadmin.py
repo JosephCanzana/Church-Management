@@ -52,7 +52,6 @@ urlpatterns = [
     path("users/<int:pk>/unsuspend/", people.user_unsuspend, name="user_unsuspend"),
     path("users/<int:pk>/reset-password/", people.user_reset_password, name="user_reset_password"),
     path("users/<int:pk>/delete/", people.user_delete, name="user_delete"),
-
     # special member roles: give or take one, and the per-extension limits
     path("users/<int:pk>/special-roles/assign/", special.special_role_assign, name="special_role_assign"),
     path("users/<int:pk>/special-roles/remove/", special.special_role_remove, name="special_role_remove"),

@@ -44,8 +44,8 @@ def is_coordinator(actor):
 
 
 def can_manage_extensions(actor):
-    """Create, edit, archive, restore, delete extensions, assign coordinators."""
-    return is_super_admin(actor)
+    """Create, edit, assign coordinators (super-admin only)."""
+    return is_super_admin(actor) or is_admin(actor)
 
 
 def require_extension_manager(actor):
@@ -89,7 +89,7 @@ PERSON_ACTIONS = (
 # limited to their own extension (see `can_act_on`).
 _ACTOR_RULES = {
     Role.SUPER_ADMIN: ((Role.SUPER_ADMIN, Role.ADMIN, Role.COORDINATOR, Role.MEMBER), set(PERSON_ACTIONS)),
-    Role.ADMIN: ((Role.COORDINATOR, Role.MEMBER), set(PERSON_ACTIONS) - {DELETE}),
+    Role.ADMIN: ((Role.COORDINATOR, Role.MEMBER), set(PERSON_ACTIONS)),
     Role.COORDINATOR: (
         (Role.MEMBER,), {VIEW, EDIT, RESET_PASSWORD, ARCHIVE, RESTORE, PROMOTE, GRANT_ACCOUNT},
     ),

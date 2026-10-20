@@ -36,6 +36,7 @@ urlpatterns = [
     path("users/<int:pk>/reset-password/", people.user_reset_password, name="user_reset_password"),
     path("users/<int:pk>/special-roles/assign/", special.special_role_assign, name="special_role_assign"),
     path("users/<int:pk>/special-roles/remove/", special.special_role_remove, name="special_role_remove"),
+    path("users/<int:pk>/delete/", people.user_delete, name="user_delete"),
     # How many people each extension may have in each special role.
     path("special-roles/", special.special_role_limits, name="special_role_limits"),
     # Attendance sheets: written once in attendance/area_urls.py (string include: accounts imports nothing from attendance).
