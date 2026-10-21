@@ -256,20 +256,17 @@ def _attendance_trend(user):
 
 
 def _tithe_totals(user, dates):
-    """Return {date: frozen total} for uploaded tithes records on uploaded sheets of those dates."""
+    """Return {date: frozen total} for finalized tithes reports on uploaded sheets of those dates."""
     if not dates:
         return {}
-    records = _scope_tithes(
-        TithesOffering.objects.filter(
-            status=TithesOffering.Status.UPLOADED,
-            attendance__status=Attendance.Status.UPLOADED,
-            attendance__attendance_date__in=dates,
-        ),
-        user,
+    # for_user is the only scoping of reports: an unreachable report is simply not in the queryset.
+    records = TithesOffering.objects.for_user(user).filter(
+        status=TithesOffering.Status.FINALIZED,
+        attendance__status=Attendance.Status.UPLOADED,
+        attendance__attendance_date__in=dates,
     )
     rows = records.values("attendance__attendance_date").annotate(total=Sum("total_amount")).order_by()
     return {row["attendance__attendance_date"]: row["total"] for row in rows}
-
 
 def _people_per_extension():
     """Return bars of the biggest extensions by people who are not archived (super-admin and admin only)."""
