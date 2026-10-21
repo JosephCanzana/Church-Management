@@ -748,6 +748,13 @@ class SetNewPasswordForm(forms.Form):
         value = self.cleaned_data["new_password"]
         if self.user.check_password(value):
             raise ValidationError("Choose a password different from your temporary one.")
+        if not re.match(
+            r"^(?=.*[a-z])(?=.*[A-Z])(?=.*\d)(?=.*[^A-Za-z0-9\s])\S{8,}$", value
+        ):
+            raise ValidationError(
+                "Use at least 8 characters, with an uppercase letter, a lowercase letter, "
+                "a number and a special character, and no spaces."
+            )
         validate_password(value, self.user)  # raises ValidationError with every problem
         return value
 
