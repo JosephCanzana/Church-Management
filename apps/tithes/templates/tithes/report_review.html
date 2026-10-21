@@ -58,6 +58,9 @@ A finalized report shows its FROZEN numbers, exactly as stored.
       <p class="text-sm text-txt-secondary">Bills and coins (&#8369;{{ totals.breakdown_total|floatformat:"2g" }}) compared with the Total.</p>
     </div>
 
+    {% if can_print %}
+      <a class="btn" href="{% role_url 'report_print' report.pk %}" target="_blank" rel="noopener">Print or save as PDF</a>
+    {% endif %}
     <div class="flex flex-wrap items-start gap-3">
       {% if can_edit %}<a class="btn btn-secondary min-h-[44px] text-base" href="{% role_url 'report_detail' report.pk %}">Back to editing</a>{% endif %}
       {% if can_reopen %}
@@ -71,6 +74,7 @@ A finalized report shows its FROZEN numbers, exactly as stored.
       {% endif %}
     </div>
   </section>
+
 
   {% if is_draft and can_finalize %}
   <section class="card space-y-3" aria-label="Finalize">

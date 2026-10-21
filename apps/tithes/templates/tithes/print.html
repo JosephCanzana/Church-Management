@@ -1,0 +1,199 @@
+{% comment %}
+tithes/print.html
+Standalone A4 "Reports on Tithes & Offering" for the browser's print dialog ("Save as PDF" is a print destination).
+It does NOT extend base_app.html: black text on white whatever the person's light or dark mode, inline CSS, no
+external fonts, no Tailwind, no includes/logo.html. The layout copies the paper form: church and extension,
+date, No. of Tithers, Tithes, Offering, Total, a numbered Name and Amount grid, the bills-and-coins breakdown
+(1000 to 1), TOTAL AMOUNT, the difference line, Prepared by and two Verified by signature lines.
+Context (tithes.views.report_print): report, sheet, is_draft, totals, difference_abs, rows, denominations,
+bypass_note, back_url.
+A finalized report prints its FROZEN numbers; a draft is counted live and says "DRAFT, not finalized".
+Privacy: names and amounts only. Never a birth date, phone number or address, and never a decision note.
+Printing notes: thead repeats on every page and rows never split (no page numbers: CSS page counters are
+unreliable across browsers). The toolbar and the grey desk are screen-only.
+{% endcomment %}{% load static ui_tags people_tags %}<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="robots" content="noindex">
+  <title>Tithes and offering: {{ sheet.label }}, {{ sheet.attendance_date|date:"j M Y" }}</title>
+  <style>
+    @page { size: A4; margin: 12mm; }
+    * { box-sizing: border-box; }
+    html { -webkit-print-color-adjust: exact; print-color-adjust: exact; }
+    body {
+      margin: 0; color: #000; background: #fff;
+      font: 10pt/1.25 Arial, Helvetica, "Liberation Sans", sans-serif;
+    }
+    p, h1, dl, dd { margin: 0; }
+
+    /* ---- screen only: a grey desk, the page as a white sheet, and a toolbar ---- */
+    .toolbar { display: none; }
+    @media screen {
+      body { background: #e5e7eb; padding: 16px; }
+      .toolbar {
+        display: flex; flex-wrap: wrap; gap: 12px; align-items: center; justify-content: space-between;
+        max-width: 210mm; margin: 0 auto 12px; font-size: 16px;
+      }
+      .toolbar a, .toolbar button {
+        min-height: 44px; padding: 0 18px; border: 1px solid #111; border-radius: 8px;
+        background: #fff; color: #111; font: inherit; text-decoration: none; cursor: pointer;
+        display: inline-flex; align-items: center;
+      }
+      .toolbar button { background: #111; color: #fff; }
+      .toolbar span { color: #374151; }
+      .sheet { width: 210mm; max-width: 100%; margin: 0 auto; padding: 12mm; background: #fff; box-shadow: 0 1px 6px rgba(0,0,0,.25); }
+    }
+
+    /* ---- header ---- */
+    .head { text-align: center; }
+    .head img { display: block; height: 15mm; width: auto; margin: 0 auto 2mm; }
+    .church { font-weight: 700; font-size: 12pt; letter-spacing: .02em; text-transform: uppercase; }
+    .place { text-transform: uppercase; font-size: 10pt; }
+    h1 { font-size: 12pt; font-weight: 700; letter-spacing: .06em; text-transform: uppercase; margin-top: 1mm; }
+
+    .meta { display: grid; grid-template-columns: 1fr 1fr; gap: 1.5mm 8mm; margin: 4mm 0 3mm; font-size: 10pt; }
+    .meta div { display: flex; gap: 2mm; align-items: baseline; justify-content: space-between; border-bottom: .3mm solid #000; padding-bottom: .6mm; }
+    .meta dt { font-weight: 700; white-space: nowrap; }
+    .meta dd { text-align: right; font-variant-numeric: tabular-nums; }
+    .draft { font-weight: 700; letter-spacing: .04em; }
+
+    /* ---- the two columns: names on the left, bills and coins on the right ---- */
+    .cols { display: flex; gap: 8mm; align-items: flex-start; margin-top: 4mm; }
+    .names { flex: 1 1 auto; min-width: 0; }
+    .cash { flex: 0 0 70mm; break-inside: avoid; page-break-inside: avoid; }
+
+    table { width: 100%; border-collapse: collapse; }
+    th, td { border: .3mm solid #000; padding: 0 1.5mm; }
+    thead { display: table-header-group; }   /* repeats on page 2 and beyond */
+    tr { break-inside: avoid; page-break-inside: avoid; }
+    thead th { font-size: 8pt; font-weight: 700; text-align: center; text-transform: uppercase; height: 5.5mm; padding: 0 1mm; }
+    tbody td { height: 6.2mm; font-size: 9.5pt; vertical-align: middle; }
+    td.num { width: 8mm; text-align: right; padding-right: 1.2mm; }
+    td.name { text-align: left; }
+    td.money, th.money { text-align: right; font-variant-numeric: tabular-nums; white-space: nowrap; }
+    td.money { width: 30mm; }
+    .empty { text-align: center; font-style: italic; height: 10mm; }
+
+    table.cash-table td { height: 5.8mm; }
+    table.cash-table td.den { width: 16mm; text-align: right; font-weight: 700; }
+    table.cash-table td.cnt { width: 14mm; text-align: right; font-variant-numeric: tabular-nums; }
+
+    /* ---- totals under the cash table ---- */
+    .total { display: flex; justify-content: space-between; align-items: baseline; margin-top: 2mm;
+      border-top: .5mm solid #000; padding-top: 1mm; font-weight: 700; font-size: 10.5pt; text-transform: uppercase; }
+    .total b { font-size: 12pt; font-variant-numeric: tabular-nums; }
+    .diff { margin-top: 1.5mm; font-size: 9.5pt; display: flex; justify-content: space-between; }
+    .diff b { font-variant-numeric: tabular-nums; }
+    .note { font-size: 8.5pt; font-style: italic; margin-top: 3mm; border: .3mm solid #000; padding: 1.5mm 2mm; }
+
+    /* ---- signatures ---- */
+    .sign { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 10mm; margin-top: 14mm; break-inside: avoid; page-break-inside: avoid; }
+    .sign div { border-top: .3mm solid #000; padding-top: 1mm; text-align: center; font-size: 9pt; }
+    .done { margin-top: 5mm; font-size: 9pt; }
+    .foot { margin-top: 6mm; font-size: 8pt; text-align: right; }
+  </style>
+</head>
+<body>
+  <div class="toolbar">
+    <a href="{{ back_url }}">Back to the report</a>
+    <span>Choose "Save as PDF" as the destination to keep a copy.</span>
+    <button type="button" onclick="window.print()">Print or save as PDF</button>
+  </div>
+
+  <main class="sheet">
+    <header class="head">
+      <img src="{% static 'images/black-logo.svg' %}" alt="">
+      <p class="church">Jesus Is Lord Church {{ sheet.extension.name|title_case }}</p>
+      {% if sheet.extension.municipality or sheet.extension.province %}
+      <p class="place">{{ sheet.extension.municipality|title_case }}{% if sheet.extension.municipality and sheet.extension.province %}, {% endif %}{{ sheet.extension.province|title_case }}</p>
+      {% endif %}
+      <h1>Reports on Tithes &amp; Offering</h1>
+    </header>
+
+    <dl class="meta">
+      <div><dt>Date:</dt><dd>{{ sheet.attendance_date|date:"F j, Y" }}</dd></div>
+      <div><dt>Service:</dt><dd>{{ sheet.label }}</dd></div>
+      <div><dt>No. of Tithers:</dt><dd>{{ totals.tithers }}</dd></div>
+      <div><dt>Tithes:</dt><dd>&#8369;{{ totals.tithes|floatformat:"2g" }}</dd></div>
+      <div><dt>Offering:</dt><dd>&#8369;{{ totals.offering|floatformat:"2g" }}</dd></div>
+      <div><dt>Total:</dt><dd>&#8369;{{ totals.total|floatformat:"2g" }}</dd></div>
+      {% if is_draft %}
+      <div><dd class="draft">DRAFT, not finalized</dd></div>
+      {% endif %}
+    </dl>
+
+    <div class="cols">
+      <section class="names" aria-label="Tithers">
+        <table>
+          <colgroup><col style="width: 8mm"><col><col style="width: 30mm"></colgroup>
+          <thead>
+            <tr><th scope="col">#</th><th scope="col">Name</th><th scope="col" class="money">Amount</th></tr>
+          </thead>
+          <tbody>
+            {% for row in rows %}
+            <tr>
+              <td class="num">{{ row.number }}</td>
+              <td class="name">{{ row.name }}</td>
+              <td class="money">&#8369;{{ row.amount|floatformat:"2g" }}</td>
+            </tr>
+            {% empty %}
+            <tr><td colspan="3" class="empty">No tithes recorded.</td></tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      </section>
+
+      <section class="cash" aria-label="Bills and coins">
+        <table class="cash-table">
+          <thead>
+            <tr><th scope="col">Bill or coin</th><th scope="col">Count</th><th scope="col" class="money">Amount</th></tr>
+          </thead>
+          <tbody>
+            {% for line in denominations %}
+            <tr>
+              <td class="den">{{ line.value }}</td>
+              <td class="cnt">{{ line.count }}</td>
+              <td class="money">&#8369;{{ line.line|floatformat:"2g" }}</td>
+            </tr>
+            {% endfor %}
+          </tbody>
+        </table>
+        <p class="total"><span>Total amount</span> <b>&#8369;{{ totals.breakdown_total|floatformat:"2g" }}</b></p>
+        <p class="diff">
+          <span>Difference</span>
+          <b>
+            {% if totals.difference == 0 %}&#8369;0.00 (balanced)
+            {% elif totals.difference < 0 %}&#8369;{{ difference_abs|floatformat:"2g" }} short
+            {% else %}&#8369;{{ difference_abs|floatformat:"2g" }} over{% endif %}
+          </b>
+        </p>
+        {% if bypass_note %}
+        <p class="note">
+          Finalized with a difference of &#8369;{{ bypass_note.difference|floatformat:"2g" }}
+          ({% if bypass_note.difference < 0 %}short{% else %}over{% endif %}),
+          {% if bypass_note.kind == "approved" %}approved by{% else %}finalized directly by{% endif %}
+          {{ bypass_note.by }}, reason: {{ bypass_note.reason }}
+        </p>
+        {% endif %}
+      </section>
+    </div>
+
+    <section class="sign" aria-label="Signatures">
+      <div>Prepared by</div>
+      <div>Verified by</div>
+      <div>Verified by</div>
+    </section>
+
+    {% if not is_draft %}
+    <p class="done">
+      Finalized by {% if report.finalized_by %}{{ report.finalized_by.full_name }}{% else %}Not recorded{% endif %},
+      {{ report.finalized_at|date:"j M Y" }}
+    </p>
+    {% endif %}
+
+    <p class="foot">Printed {% now "j M Y, g:i A" %} (Manila time)</p>
+  </main>
+</body>
+</html>

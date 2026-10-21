@@ -21,7 +21,7 @@ from datetime import date
 from decimal import Decimal, InvalidOperation
 
 from django.db import IntegrityError, transaction
-from django.db.models import Count, Q, Sum
+from django.db.models import Count, Exists, OuterRef, Q, Sum
 from django.utils import timezone
 
 from apps.accounts.models import Extension, PersonType, Role, Status, User
@@ -908,3 +908,81 @@ def decide_bypass(actor, request_id, *, approve, note, token, request=None):
                 },
             )
     return BypassDecisionResult(bypass_request=bypass_request)
+
+
+# ============================================================================ my tithes
+def member_tithe_history(user):
+    """The envelopes `user` gave or shared in, from FINALIZED reports only, newest first.
+
+    Same idea as attendance `member_attendance_history`: nothing is copied, so a reopened report (a draft
+    again) leaves the history until it is finalized once more, and a report on an ARCHIVED sheet is left out,
+    just as its numbers are left out of the dashboards. An entry counts when `user` is its giver OR one of its
+    co-givers. The FULL amount of the envelope is shown, never split between the people on it.
+    Each entry: `{"report_id", "entry_id", "date", "label", "extension", "amount", "shared_with", "role"}`
+    where `shared_with` is the list of the OTHER names on the envelope (stored snapshots) and `role` is
+    "giver" or "co_giver". Only the person's OWN envelopes are read (`user` comes from the signed-in request,
+    never from a URL), and nothing about another person is returned except the name printed on the envelope.
+    """
+    user_id = _pk(user)
+    as_co_giver = TitheEntryGiver.objects.filter(entry=OuterRef("pk"), user_id=user_id)
+    entries = (
+        TitheEntry.objects.select_related("tithes_offering__attendance__extension")
+        .prefetch_related("co_givers")
+        .filter(
+            Q(user_id=user_id) | Exists(as_co_giver),
+            tithes_offering__status=TithesOffering.Status.FINALIZED,
+        )
+        .exclude(tithes_offering__attendance__status=Attendance.Status.ARCHIVED)
+    )
+    history = []
+    for entry in entries:
+        sheet = entry.tithes_offering.attendance
+        is_giver = entry.user_id == user_id
+        others = [g.name_snapshot for g in entry.co_givers.all() if g.user_id != user_id]
+        if not is_giver:
+            others.insert(0, entry.giver_name)   # the name on the envelope comes first
+        history.append({
+            "report_id": entry.tithes_offering_id,
+            "entry_id": entry.pk,
+            "date": sheet.attendance_date,
+            "label": sheet.label,
+            "extension": title_case(sheet.extension.name),
+            "amount": entry.amount,
+            "shared_with": others,
+            "role": "giver" if is_giver else "co_giver",
+        })
+    history.sort(key=lambda e: (e["date"], e["report_id"], e["entry_id"]), reverse=True)
+    return history
+
+
+def entry_names(entry):
+    """The names printed for one envelope: the giver, then the co-givers ("Juan Cruz & Maria Cruz").
+
+    Uses the stored name snapshots only. Two names read "A & B"; three or more read "A, B & C".
+    """
+    names = [entry.giver_name] + [g.name_snapshot for g in entry.co_givers.all()]
+    return names[0] if len(names) == 1 else ", ".join(names[:-1]) + " & " + names[-1]
+
+
+def bypass_note_for(report):
+    """What the printed page says about a mismatch that was let through, or None.
+
+    Returns `{"difference", "by", "reason", "kind"}` for a FINALIZED report whose difference is not 0:
+    `kind` is "direct" (an admin typed a reason: `bypass_reason` and `bypassed_by`) or "approved" (the USED
+    request whose stored difference equals the frozen one; its message is the reason and `decided_by` the
+    approver). None when the report is a draft or balanced. Read-only: the print screen is the only place
+    these words are shown, and they are never written to `audit_log` or `notification.data`.
+    """
+    if report.status != TithesOffering.Status.FINALIZED or not report.difference:
+        return None
+    if report.bypass_reason:
+        by = report.bypassed_by.full_name if report.bypassed_by_id else "an admin"
+        return {"difference": report.difference, "by": by, "reason": report.bypass_reason, "kind": "direct"}
+    used = (
+        report.bypass_requests.select_related("decided_by")
+        .filter(status=TitheBypassRequest.Status.USED, difference=report.difference).order_by("-pk").first()
+    )
+    if used is None:
+        return None
+    by = used.decided_by.full_name if used.decided_by_id else "an admin"
+    return {"difference": report.difference, "by": by, "reason": used.message, "kind": "approved"}

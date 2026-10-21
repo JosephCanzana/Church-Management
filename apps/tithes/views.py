@@ -19,6 +19,7 @@ PRIVACY: nothing here writes an amount, a bypass message or a decision note anyw
 from functools import wraps
 
 from django.contrib import messages
+from django.contrib.auth.decorators import login_required
 from django.core.exceptions import ObjectDoesNotExist, PermissionDenied
 from django.core.paginator import Paginator
 from django.db.models import Exists, OuterRef, Prefetch, Q
@@ -48,6 +49,9 @@ WORKSPACE_TEMPLATE = "tithes/report_workspace.html"
 REVIEW_TEMPLATE = "tithes/report_review.html"
 HOUSEHOLD_TEMPLATE = "tithes/household_list.html"
 PENDING_TEMPLATE = "tithes/pending_requests.html"
+PRINT_TEMPLATE = "tithes/print.html"
+MINE_TEMPLATE = "tithes/mine.html"
+MINE_PAGE_SIZE = 25
 
 ADMIN_ROLES = (Role.SUPER_ADMIN, Role.ADMIN)
 
@@ -356,6 +360,8 @@ def _report_context(request, report):
         "can_withdraw": can_withdraw,
         "can_decide": can_decide,
         "can_reopen": can_reopen,
+        # Brick 4: the "Print or save as PDF" button on the review page (opens the A4 page in a new tab).
+        "can_print": permissions.can_print(user, report),
         "finalize_token": new_submission_token() if can_finalize else "",
         "request_token": new_submission_token() if can_request else "",
         "decision_token": new_submission_token() if can_decide else "",
@@ -401,6 +407,56 @@ def report_review(request, pk):
         messages.error(request, "You cannot review this report.")
         return _to(request, "report_list")
     return render(request, REVIEW_TEMPLATE, _report_context(request, report))
+
+
+# ============================================================================ print
+def _print_rows(report):
+    """The numbered lines of the printed grid: one per envelope, `{"number", "name", "amount"}`.
+
+    A shared envelope prints ONCE with every name on it ("Juan Cruz & Maria Cruz") and its full amount.
+    Only names and amounts are read: never a birth date, phone number or address.
+    """
+    entries = report.entries.prefetch_related("co_givers").order_by("giver_name", "pk")
+    return [
+        {"number": number, "name": services.entry_names(entry), "amount": entry.amount}
+        for number, entry in enumerate(entries, start=1)
+    ]
+
+
+@tithes_screen
+@require_http_methods(["GET"])
+def report_print(request, pk):
+    """The standalone A4 page for the browser's print dialog ("Save as PDF" is a print destination).
+
+    Opens for anyone who may open the report (`can_print`, same rule as `can_view`): a special member gets
+    drafts only. A finalized report prints its FROZEN numbers (`frozen_totals_for`); a draft counts live
+    (`build_totals`) and prints "DRAFT, not finalized". Read-only: it changes nothing and logs nothing.
+    """
+    report = _open_report(request, pk)
+    if report is None:
+        return _gone(request)
+    if not permissions.can_print(request.user, report):
+        messages.error(request, "You cannot print this report.")
+        return _to(request, "report_list")
+    draft = report.status == TithesOffering.Status.DRAFT
+    totals = services.build_totals(report) if draft else services.frozen_totals_for(report)
+    stored = report.denomination_breakdown or {}
+    denominations = []
+    for value in services.DENOMINATIONS:
+        count = _count_of(stored.get(str(value)))
+        denominations.append({"value": value, "count": count, "line": value * count})
+    back = "report_review" if permissions.can_review(request.user, report) else "report_detail"
+    return render(request, PRINT_TEMPLATE, {
+        "report": report,
+        "sheet": report.attendance,
+        "is_draft": draft,
+        "totals": totals,
+        "difference_abs": abs(totals.difference),
+        "rows": _print_rows(report),
+        "denominations": denominations,
+        "bypass_note": services.bypass_note_for(report),
+        "back_url": _url(request, back, report.pk),
+    })
 
 
 # ============================================================================ giver picker (JSON)
@@ -685,3 +741,21 @@ def household_member_end(request, pk):
     return _household_action(
         request, extension_id, lambda: services.end_household_member(request.user, pk), "Membership ended.",
     )
+
+
+# ============================================================================ my tithes
+@login_required
+@never_cache
+@require_http_methods(["GET"])
+def my_tithes(request):
+    """The signed-in person's own giving history: every role, no report access needed.
+
+    Mounted ONLY at the member root (`tithes:mine`), never under a role area, so it never mixes with report
+    management and skips `tithes_screen` on purpose (that guard is about reports and seats). It reads
+    `request.user` and nothing else: no id comes from the URL, the query string or a form, so nobody can open
+    someone else's history. Finalized reports only (`services.member_tithe_history`); the full amount of a
+    shared envelope is shown, never split.
+    """
+    entries = services.member_tithe_history(request.user)
+    page = Paginator(entries, MINE_PAGE_SIZE).get_page(request.GET.get("page"))
+    return render(request, MINE_TEMPLATE, {"page": page, "total": len(entries), "querystring": ""})

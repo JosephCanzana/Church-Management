@@ -23,6 +23,8 @@ urlpatterns = [
     # One report: the workspace while it is an editable draft, the review otherwise.
     path("<int:pk>/", views.report_detail, name="report_detail"),
     path("<int:pk>/review/", views.report_review, name="report_review"),
+    # Standalone A4 page for the browser's print dialog (GET, changes and logs nothing).
+    path("<int:pk>/print/", views.report_print, name="report_print"),
     # JSON helpers for the giver picker (GET, change nothing).
     path("<int:pk>/givers/", views.giver_search, name="giver_search"),
     path("<int:pk>/givers/prefill/", views.giver_prefill, name="giver_prefill"),

@@ -1,0 +1,49 @@
+<!--
+tithes/mine.html
+"My tithes": the signed-in person's own giving history (finalized reports only), newest first, 25 per page.
+Blocks filled: title, content. Context expected (tithes.views.my_tithes): page, total, querystring.
+Each page.object_list entry: report_id, entry_id, date, label, extension, amount, shared_with (a list of other
+names on the same envelope), role ("giver" or "co_giver"). The amount is the FULL envelope, never split.
+Privacy: only the person's own envelopes; other people appear only as names printed on a shared envelope.
+-->
+{% extends "base_app.html" %}{% load static %}
+{% block title %}My tithes{% endblock %}
+{% block content %}
+<section class="stack">
+  <header>
+    <h1 class="text-xl font-semibold">My tithes</h1>
+    <p class="text-sm opacity-80">
+      Tithes you gave, or shared with someone, in finalized reports. A shared envelope shows its full amount.
+    </p>
+  </header>
+
+  {% if page.object_list %}
+  <ul class="stack" role="list">
+    {% for entry in page.object_list %}
+    <li class="card">
+      <div class="flex items-baseline justify-between gap-3">
+        <div>
+          <p class="font-medium">{{ entry.date|date:"F j, Y" }}</p>
+          <p class="text-sm opacity-80">{{ entry.label }}, {{ entry.extension }}</p>
+        </div>
+        <p class="font-mono font-semibold">&#8369;{{ entry.amount|floatformat:"2g" }}</p>
+      </div>
+      {% if entry.shared_with %}
+      <p class="text-sm opacity-80">Shared with {{ entry.shared_with|join:", " }}</p>
+      {% endif %}
+    </li>
+    {% endfor %}
+  </ul>
+
+  {% if page.has_other_pages %}
+  <nav class="flex justify-between gap-3" aria-label="Pages">
+    {% if page.has_previous %}<a href="?page={{ page.previous_page_number }}">Newer</a>{% else %}<span></span>{% endif %}
+    <span class="text-sm">Page {{ page.number }} of {{ page.paginator.num_pages }}</span>
+    {% if page.has_next %}<a href="?page={{ page.next_page_number }}">Older</a>{% else %}<span></span>{% endif %}
+  </nav>
+  {% endif %}
+  {% else %}
+  <p class="card">Nothing here yet. Your tithes appear after a report is finalized.</p>
+  {% endif %}
+</section>
+{% endblock %}

@@ -134,9 +134,9 @@ SECTION_TABS = {
     "journey": [
         TabItem("Goals", "faith:goals", roles=(COORDINATOR, MEMBER)),
         TabItem("Attendance", "attendance:mine"),
-        # Points at the tithes list of the member root (/tithes/). Only members can reach it, and only with the seat;
-        # a personal "my tithes" history page (entries where I am giver or co-giver) will replace this later.
-        TabItem("Tithes", "tithes:report_list", roles=(MEMBER,)),
+        # "My tithes": the person's own giving history (entries where I am giver or co-giver), every role.
+        # It lives at /tithes/mine/ in the member root only (tithes/urls.py).
+        TabItem("Tithes", "tithes:mine"),
     ],
     "people": [
         TabItem("People", "superadmin:user_list", roles=(SUPER_ADMIN,)),

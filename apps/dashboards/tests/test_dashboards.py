@@ -31,8 +31,15 @@ def add_sheet(extension, day, present, first_timers, amount=None, status="upload
     )
     if amount is not None:
         TithesOffering.objects.create(
-            attendance=sheet, offering_amount=0, status=status,
-            total_amount=Decimal(amount) if status == "uploaded" else None,
+            attendance=sheet,                 # keep whatever your helper passes here
+            status="finalized",
+            offering_amount=Decimal("0"),
+            tithes_total=Decimal(amount),     # was total_amount; the bar now reads tithes_total
+            total_amount=Decimal(amount),
+            breakdown_total=Decimal(amount),
+            difference=Decimal("0"),
+            tithers_count=0,
+            finalized_at=timezone.now(),
         )
     return sheet
 

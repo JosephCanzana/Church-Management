@@ -7,8 +7,8 @@ the result to a template. Pieces:
   version), "continue reading", quick links (taken from ``NAV_ITEMS``, so a menu
   change is picked up here too) and the "coming soon" cards;
 * leaders only (super-admin, admin, coordinator): counts and charts for what they
-  manage. Attendance and tithes numbers come from *uploaded* sheets and use the
-  frozen values stored on them, never a recount.
+  manage. Attendance and tithes numbers come from *uploaded* sheets (tithes: finalized
+  reports) and use the frozen values stored on them, never a recount.
 
 Charts are drawn by the templates from plain ``Bar`` rows (label, text, percent),
 so there is no JavaScript and the colors follow the theme tokens.
@@ -84,8 +84,8 @@ def get_dashboard_context(user, version_code, path):
 # --------------------------------------------------------------- scoping
 # AGENTS.md says coordinator-scoped data goes through the project's for_user(user)
 # queryset helper. These three functions are the only places this app narrows
-# data to a coordinator's extension. Attendance already uses its own
-# `Attendance.objects.for_user`; people and tithes still filter by hand.
+# data to a coordinator's extension. Attendance and tithes go through their own
+# `for_user`; only people still filter by hand.
 def _scope_people(queryset, user):
     """Limit people to the coordinator's own extension; leaders above see everyone."""
     if user.role == Role.COORDINATOR:
@@ -102,11 +102,17 @@ def _scope_attendance(user):
     return Attendance.objects.for_user(user).filter(status=Attendance.Status.UPLOADED)
 
 
-def _scope_tithes(queryset, user):
-    """Limit tithes records to the coordinator's own extension (through their sheet)."""
-    if user.role == Role.COORDINATOR:
-        return queryset.filter(attendance__extension_id=user.extension_id)
-    return queryset
+def _scope_tithes(user):
+    """FINALIZED reports the person may see, through `TithesOffering.objects.for_user`.
+
+    Same shape as `_scope_attendance`: drafts are never part of a dashboard, and a report counts only while
+    its sheet is uploaded (a reopened report is a draft again, an archived or reopened sheet drops out).
+    A coordinator gets their own extension only; `for_user` is the single place that decides.
+    """
+    return TithesOffering.objects.for_user(user).filter(
+        status=TithesOffering.Status.FINALIZED,
+        attendance__status=Attendance.Status.UPLOADED,
+    )
 
 
 # ----------------------------------------------------------- shared pieces
@@ -210,7 +216,12 @@ def _leader_overview(user):
         "attendance_bars": _bars([(_day_label(r["attendance_date"]), r["present"]) for r in attendance_rows]),
         "first_timer_bars": _bars([(_day_label(r["attendance_date"]), r["first"]) for r in attendance_rows]),
         "tithe_bars": _bars(
-            [(_day_label(day), tithe_amounts.get(day, Decimal("0"))) for day in dates],
+            [(_day_label(day), tithe_amounts.get(day, {}).get("tithes", Decimal("0"))) for day in dates],
+            display=_peso,
+            short=_compact,
+        ),
+        "offering_bars": _bars(
+            [(_day_label(day), tithe_amounts.get(day, {}).get("offering", Decimal("0"))) for day in dates],
             display=_peso,
             short=_compact,
         ),
@@ -256,17 +267,23 @@ def _attendance_trend(user):
 
 
 def _tithe_totals(user, dates):
-    """Return {date: frozen total} for finalized tithes reports on uploaded sheets of those dates."""
+    """Return {date: {"tithes", "offering"}} of FROZEN values for finalized reports on those dates.
+
+    Never a recount: `tithes_total` and `offering_amount` are read as stored. Reports on the same date
+    (several services, several extensions) are added together.
+    """
     if not dates:
         return {}
-    # for_user is the only scoping of reports: an unreachable report is simply not in the queryset.
-    records = TithesOffering.objects.for_user(user).filter(
-        status=TithesOffering.Status.FINALIZED,
-        attendance__status=Attendance.Status.UPLOADED,
-        attendance__attendance_date__in=dates,
+    rows = (
+        _scope_tithes(user).filter(attendance__attendance_date__in=dates)
+        .values("attendance__attendance_date")
+        .annotate(tithes=Sum("tithes_total"), offering=Sum("offering_amount")).order_by()
     )
-    rows = records.values("attendance__attendance_date").annotate(total=Sum("total_amount")).order_by()
-    return {row["attendance__attendance_date"]: row["total"] for row in rows}
+    return {
+        row["attendance__attendance_date"]: {"tithes": row["tithes"], "offering": row["offering"]}
+        for row in rows
+    }
+
 
 def _people_per_extension():
     """Return bars of the biggest extensions by people who are not archived (super-admin and admin only)."""
