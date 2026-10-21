@@ -29,11 +29,12 @@ buddies, prayer requests, events, resources, notifications and audit logging.
   - Attendance (bricks 1 to 14): gender and age networks, model changes, permissions and scoping, draft services,
     summary, upload, reopen, the sheet screens for every role, A4 print page, first timer conversion, repeat-visitor
     auto-transfer, reset-to-password-change, guest promotion and personal history (see Attendance).
+  - Tithes: reports on tithes and offering per attendance sheet, denomination count, finalize with a bypass
+    request flow, households, A4 print page and "My tithes" (see Tithes).
 - **Not built yet:**
   - Brute-force login throttling.
   - The `faith` listener that turns a chapter read into a streak, MBBTAG. The dashboards show "Coming soon"
     cards for the Bible streak, goals and events until those apps have views.
-  - The tithes screens.
   - Beyond the list above, services, views and forms are mostly not built yet: features are being added on top of
     the models, one app at a time.
 
@@ -124,7 +125,7 @@ moving or reorganizing app code.
 | `events` | `event` | Event CRUD, change/cancel notices, `send_event_reminders` |
 | `resources` | `monthly_theme`, `monthly_resource`, `weekly_powerpoint`, `general_resource` | Resource permissions (`permissions.py`) and transactional create/edit/publish/archive/restore/delete services (`services.py`); monthly themes + files, weekly PPT, general resources |
 | `attendance` | `attendance`, `attendance_member`, `attendance_first_timer` | Sheets, draft services (ticks, first timers, search), summary, upload (freeze counts, update `last_attended_at`), reopen (admin) |
-| `tithes` | `tithes_offering`, `tithe_entry` | Entries, live totals, denomination count, finalize, reopen; members see only their own entries |
+| `tithes` | `tithes_offering`, `tithe_entry`, `tithe_entry_giver`, `tithe_household`, `tithe_household_member`, `tithes_bypass_request` | Entries and co-givers, live totals, denomination count, finalize and bypass flow, reopen, households, print page, "My tithes" (see Tithes) |
 | `buddy` | `user_buddy`, `buddy_request`, `buddy_note` | Request/accept (transactional one-partner check), notes/nudges, end partnership, view partner goals |
 | `prayer` | `prayer_request`, `prayer_reply` | Send, inbox (coordinator scope, anonymous masking), reply, done, delete |
 | `notifications` | `notification`, `notification_preference`, `notification_rule` | `notify()`, bell + list, preferences, the admin-alert receiver (`notifications/listeners.py`, applies `notification_rule` to `action_logged`), `cleanup_notifications` |
@@ -295,7 +296,7 @@ with. Only create a new app if the answer is "none".
 - Coordinator-scoped data must be fetched through the `for_user(user)`
   queryset helper, not with ad hoc `.filter(extension=...)` calls in views. For people this is
   `User.objects.for_user(actor)` (see People screens for admin and coordinator); for attendance it is
-  `Attendance.objects.for_user(actor)` (see Attendance); tithes get their own when their screens are built.
+  `Attendance.objects.for_user(actor)` (see Attendance); for tithes it is `TithesOffering.objects.for_user(actor)` (see Tithes).
 - Use `{% url 'admin:index' %}` to link to Django admin, never a hardcoded
   path.
 
@@ -305,11 +306,11 @@ with. Only create a new app if the answer is "none".
   create users one by one.
 - **Special-role limits** are enforced in a transaction with the extension row
   locked. An extension with no limit row for a role cannot give that role to anyone until an admin sets one.
-- **Uploaded attendance/tithes** are locked; only an admin reopens them
+- **Uploaded attendance and finalized tithes reports** are locked; only an admin reopens them
   (logged and alerts admins). Force delete is super admin only, archived rows
   only, logged before deleting; delete files from disk first.
 - **Privacy:** never write passwords, tokens, goal text, notes, prayer text or
-  tithe amounts to `audit_log` or `notification.data`. Notifications say that
+  tithe amounts, bypass messages, decision notes, bypass reasons to `audit_log` or `notification.data`. Notifications say that
   something happened; the linked page does the permission check. Anonymous
   prayer requests hide the sender in UI/API but keep `user_id`.
 - **Enumeration:** forgot-password always shows the same message.
@@ -326,7 +327,7 @@ with. Only create a new app if the answer is "none".
   `role` still means the four roles; a database check (`app_user_non_account_is_member`) says only `member` can be a guest or
   a no-account member. `status` is `active`, `suspended` or `archived`. "Needs password change" is the `must_change_password`
   flag, shown as a tag (`User.tag_codes`, see People screens), never a status. "Deactivated" and "Not activated" no longer exist anywhere.
-  When tithes screens are built, accept only `member_record` and `member_account`, never guests.
+  Tithes accept only `member_record` and `member_account`, never guests.
 - **Account id is generated for every person** in `User.save()`, guests and no-account members included (the login field stays
   non-null). Never reused, never edited. Guests and no-account members get `set_unusable_password()` (`UserManager.create_user`,
   `_set_initial_password` returns `PasswordInfo("none")`), and a reset refuses them.
@@ -755,6 +756,132 @@ The source plan `docs/attendance.md` is not present in this checkout; the defaul
   `accounts/tests/test_main_church.py`, and `mark_attended` in `accounts/tests/test_presence.py` (tests live with the code they check). In tests, never create two sheets with the same extension, date and label,
   and set `archived_at` together with `status="archived"` (a database constraint ties them).
 
+## Tithes
+
+Tithes and offering for one attendance sheet: the digital "Reports on Tithes & Offering" paper form.
+Code: `apps/tithes/` (`models.py`, `permissions.py`, `services.py`, `views.py`, `forms.py`, `area_urls.py`,
+`urls.py`, templates in `templates/tithes/`, tests in `tests/`). `tithes` depends on `attendance`;
+`accounts`, `audit` and `notifications` never import it.
+
+### Models (all money is `Decimal(12,2)`, never float)
+
+- `tithes_offering` (`TithesOffering`): ONE per attendance sheet (two services in a day = two reports).
+  `status` draft/finalized, `offering_amount`, `denomination_breakdown` (JSON, nine text keys 1000..1).
+  Frozen at finalize and NULL while a draft: `tithers_count`, `tithes_total`, `total_amount`,
+  `breakdown_total`, `difference` (SIGNED, breakdown_total - total_amount), `finalized_by`, `finalized_at`,
+  `bypass_reason` (only for a DIRECT admin bypass), `bypassed_by`. Every `*_by` is SET NULL.
+- `tithe_entry` (`TitheEntry`): one envelope. `user` (SET NULL) + `giver_name` snapshot, `amount` > 0,
+  unique(report, user).
+- `tithe_entry_giver` (`TitheEntryGiver`): co-givers copied onto an entry (name snapshot, unique(entry, user)).
+- `tithe_household` / `tithe_household_member`: a standing, dated household link. It ONLY pre-fills the
+  co-givers of a new entry; saving copies them onto the entry, so later changes never rewrite history.
+  One active membership per person (partial unique index).
+- `tithes_bypass_request`: the coordinator's request to finalize a mismatch. `message`, signed `difference`
+  as requested, `status` (pending, approved, rejected, withdrawn, voided, used), `decided_by`, `decided_at`,
+  `decision_note`. At most one OPEN (pending or approved) request per report.
+
+### Who may do what
+
+| Action | Tithes special member (seat) | Coordinator (own extension) | Admin / super-admin |
+| --- | --- | --- | --- |
+| View / edit draft | Drafts of the extension where they hold the seat | Yes | Yes |
+| Request bypass / withdraw it | No | **Only the coordinator** | No |
+| Approve / reject a request | No | No | Yes |
+| Finalize | No | Yes (balanced, or with an approved request) | Yes (may bypass directly with a reason) |
+| Reopen | No | No | Yes |
+| Manage households | No | Yes | Yes |
+| Print | Drafts only | Yes | Yes |
+| My tithes (own history) | Yes | Yes | Yes |
+
+"Own extension" is the extension of the report's SHEET. `permissions.py` is the only place that decides;
+`TithesOffering.objects.for_user(actor)` is the only scoping (views start from it, so an unreachable report
+looks exactly like a missing one). A draft is LOCKED for special members and coordinators while a request is
+open; only admin and super-admin can still edit it. A report whose sheet is archived is read-only.
+
+### Services (`services.py`)
+
+Each action runs in `transaction.atomic()`, locks the report row AND its sheet row, re-checks permission on
+the LOCKED row (`require(can_..., actor, report)`) and refuses with `ServiceError` unless the report is a draft.
+`build_totals(report)` is the ONE function for the live numbers and for the freeze; `frozen_totals_for(report)`
+reads the stored numbers back. Working data (offering, entries, breakdown, households) is not audited.
+`member_tithe_history(user)`, `entry_names(entry)` and `bypass_note_for(report)` are read-only helpers used by
+My tithes and the print page.
+
+### Finalize and bypass order
+
+`finalize_report` (one transaction, one-time token consumed first):
+1. consume the token (a replay returns `duplicate=True`);
+2. lock the report, require a draft on an open sheet and `can_finalize`;
+3. refuse an empty report, then `build_totals`;
+4. if the difference is not 0: an APPROVED request with the SAME stored difference (it becomes `used`), or an
+   admin with a typed `bypass_reason`; otherwise refuse with how much is short or over;
+5. write the frozen numbers, `finalized_by`, `finalized_at`, status; void any other open request;
+6. log `tithes.finalize` (tither count and `balanced` flag only).
+
+`request_bypass` (coordinator only, difference not 0, no open request) -> `decide_bypass` (admin approves or
+rejects; if the difference changed meanwhile the request is VOIDED and nothing is decided) -> `finalize_report`
+uses the approval once. Any draft edit that changes the difference voids an open request (`_after_edit`).
+`reopen_report` (admin only) clears every frozen field; entries, offering and breakdown stay.
+
+### Screens and routes
+
+One set of views serves four places (`superadmin`, `admin_area`, `coordinator_area`, and `tithes` for special
+members). Routes are written ONCE in `area_urls.py` and mounted four times; `urls.py` adds the member-root-only
+route. Guards: `tithes_screen` (login, right area, `can_use_area`, never cached), then `for_user`, then the
+service re-check.
+
+- `""` list, `requests/` pending requests, `households/...`, `sheets/<id>/start/`
+- `<id>/` workspace (editable draft) or review, `<id>/review/`, `<id>/print/`
+- JSON helpers `<id>/givers/`, `<id>/givers/prefill/`
+- POST actions: `offering/`, `breakdown/`, `entries/add|update|remove/`, `bypass/request|withdraw|decide/`,
+  `finalize/`, `reopen/`
+- `mine/` ONLY in `tithes/urls.py` as `tithes:mine` (see My tithes)
+
+### Print page
+
+`report_print` (`<id>/print/`, template `tithes/print.html`) is a read-only GET that changes and logs nothing;
+`can_print` has the same rule as `can_view` (a special member prints drafts only). It is STANDALONE: it does
+not extend `base_app.html`, black text on white in any mode, inline CSS, no external fonts, no Tailwind, no
+`includes/logo.html` (`images/black-logo.svg`). `@page { size: A4; margin: 12mm }`, `thead` repeats,
+`tr { break-inside: avoid }`, no page numbers. "Save as PDF" is the browser's print destination; there is no
+server-side PDF library. A finalized report prints its FROZEN numbers; a draft counts live and prints
+"DRAFT, not finalized". A shared envelope prints once ("Juan Cruz & Maria Cruz") with its full amount. A
+mismatch that was let through prints "Finalized with a difference of ..., approved by ..., reason ...".
+
+### My tithes
+
+`my_tithes` (`tithes:mine`, template `tithes/mine.html`): the signed-in person's own giving history, every role,
+no seat needed. FINALIZED reports only (a draft, a reopened report and a report on an archived sheet are
+excluded), entries where the person is the giver OR a co-giver, newest first, with "Shared with <names>" and
+the FULL amount (never split). It reads `request.user` and nothing else: no person id from the URL, query string
+or form. It skips `tithes_screen` on purpose and lives in `urls.py` only. Reached from the "Tithes" tab of the
+"My journey" hub (`SECTION_TABS["journey"]`).
+
+### Dashboards
+
+`dashboards/services._scope_tithes(user)` is the one scoping helper: finalized reports on uploaded sheets, through
+`for_user` (a coordinator sees only their own extension). The trend reads the FROZEN `tithes_total` and
+`offering_amount`, never a recount, and adds reports on the same date together. Amounts use `CURRENCY` and appear
+only on leader dashboards. Context keys: `tithe_bars` (tithes) and `offering_bars` (offering). The dashboard writes nothing.
+
+### Privacy
+
+Never write a tithe amount, bypass message, decision note or bypass reason to `audit_log` or
+`notification.data`. Audit data is ids, counts and the `balanced` flag. Notifications say THAT something
+happened; the linked page does the permission check. The message and the note live only on the request row.
+The print page may show a request's message as the "reason" (only people who may print a finalized report
+reach it: coordinator and admins) but never the decision note. Screens and print pages show names and amounts
+only: never a birth date, phone number or address.
+
+### Tests (`apps/tithes/tests/`, `apps/dashboards/tests/`)
+
+Package, not `tests.py`. Test users: `must_change_password=False`, `person_type="member_account"`. Builders in
+`tithes/tests/support.py` go through services only. `test_print` (draft, frozen numbers, shared entry, no
+birth date/phone, direct and approved bypass notes, access), `test_history` (own entries only, co-giver sees the
+shared one at full amount, draft/reopened/archived excluded, no id from the request), dashboards
+`test_tithes_scope` (coordinator scoping, drafts and reopened reports out, frozen same-date sums).
+Run: `docker compose exec web python manage.py test apps.tithes apps.dashboards`.
+
 ## Bible
 - **Where:** `apps/bible/`: `models.py`, `books.py` (the 66 books, OSIS ids), `osis.py` (file reader),
   `versions.py` (version catalog), `services.py`, `esv.py` + `esv_client.py` (ESV), `errors.py`, `signals.py`,
@@ -908,7 +1035,7 @@ The source plan `docs/attendance.md` is not present in this checkout; the defaul
 - **Where:** `apps/dashboards/`: `urls.py` (namespace `dashboards`: `superadmin/`, `admin/`, `coordinator/`, `home/`),
   `views.py` (four thin views, each `never_cache` + `role_required`), `services.py` (`get_dashboard_context(user,
   version_code, path)`, all the logic), templates in `apps/dashboards/templates/dashboards/`, tests in
-  `apps/dashboards/tests.py`. Role home URLs still live only in `accounts/decorators.py` (`ROLE_HOME_NAMES`).
+  `apps/dashboards/tests/`. Role home URLs still live only in `accounts/decorators.py` (`ROLE_HOME_NAMES`).
 - **One template per role** (`superadmin.html`, `admin.html`, `coordinator.html`, `member.html`) extending
   `dashboard_base.html`, so a role can change on its own. Shared sections are includes: `_daily_verse`,
   `_continue_reading`, `_quick_links`, `_coming_soon`; leaders also get `_leader_overview` with the charts
@@ -927,7 +1054,7 @@ The source plan `docs/attendance.md` is not present in this checkout; the defaul
 - **Scoping:** the only code that narrows data to a coordinator's extension is `_scope_people`, `_scope_attendance`
   and `_scope_tithes` in `services.py`. `User.objects.for_user(user)` now exists for people, so `_scope_people` can use it;
   `_scope_attendance(user)` already returns `Attendance.objects.for_user(user)` limited to UPLOADED sheets (a reopened
-  sheet drops out until it is uploaded again); tithes still need their own helper.
+  sheet drops out until it is uploaded again); `_scope_tithes(user)` returns finalized reports on uploaded sheets through `TithesOffering.objects.for_user` (see Tithes).
 - **Privacy:** tithe amounts appear only on leader dashboards and are never written to `audit_log` or
   `notification.data`. The dashboard writes nothing except today's `daily_verse` reference row.
 - **Charts:** server-rendered with Tailwind (no JavaScript, no library); colors are tokens only (`bg-accent`,
@@ -1128,6 +1255,9 @@ still in use), `archive_inactive_users`, `auto_transfer_extension`,
   attendance route goes in `attendance/area_urls.py` once, never in a role url module.
 - `attendance/print.html` is standalone on purpose. Do not make it extend `base_app.html` or reuse `includes/logo.html`: the app
   shell's tokens, dark mode and the logo mask would put colours and an empty logo on paper. Rebuilding Tailwind does not affect it.
+- The tithes routes exist only where `include("apps.tithes.area_urls")` is added. A new tithes route goes in
+  `tithes/area_urls.py` once, never in a role url module. `mine/` is the one exception and lives in `tithes/urls.py`.
+- `tithes/print.html` is standalone on purpose: do not make it extend `base_app.html` or reuse `includes/logo.html`.
 - The people templates are shared by three roles. Link through `{% role_url %}` and gate buttons with
   `{% person_actions %}`; a hardcoded `superadmin:` URL works for the super-admin and raises `NoReverseMatch` or sends an
   admin or coordinator to the wrong area.
