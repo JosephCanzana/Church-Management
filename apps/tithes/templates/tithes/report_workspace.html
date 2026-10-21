@@ -1,267 +1,571 @@
 <!--
 tithes/report_workspace.html
-The draft workspace: offering, tithes, bills and coins, and the Finalize step for one report. Extends base_app.html and
-fills: title, page_title, content.
-Context (tithes.views.report_detail): report, sheet, sheet_url (None for a special member), totals (live Totals),
-difference_abs, entries (each with co_givers), denominations (value, count, line), is_admin, open_request,
-last_request, can_see_request, locked_for_you, can_finalize, finalize_ready, has_approved, can_request,
-can_withdraw, can_decide, finalize_token, request_token, decision_token, ws_config (read by the script below:
-offering, tithes, denoms, counts, present, taken, searchUrl, prefillUrl).
-The server is the source of truth (build_totals); Alpine only PREVIEWS what is typed before it is saved.
+The draft workspace for one tithes report, laid out like the attendance workspace. Extends base_app.html and fills:
+title, page_title, main_class (full width), content.
+
+Layout (desktop): a slim bar on top, then two panes that fill the screen.
+  left   (~30%)  Numbers: a compact balance check, the offering, the bills and coins breakdown.
+                 The bypass request and Finalize open as modals from buttons in the top bar. A button in the middle pane hides this pane.
+  middle (flex)  Givers: everyone who can give, grouped by household (a household name sits above its members).
+                 Each row has its amount field on the right. Search filters the list as you type; from 3 letters it
+                 also asks the server for members who are not listed.
+Below lg the two panes become two tabs.
+Names are already listed when the page opens: nobody has to be typed. Search only narrows the list.
+Typing an amount updates the numbers in the bar live (a row shows Unsaved until its Save or Add is pressed).
+Until the view supplies groups, the list falls back to what it already sends: the envelopes (entries) and the people
+marked present (ws_config.present, minus ws_config.taken), so names still appear without typing. Households are only
+grouped once groups exists.
+Adding, saving and removing ask for confirmation first (the confirm_action modal, same as attendance).
+Saving uses plain POST forms (full page load), so toasts and inline errors keep working.
+
+Context (tithes.views.report_detail), as before: report, sheet, sheet_url (None for a special member), totals (live
+Totals), difference_abs, denominations (value, count, line), is_admin, open_request, last_request, can_see_request,
+locked_for_you, can_finalize, finalize_ready, has_approved, can_request, can_withdraw, can_decide, finalize_token,
+request_token, decision_token.
+ws_config (read by the script below): offering, tithes, denoms, counts, searchUrl, present, taken.
+Needed by this template (the view must supply it):
+  groups   Ordered list of household groups. Each group: name, is_household (False for the "Individuals" group),
+           total (sum of the group's envelopes, or None), rows.
+           Each row: user_id, name, present (marked present on the sheet), entry (the TitheEntry or None),
+           shared_in (the entry this person is a CO-GIVER on, or None), housemate_ids (ids of household members who
+           have no entry and are not co-givers yet, used to pre-fill a new shared envelope; empty when none).
+           Listed: EVERY member who can give (account and no account) in the report's extension, already filled when the
+           page opens, plus anyone with an entry or co-giving on the report. Order: households first, and people
+           present on the sheet first inside each group.
+Shared envelopes: one amount, never split. A co-giver row shows the full amount read-only.
 Colours come from tokens only. Amounts are in font-mono. Short, Over and Balanced are always written out.
+Targets are 44px and text 16px or larger.
 -->
 {% extends 'base_app.html' %}
-{% load ui_tags people_tags %}
+{% load ui_tags people_tags l10n %}
 
 {% block title %}Tithes: {{ sheet.label }}{% endblock %}
 {% block page_title %}Tithes{% endblock %}
 
+{% block main_class %}w-full flex-1 px-3 py-3 sm:px-4 sm:py-4{% if mobile_nav_style == 'bottom' %} pb-[calc(5rem+env(safe-area-inset-bottom))] sm:pb-4{% endif %}{% endblock %}
+
 {% block content %}
 {% role_url 'report_list' as list_url %}
-{% include 'includes/breadcrumb.html' with parent_label='Tithes' parent_url=list_url current=sheet.label %}
 
 {{ ws_config|json_script:"ws-config" }}
 <script>
   function tithesWorkspace() {
     const cfg = JSON.parse(document.getElementById('ws-config').textContent);
     return {
-      offering: cfg.offering, tithes: parseFloat(cfg.tithes) || 0, counts: cfg.counts, denoms: cfg.denoms,
-      present: cfg.present, taken: cfg.taken, presentIds: cfg.present.map(p => p.id),
-      giverQ: '', giverResults: [], giverBusy: false, giver: null, coGivers: [], reqId: 0,
+      offering: cfg.offering, savedTithes: parseFloat(cfg.tithes) || 0, counts: cfg.counts, denoms: cfg.denoms,
+      present: cfg.present || [], taken: cfg.taken || [],
+      action: { title: '', message: '', detail: '', confirm: 'Confirm' }, askForm: null,
+      aq: '', filter: 'all', tab: 'givers', numbersOpen: true,
+      results: [], busy: false, reqId: 0, rev: 0,
+
+      /* Confirmations: a form with data-ask-title asks first, and is only sent after Confirm.
+         data-ask-name is who it is about; data-ask-kind adds the typed amount or the counted total. */
+      detailFor(form) {
+        const parts = [];
+        if (form.dataset.askName) parts.push(form.dataset.askName);
+        if (form.dataset.askKind === 'amount' && form.elements.amount) parts.push(this.money(this.num(form.elements.amount.value)));
+        if (form.dataset.askKind === 'counted') parts.push('Counted ' + this.money(this.breakdown()));
+        return parts.join(' \u00b7 ');
+      },
+      onSubmit(e) {
+        const form = e.target;
+        if (!form.dataset || !form.dataset.askTitle) return;
+        if (form.dataset.asked === '1') { delete form.dataset.asked; return; }
+        e.preventDefault();
+        this.askForm = form;
+        this.action = {
+          title: form.dataset.askTitle,
+          message: form.dataset.askText || '',
+          detail: this.detailFor(form),
+          confirm: form.dataset.askConfirm || 'Confirm',
+        };
+        this.$store.ui.openModal('confirm_action');
+      },
+      confirmAction() {
+        const form = this.askForm;
+        if (!form) return;
+        this.askForm = null;
+        this.$store.ui.closeModal();
+        form.dataset.asked = '1';
+        form.requestSubmit();
+      },
+
+      /* Lock the fields: money takes digits and one dot with at most 2 decimals; counts take digits only.
+         Runs in the capture phase, so x-model already sees the cleaned value. */
+      clean(e) {
+        const el = e.target;
+        if (!el.matches) return;
+        if (el.matches('[data-money]')) {
+          let v = el.value.replace(/[^0-9.]/g, '');
+          const i = v.indexOf('.');
+          if (i >= 0) v = v.slice(0, i + 1) + v.slice(i + 1).replace(/\./g, '').slice(0, 2);
+          if (v !== el.value) el.value = v;
+        } else if (el.matches('[data-int]')) {
+          const v = el.value.replace(/\D/g, '');
+          if (v !== el.value) el.value = v;
+        }
+      },
 
       /* Live preview of the numbers (the saved numbers are recalculated by the server). */
       num(v) { const n = parseFloat(v); return isFinite(n) && n > 0 ? n : 0; },
       cnt(d) { const n = parseInt(this.counts[d], 10); return isFinite(n) && n > 0 ? n : 0; },
       line(d) { return d * this.cnt(d); },
+      step(d, by) { this.counts[d] = String(Math.max(0, this.cnt(d) + by)); },
+      sum(pick) { return this.denoms.filter(pick).reduce((s, d) => s + this.line(d), 0); },
       breakdown() { return this.denoms.reduce((s, d) => s + this.line(d), 0); },
-      total() { return this.num(this.offering) + this.tithes; },
+      /* Tithes preview: the sum of every amount field on the page (saved or typed). */
+      amounts() { this.rev; return Array.from(document.querySelectorAll('#ws input[data-amt]')).map(i => this.num(i.value)); },
+      tithesLive() { const a = this.amounts(); return a.length ? a.reduce((s, n) => s + n, 0) : this.savedTithes; },
+      tithersLive() { return this.amounts().filter(n => n > 0).length; },
+      unsavedCount() {
+        this.rev;
+        return Array.from(document.querySelectorAll('#ws input[data-amt]')).filter(i => this.num(i.value) !== this.num(i.dataset.saved)).length;
+      },
+      total() { return this.num(this.offering) + this.tithesLive(); },
       diff() { return Math.round((this.breakdown() - this.total()) * 100) / 100; },
+      pct() { const t = this.total(); return t > 0 ? Math.min(100, Math.round(this.breakdown() / t * 100)) : 0; },
       money(n) { return '\u20b1' + Math.abs(n).toLocaleString('en-PH', { minimumFractionDigits: 2, maximumFractionDigits: 2 }); },
       label() {
         const d = this.diff();
         return d === 0 ? 'Balanced' : (d < 0 ? 'Short by ' : 'Over by ') + this.money(d);
       },
 
-      /* Giver picker: present people first; from 3 letters it asks the server for any member. */
-      listed() {
-        const t = this.giverQ.trim().toLowerCase();
-        if (t.length >= 3) return this.giverResults;
-        return this.present.filter(p => !t || p.name.toLowerCase().includes(t));
+      /* Givers list: filter by name and by gave / not yet. */
+      showRow(el) {
+        const t = this.aq.trim().toLowerCase();
+        if (t && !el.dataset.name.includes(t)) return false;
+        if (this.filter === 'gave') return el.dataset.has === '1';
+        if (this.filter === 'none') return el.dataset.has === '0';
+        return true;
       },
+      waiting() { return this.present.filter(p => !this.taken.includes(p.id)); },
+      waitingShown(p) {
+        const t = this.aq.trim().toLowerCase();
+        return this.filter !== 'gave' && (!t || p.name.toLowerCase().includes(t));
+      },
+      groupShown(el) { return Array.from(el.querySelectorAll('li[data-name]')).some(li => this.showRow(li)); },
+      shownCount() { return Array.from(document.querySelectorAll('#ws-list li[data-name]')).filter(li => this.showRow(li)).length; },
+      inList(id) { return !!document.querySelector('#ws-list li[data-uid="' + id + '"]'); },
+
+      /* People who are not listed: from 3 letters the server searches every active member. */
+      more() { this.rev; return this.results.filter(p => !this.inList(p.id)); },
       hint() {
-        const t = this.giverQ.trim();
-        if (t && t.length < 3) return 'Type at least 3 letters to search everyone.';
-        if (t.length >= 3 && !this.giverBusy && !this.giverResults.length) return 'Nobody found. Only active members can give a tithe.';
-        return 'People marked present on today\u2019s sheet are listed first.';
+        const t = this.aq.trim();
+        if (t.length >= 3 && !this.busy && !this.more().length) return 'No one else found outside this list.';
+        return '';
       },
-      badge(p) {
-        if (this.taken.includes(p.id)) return 'Already on this report';
-        return this.presentIds.includes(p.id) ? 'Present' : 'Not on today\u2019s sheet';
-      },
-      async searchGivers() {
-        const t = this.giverQ.trim(); const id = ++this.reqId;
-        if (t.length < 3) { this.giverResults = []; return; }
-        this.giverBusy = true;
+      async remote() {
+        const t = this.aq.trim(); const id = ++this.reqId;
+        if (t.length < 3) { this.results = []; return; }
+        this.busy = true;
         try {
           const res = await fetch(cfg.searchUrl + '?q=' + encodeURIComponent(t), { credentials: 'same-origin' });
           if (!res.ok || id !== this.reqId) return;
-          const data = await res.json();
-          this.giverResults = data.results.sort((a, b) => this.presentIds.includes(b.id) - this.presentIds.includes(a.id));
-        } catch (e) { this.giverResults = []; } finally { this.giverBusy = false; }
+          this.results = (await res.json()).results;
+          this.rev++;
+        } catch (e) { this.results = []; } finally { this.busy = false; }
       },
-      async choose(p) {
-        this.giver = p; this.coGivers = [];
-        try {
-          const res = await fetch(cfg.prefillUrl + '?user=' + p.id, { credentials: 'same-origin' });
-          if (res.ok) this.coGivers = (await res.json()).results.map(c => ({ id: c.id, name: c.name, on: true }));
-        } catch (e) { /* no pre-fill: the entry simply has no co-givers */ }
-      },
-      change() { this.giver = null; this.coGivers = []; this.giverQ = ''; this.giverResults = []; },
     };
   }
 </script>
 
-<div class="max-w-4xl space-y-6" x-data="tithesWorkspace()">
-  <section class="card space-y-4" id="numbers">
-    <div class="flex flex-wrap items-start justify-between gap-3">
-      <div>
-        <h2 class="text-xl font-semibold tracking-tight text-txt-primary">{{ sheet.label }}</h2>
-        <p class="text-base text-txt-secondary">{{ sheet.attendance_date|date:"l, j F Y" }} &middot; {{ sheet.extension.name|title_case }}</p>
-        {% if sheet_url %}<a class="text-base text-txt-primary underline" href="{{ sheet_url }}">Open the attendance sheet</a>{% endif %}
+<script>window.addEventListener("pageshow", function (e) { if (e.persisted) window.location.reload(); });</script>
+
+<div id="ws" class="flex flex-col gap-3 lg:h-[calc(100dvh-3.5rem-2rem)]" x-data="tithesWorkspace()" x-on:input.capture="clean($event)" x-on:input="rev++" x-on:submit="onSubmit($event)">
+
+  {# Top bar: what this report is, the compact numbers and the balance. One row on a wide screen. #}
+  <section class="flex shrink-0 items-center gap-3 glass-panel px-3 py-2" aria-label="Report summary">
+    <div id="ws-bar" class="flex min-w-0 flex-1 flex-wrap items-center gap-x-5 gap-y-2">
+      <a class="btn btn-ghost min-h-[44px] shrink-0 px-2 text-base" href="{{ list_url }}" aria-label="Back to tithes">&larr; Tithes</a>
+
+      <div class="min-w-0">
+        <h2 class="truncate text-lg font-semibold tracking-tight text-txt-primary">{{ sheet.label }}</h2>
+        <p class="truncate text-sm text-txt-secondary">
+          {{ sheet.attendance_date|date:"D, j M Y" }} &middot; {{ sheet.extension.name|title_case }}
+          {% if sheet_url %}&middot; <a class="underline" href="{{ sheet_url }}">Attendance sheet</a>{% endif %}
+        </p>
       </div>
+
       {% include 'tithes/_report_badge.html' with report=report locked=open_request %}
-    </div>
 
-    <div class="grid grid-cols-2 gap-3 text-center sm:grid-cols-4">
-      <div class="rounded-lg border border-border p-3">
-        <p class="font-mono text-2xl font-semibold tabular-nums text-txt-primary">{{ totals.tithers }}</p>
-        <p class="text-sm text-txt-secondary">Tithers</p>
-      </div>
-      <div class="rounded-lg border border-border p-3">
-        <p class="font-mono text-2xl font-semibold tabular-nums text-txt-primary">&#8369;{{ totals.tithes|floatformat:"2g" }}</p>
-        <p class="text-sm text-txt-secondary">Tithes</p>
-      </div>
-      <div class="rounded-lg border border-border p-3">
-        <p class="font-mono text-2xl font-semibold tabular-nums text-txt-primary" x-text="money(num(offering))">&#8369;{{ totals.offering|floatformat:"2g" }}</p>
-        <p class="text-sm text-txt-secondary">Offering</p>
-      </div>
-      <div class="rounded-lg border border-border p-3">
-        <p class="font-mono text-2xl font-semibold tabular-nums text-txt-primary" x-text="money(total())">&#8369;{{ totals.total|floatformat:"2g" }}</p>
-        <p class="text-sm text-txt-secondary">Total</p>
-      </div>
-    </div>
+      <p class="rounded-full border border-warning px-3 py-1 text-sm font-medium text-txt-primary" role="status"
+         x-show="unsavedCount() > 0" x-text="unsavedCount() + ' unsaved'" style="display:none"></p>
 
-    <div role="status" class="rounded-xl border p-4" x-bind:class="diff() === 0 ? 'border-border' : 'border-warning'">
-      <p class="text-lg font-semibold text-txt-primary">
-        <span class="font-mono" x-text="label()">{% if totals.difference == 0 %}Balanced{% elif totals.difference < 0 %}Short by &#8369;{{ difference_abs|floatformat:"2g" }}{% else %}Over by &#8369;{{ difference_abs|floatformat:"2g" }}{% endif %}</span>
-      </p>
-      <p class="text-sm text-txt-secondary">Bills and coins compared with the Total. This updates as you type; press Save to keep it.</p>
+      <dl class="flex items-center gap-4 md:ml-auto" aria-live="polite">
+        <div class="flex flex-col-reverse items-center">
+          <dt class="text-sm text-txt-secondary">Tithers</dt>
+          <dd class="font-mono text-lg font-semibold tabular-nums text-txt-primary" x-text="tithersLive()">{{ totals.tithers }}</dd>
+        </div>
+        <div class="flex flex-col-reverse items-center">
+          <dt class="text-sm text-txt-secondary">Tithes</dt>
+          <dd class="font-mono text-lg font-semibold tabular-nums text-txt-primary" x-text="money(tithesLive())">&#8369;{{ totals.tithes|floatformat:"2g" }}</dd>
+        </div>
+        <div class="flex flex-col-reverse items-center">
+          <dt class="text-sm text-txt-secondary">Offering</dt>
+          <dd class="font-mono text-lg font-semibold tabular-nums text-txt-primary" x-text="money(num(offering))">&#8369;{{ totals.offering|floatformat:"2g" }}</dd>
+        </div>
+        <div class="flex flex-col-reverse items-center">
+          <dt class="text-sm text-txt-secondary">Total</dt>
+          <dd class="font-mono text-lg font-semibold tabular-nums text-txt-primary" x-text="money(total())">&#8369;{{ totals.total|floatformat:"2g" }}</dd>
+        </div>
+      </dl>
+
+      <p role="status" class="rounded-full border px-3 py-1 font-mono text-sm font-medium text-txt-primary"
+         x-bind:class="diff() === 0 ? 'border-border-strong' : 'border-warning'"
+         x-text="label()">{% if totals.difference == 0 %}Balanced{% elif totals.difference < 0 %}Short by &#8369;{{ difference_abs|floatformat:"2g" }}{% else %}Over by &#8369;{{ difference_abs|floatformat:"2g" }}{% endif %}</p>
+
+      <div class="flex flex-wrap items-center gap-2">
+        {# Review sits at the same address as the workspace plus review/ (the route is <id>/review/). #}
+        {% if totals.difference != 0 or open_request or last_request %}
+        <button type="button" class="btn btn-secondary min-h-[44px] text-base" x-on:click="$store.ui.openModal('bypass')">Bypass request</button>
+        {% endif %}
+        <a class="btn btn-secondary min-h-[44px] text-base" href="{{ request.path }}review/">Review</a>
+        {% if can_finalize %}
+        <button type="button" class="btn btn-primary min-h-[44px] text-base"
+                x-on:click="$store.ui.openModal('finalize')">Finalize</button>
+        {% endif %}
+      </div>
     </div>
   </section>
 
-  <section class="card">
-    <form method="post" action="{% role_url 'report_offering' report.pk %}" class="space-y-3">
-      {% csrf_token %}
-      <label class="label" for="offering">Offering</label>
-      <input id="offering" name="amount" type="text" inputmode="decimal" autocomplete="off" class="input max-w-xs font-mono"
-             value="{{ totals.offering }}" x-model="offering">
-      <p class="field-help">One number for the whole offering. Anyone may give it, guests included.</p>
-      <button type="submit" class="btn btn-primary min-h-[44px] text-base">Save offering</button>
-    </form>
-  </section>
+  {# Tabs, phone and tablet only. Same order as the panes on a wide screen. #}
+  <div class="grid shrink-0 grid-cols-2 gap-1 glass-panel p-1 lg:hidden" role="tablist" aria-label="Workspace sections">
+    <button type="button" role="tab" class="min-h-[44px] rounded-lg px-2 text-base"
+            x-bind:aria-selected="tab === 'numbers' ? 'true' : 'false'"
+            x-bind:class="tab === 'numbers' ? 'bg-accent text-on-accent' : 'text-txt-primary'"
+            x-on:click="tab = 'numbers'">Numbers</button>
+    <button type="button" role="tab" class="min-h-[44px] rounded-lg px-2 text-base"
+            x-bind:aria-selected="tab === 'givers' ? 'true' : 'false'"
+            x-bind:class="tab === 'givers' ? 'bg-accent text-on-accent' : 'text-txt-primary'"
+            x-on:click="tab = 'givers'">Givers ({{ entries|length }})</button>
+  </div>
 
-  <section class="card space-y-4" id="entries" aria-labelledby="tithes-title">
-    <h2 id="tithes-title" class="text-lg font-semibold text-txt-primary">Tithes <span class="text-base font-normal text-txt-secondary">({{ entries|length }} envelope{{ entries|length|pluralize }})</span></h2>
-    {% if entries %}
-    <ul class="divide-y divide-border rounded-xl border border-border">
-      {% for entry in entries %}
-      <li class="flex flex-wrap items-center gap-x-4 gap-y-2 px-4 py-3">
-        <div class="min-w-0 flex-1">
-          <p class="truncate text-base font-semibold text-txt-primary">{{ entry.giver_name }}</p>
-          {% if entry.co_givers.all %}<p class="text-sm text-txt-secondary">with {% for co in entry.co_givers.all %}{{ co.name_snapshot }}{% if not forloop.last %}, {% endif %}{% endfor %}</p>{% endif %}
+  <div class="flex min-h-0 flex-1 flex-col gap-3 lg:flex-row">
+
+    {# LEFT: balance check, offering, bills and coins. #}
+    <section aria-label="Numbers"
+             class="min-h-0 flex-col glass-panel lg:w-[32%] lg:min-w-[24rem] lg:shrink-0"
+             x-bind:class="[tab === 'numbers' ? 'flex' : 'hidden', numbersOpen ? 'lg:flex' : 'lg:hidden']">
+      <div id="ws-left" class="min-h-0 flex-1 space-y-5 overflow-y-auto p-4">
+
+        {# Balance check: counted cash against the total, written out and drawn. #}
+        <div class="space-y-2">
+          <div class="flex items-baseline justify-between gap-3">
+            <p class="text-sm text-txt-secondary">Counted</p>
+            <p class="font-mono text-base font-semibold tabular-nums text-txt-primary" x-text="money(breakdown())">&#8369;{{ totals.breakdown_total|floatformat:"2g" }}</p>
+          </div>
+          <div class="h-2 overflow-hidden rounded-full border border-border" aria-hidden="true">
+            <div class="h-full bg-accent" x-bind:style="'width:' + pct() + '%'"></div>
+          </div>
+          <div class="flex items-baseline justify-between gap-3">
+            <p class="text-sm text-txt-secondary">Total to match</p>
+            <p class="font-mono text-base tabular-nums text-txt-primary" x-text="money(total())">&#8369;{{ totals.total|floatformat:"2g" }}</p>
+          </div>
+          <p class="text-sm text-txt-secondary">Updates as you type. Press Save to keep it.</p>
         </div>
-        <form method="post" action="{% role_url 'entry_update' report.pk %}" class="flex items-center gap-2">
-          {% csrf_token %}
-          <input type="hidden" name="entry_id" value="{{ entry.pk }}">
-          <label class="sr-only" for="amount-{{ entry.pk }}">Amount for {{ entry.giver_name }}</label>
-          <input id="amount-{{ entry.pk }}" name="amount" type="text" inputmode="decimal" class="input w-32 font-mono" value="{{ entry.amount }}">
-          <button type="submit" class="btn btn-secondary min-h-[44px]">Save</button>
-        </form>
-        <form method="post" action="{% role_url 'entry_remove' report.pk %}"
-              data-confirm="Remove the tithe of {{ entry.giver_name }} from this report?" data-confirm-title="Remove tithe" data-confirm-text="Remove" data-confirm-danger="true">
-          {% csrf_token %}
-          <input type="hidden" name="entry_id" value="{{ entry.pk }}">
-          <button type="submit" class="btn btn-ghost min-h-[44px]">Remove</button>
-        </form>
-      </li>
-      {% endfor %}
-    </ul>
-    {% else %}
-    <p class="text-base text-txt-secondary">No tithes yet. Add the first envelope below.</p>
-    {% endif %}
 
-    <form method="post" action="{% role_url 'entry_add' report.pk %}" class="space-y-4 border-t border-border pt-4"
-          x-on:keydown.enter="if ($event.target.id === 'giver-q') $event.preventDefault()">
-      {% csrf_token %}
-      <h3 class="text-base font-semibold text-txt-primary">Add a tithe</h3>
-      <input type="hidden" name="giver" x-bind:value="giver ? giver.id : ''">
-      <template x-for="c in coGivers" x-bind:key="c.id"><input type="hidden" name="co_giver" x-bind:value="c.id" x-bind:disabled="!c.on"></template>
+        {# Offering: one number for the whole offering. #}
+        <form method="post" autocomplete="off" action="{% role_url 'report_offering' report.pk %}" data-ask-title="Save the offering?" data-ask-text="The offering on this report will be updated." data-ask-name="Offering" data-ask-kind="amount" data-ask-confirm="Save offering" class="space-y-2">
+          {% csrf_token %}
+          <label class="label" for="offering">Offering</label>
+          <div class="flex items-center gap-2">
+            <input id="offering" name="amount" type="text" inputmode="decimal" data-money maxlength="12" pattern="[0-9]*[.]?[0-9]{0,2}" autocomplete="off" class="input min-w-0 flex-1 font-mono"
+                   value="{{ totals.offering }}" x-model="offering">
+            <button type="submit" class="btn btn-secondary min-h-[44px] shrink-0 text-base">Save</button>
+          </div>
+          <p class="field-help">One number for the whole offering. Anyone may give it, guests included.</p>
+        </form>
 
-      <div>
-        <p class="label">Giver (the name on the envelope)</p>
-        <div x-show="giver" x-cloak class="flex items-center justify-between gap-3 rounded-lg border border-border px-4 py-2">
-          <span class="text-base text-txt-primary" x-text="giver ? giver.name : ''"></span>
-          <button type="button" class="btn btn-ghost min-h-[44px]" x-on:click="change()">Change</button>
+        {# Bills and coins: steppers, a row total, and a subtotal for bills and for coins. #}
+        <form method="post" autocomplete="off" action="{% role_url 'report_breakdown' report.pk %}" data-ask-title="Save bills and coins?" data-ask-text="The counted bills and coins on this report will be updated." data-ask-kind="counted" data-ask-confirm="Save bills and coins" class="space-y-4" id="breakdown" aria-labelledby="breakdown-title">
+          {% csrf_token %}
+          <div class="flex items-center justify-between gap-2">
+            <h3 id="breakdown-title" class="text-base font-semibold text-txt-primary">Bills and coins</h3>
+            <button type="button" class="btn btn-ghost min-h-[44px] text-base" x-on:click="denoms.forEach(d => counts[d] = '')">Clear</button>
+          </div>
+
+          <div class="space-y-2">
+            <div class="flex items-baseline justify-between gap-3">
+              <p class="text-sm font-medium text-txt-secondary">Bills</p>
+              <p class="font-mono text-sm tabular-nums text-txt-secondary" x-text="money(sum(d => d >= 20))">&#8369;0.00</p>
+            </div>
+            <ul class="divide-y divide-border overflow-hidden rounded-xl border border-border">
+              {% for row in denominations %}{% if row.value >= 20 %}
+              <li class="grid grid-cols-[3.75rem_minmax(0,1fr)_6.5rem] items-center gap-2 px-2 py-1.5">
+                <span class="flex h-11 items-center justify-center rounded-lg bg-surface-alt/50 font-mono text-base font-semibold text-txt-primary">&#8369;{{ row.value }}</span>
+                <div class="grid grid-cols-[2.75rem_minmax(0,1fr)_2.75rem] items-center gap-1">
+                  <button type="button" class="btn btn-ghost h-11 w-11 p-0 text-lg" aria-label="One less &#8369;{{ row.value }}" x-on:click="step({{ row.value }}, -1)">&minus;</button>
+                  <label class="sr-only" for="count-{{ row.value }}">Number of {{ row.value }} peso bills</label>
+                  <input id="count-{{ row.value }}" name="count_{{ row.value }}" type="text" inputmode="numeric" data-int maxlength="6" pattern="[0-9]*" autocomplete="off"
+                         class="input h-11 w-full min-w-0 px-1 text-center font-mono" value="{{ row.count }}" x-model="counts['{{ row.value }}']">
+                  <button type="button" class="btn btn-ghost h-11 w-11 p-0 text-lg" aria-label="One more &#8369;{{ row.value }}" x-on:click="step({{ row.value }}, 1)">+</button>
+                </div>
+                <span class="text-right font-mono text-base tabular-nums"
+                      x-bind:class="cnt({{ row.value }}) > 0 ? 'text-txt-primary' : 'text-txt-secondary'"
+                      x-text="money(line({{ row.value }}))">&#8369;{{ row.line|floatformat:"2g" }}</span>
+              </li>
+              {% endif %}{% endfor %}
+            </ul>
+          </div>
+
+          <div class="space-y-2">
+            <div class="flex items-baseline justify-between gap-3">
+              <p class="text-sm font-medium text-txt-secondary">Coins</p>
+              <p class="font-mono text-sm tabular-nums text-txt-secondary" x-text="money(sum(d => d < 20))">&#8369;0.00</p>
+            </div>
+            <ul class="divide-y divide-border overflow-hidden rounded-xl border border-border">
+              {% for row in denominations %}{% if row.value < 20 %}
+              <li class="grid grid-cols-[3.75rem_minmax(0,1fr)_6.5rem] items-center gap-2 px-2 py-1.5">
+                <span class="flex h-11 items-center justify-center rounded-lg bg-surface-alt/50 font-mono text-base font-semibold text-txt-primary">&#8369;{{ row.value }}</span>
+                <div class="grid grid-cols-[2.75rem_minmax(0,1fr)_2.75rem] items-center gap-1">
+                  <button type="button" class="btn btn-ghost h-11 w-11 p-0 text-lg" aria-label="One less &#8369;{{ row.value }}" x-on:click="step({{ row.value }}, -1)">&minus;</button>
+                  <label class="sr-only" for="count-{{ row.value }}">Number of {{ row.value }} peso coins</label>
+                  <input id="count-{{ row.value }}" name="count_{{ row.value }}" type="text" inputmode="numeric" data-int maxlength="6" pattern="[0-9]*" autocomplete="off"
+                         class="input h-11 w-full min-w-0 px-1 text-center font-mono" value="{{ row.count }}" x-model="counts['{{ row.value }}']">
+                  <button type="button" class="btn btn-ghost h-11 w-11 p-0 text-lg" aria-label="One more &#8369;{{ row.value }}" x-on:click="step({{ row.value }}, 1)">+</button>
+                </div>
+                <span class="text-right font-mono text-base tabular-nums"
+                      x-bind:class="cnt({{ row.value }}) > 0 ? 'text-txt-primary' : 'text-txt-secondary'"
+                      x-text="money(line({{ row.value }}))">&#8369;{{ row.line|floatformat:"2g" }}</span>
+              </li>
+              {% endif %}{% endfor %}
+            </ul>
+          </div>
+
+          <div class="flex items-baseline justify-between gap-3 border-t border-border pt-3">
+            <p class="text-base font-semibold text-txt-primary">Breakdown total</p>
+            <p class="font-mono text-lg font-semibold tabular-nums text-txt-primary" x-text="money(breakdown())">&#8369;{{ totals.breakdown_total|floatformat:"2g" }}</p>
+          </div>
+          <button type="submit" class="btn btn-primary min-h-[44px] w-full text-base">Save bills and coins</button>
+        </form>
+
+      </div>
+    </section>
+
+    {# MIDDLE: everyone who can give, grouped by household, with the amount field on the right. #}
+    <section aria-labelledby="givers-title"
+             class="min-h-0 min-w-0 flex-1 flex-col glass-panel"
+             x-bind:class="tab === 'givers' ? 'flex' : 'hidden lg:flex'">
+      <div class="shrink-0 space-y-3 border-b border-border/50 p-3">
+        <div class="flex flex-wrap items-center justify-between gap-2">
+          <h2 id="givers-title" class="text-lg font-semibold text-txt-primary">Givers <span class="text-base font-normal text-txt-secondary">({{ entries|length }} envelope{{ entries|length|pluralize }})</span></h2>
+          <button type="button" class="btn btn-secondary hidden min-h-[44px] text-base lg:inline-flex"
+                  x-on:click="numbersOpen = !numbersOpen" x-bind:aria-pressed="numbersOpen ? 'true' : 'false'"
+                  x-text="numbersOpen ? 'Hide numbers' : 'Show numbers'">Hide numbers</button>
         </div>
-        <div x-show="!giver">
-          <label class="sr-only" for="giver-q">Search for a member</label>
-          <input id="giver-q" type="search" class="input" autocomplete="off" placeholder="Type a name"
-                 x-model="giverQ" x-on:input.debounce.300ms="searchGivers()">
-          <p class="field-help" x-text="hint()"></p>
-          <ul class="mt-2 max-h-64 divide-y divide-border overflow-y-auto rounded-xl border border-border" x-show="listed().length" x-cloak>
-            <template x-for="p in listed()" x-bind:key="p.id">
-              <li>
-                <button type="button" class="flex min-h-[44px] w-full items-center justify-between gap-3 px-4 py-2 text-left text-base hover:bg-txt-primary/5 disabled:opacity-50"
-                        x-bind:disabled="taken.includes(p.id)" x-on:click="choose(p)">
-                  <span class="min-w-0">
-                    <span class="block truncate text-txt-primary" x-text="p.name"></span>
-                    <span class="block text-sm text-txt-secondary" x-text="p.home_extension"></span>
-                  </span>
-                  <span class="shrink-0 text-sm text-txt-secondary" x-text="badge(p)"></span>
-                </button>
+        <div class="flex flex-wrap items-center gap-2">
+          <label for="giver-search" class="sr-only">Search givers by name</label>
+          <input id="giver-search" type="search" class="input min-w-[10rem] flex-1 text-base" x-model="aq"
+                 x-on:input.debounce.300ms="remote()"
+                 placeholder="Filter the list by name" autocomplete="off" autocapitalize="words">
+          <div class="flex flex-wrap gap-2" role="group" aria-label="Show">
+            <button type="button" class="min-h-[44px] rounded-xl border px-3 text-base transition-colors"
+                    x-bind:class="filter === 'all' ? 'border-accent bg-accent text-on-accent' : 'border-border-strong text-txt-primary'"
+                    x-bind:aria-pressed="filter === 'all' ? 'true' : 'false'" x-on:click="filter = 'all'">All</button>
+            <button type="button" class="min-h-[44px] rounded-xl border px-3 text-base transition-colors"
+                    x-bind:class="filter === 'gave' ? 'border-accent bg-accent text-on-accent' : 'border-border-strong text-txt-primary'"
+                    x-bind:aria-pressed="filter === 'gave' ? 'true' : 'false'" x-on:click="filter = 'gave'">Gave</button>
+            <button type="button" class="min-h-[44px] rounded-xl border px-3 text-base transition-colors"
+                    x-bind:class="filter === 'none' ? 'border-accent bg-accent text-on-accent' : 'border-border-strong text-txt-primary'"
+                    x-bind:aria-pressed="filter === 'none' ? 'true' : 'false'" x-on:click="filter = 'none'">Not yet</button>
+          </div>
+        </div>
+        <p class="text-sm text-txt-secondary">Type an amount on the right and press Add. The numbers at the top update as you type. A household shares one envelope: one amount, never split.</p>
+      </div>
+
+      <div class="max-h-[65dvh] min-h-0 flex-1 overflow-y-auto lg:max-h-none">
+        <div id="ws-list">
+          {% for group in groups %}
+          <section data-group x-show="groupShown($el)" class="border-b border-border/50"
+                   aria-label="{% if group.is_household %}{{ group.name|title_case }} household{% else %}Individuals{% endif %}">
+            <header class="flex items-center justify-between gap-3 bg-surface-alt/50 px-4 py-2">
+              <h3 class="min-w-0 truncate text-base font-semibold text-txt-primary">{% if group.is_household %}{{ group.name|title_case }} household{% else %}Individuals{% endif %}</h3>
+              {% if group.is_household and group.total %}<span class="shrink-0 font-mono text-sm tabular-nums text-txt-secondary">&#8369;{{ group.total|floatformat:"2g" }}</span>{% endif %}
+            </header>
+            <ul{% if group.is_household %} class="border-l-4 border-l-highlight"{% endif %}>
+              {% for row in group.rows %}
+              <li data-uid="{{ row.user_id }}" data-name="{{ row.name|lower }}" data-has="{% if row.entry %}1{% else %}0{% endif %}"
+                  class="border-t border-border/50 px-4 py-2 first:border-t-0" x-data="{ share: true, saved: '{{ row.entry.amount|unlocalize }}', val: '{{ row.entry.amount|unlocalize }}',
+                         dirty() { const a = parseFloat(this.val), b = parseFloat(this.saved); return (isFinite(a) && a > 0 ? a : 0) !== (isFinite(b) && b > 0 ? b : 0); } }" x-show="showRow($el)">
+                <div class="flex flex-wrap items-center gap-x-3 gap-y-2">
+                  <div class="min-w-0 flex-1 basis-48">
+                    <p class="truncate text-base font-medium text-txt-primary">{{ row.name|title_case }}
+                      <span class="ml-1 rounded-full border border-border-strong px-2 py-0.5 text-sm font-normal text-txt-secondary">{% if row.present %}Present{% else %}Not on today&rsquo;s sheet{% endif %}</span>
+                      <span class="ml-1 rounded-full border border-warning px-2 py-0.5 text-sm font-normal text-txt-primary" x-show="dirty()" style="display:none">Unsaved</span>
+                    </p>
+                    {% if row.entry and row.entry.co_givers.all %}
+                    <p class="truncate text-sm text-txt-secondary">with {% for co in row.entry.co_givers.all %}{{ co.name_snapshot|title_case }}{% if not forloop.last %}, {% endif %}{% endfor %}</p>
+                    {% elif row.shared_in %}
+                    <p class="truncate text-sm text-txt-secondary">In {{ row.shared_in.giver_name|title_case }}&rsquo;s envelope</p>
+                    {% endif %}
+                  </div>
+
+                  {% if row.entry %}
+                  <form method="post" autocomplete="off" action="{% role_url 'entry_update' report.pk %}" data-ask-title="Save changes?" data-ask-text="This tithe will be updated on this report." data-ask-name="{{ row.name|title_case }}" data-ask-kind="amount" data-ask-confirm="Save changes" class="flex items-center gap-2">
+                    {% csrf_token %}
+                    <input type="hidden" name="entry_id" value="{{ row.entry.pk }}">
+                    <label class="sr-only" for="amount-{{ row.entry.pk }}">Amount for {{ row.name|title_case }}</label>
+                    <input id="amount-{{ row.entry.pk }}" name="amount" type="text" inputmode="decimal" data-money maxlength="12" pattern="[0-9]*[.]?[0-9]{0,2}" autocomplete="off" class="input w-32 font-mono" value="{{ row.entry.amount }}" data-amt data-saved="{{ row.entry.amount|unlocalize }}" x-model="val">
+                    <button type="submit" class="btn btn-secondary min-h-[44px] text-base" x-bind:disabled="!dirty()">Save</button>
+                  </form>
+                  <form method="post" autocomplete="off" action="{% role_url 'entry_remove' report.pk %}" data-ask-title="Remove this tithe?" data-ask-text="This tithe will be removed from the report. You can add it again." data-ask-name="{{ row.name|title_case }} &middot; &#8369;{{ row.entry.amount|floatformat:'2g' }}" data-ask-confirm="Remove">
+                    {% csrf_token %}
+                    <input type="hidden" name="entry_id" value="{{ row.entry.pk }}">
+                    <button type="submit" class="btn btn-ghost min-h-[44px] text-base" aria-label="Remove the tithe of {{ row.name|title_case }}">Remove</button>
+                  </form>
+                  {% elif row.shared_in %}
+                  <p class="font-mono text-base tabular-nums text-txt-secondary">&#8369;{{ row.shared_in.amount|floatformat:"2g" }} <span class="font-sans text-sm">shared</span></p>
+                  {% else %}
+                  <form method="post" autocomplete="off" action="{% role_url 'entry_add' report.pk %}" data-ask-title="Add this tithe?" data-ask-text="A tithe of this amount will be added to the report." data-ask-name="{{ row.name|title_case }}" data-ask-kind="amount" data-ask-confirm="Add tithe" class="flex items-center gap-2">
+                    {% csrf_token %}
+                    <input type="hidden" name="giver" value="{{ row.user_id }}">
+                    {% for hid in row.housemate_ids %}<input type="hidden" name="co_giver" value="{{ hid }}" x-bind:disabled="!share">{% endfor %}
+                    <label class="sr-only" for="new-{{ row.user_id }}">Amount for {{ row.name|title_case }}</label>
+                    <input id="new-{{ row.user_id }}" name="amount" type="text" inputmode="decimal" data-money maxlength="12" pattern="[0-9]*[.]?[0-9]{0,2}" autocomplete="off" placeholder="0.00" class="input w-32 font-mono" data-amt data-saved="" x-model="val">
+                    <button type="submit" class="btn btn-primary min-h-[44px] text-base" x-bind:disabled="!dirty()">Add</button>
+                  </form>
+                  {% endif %}
+                </div>
+                {% if not row.entry and not row.shared_in and row.housemate_ids %}
+                <label class="flex min-h-[44px] items-center gap-3 text-sm text-txt-secondary">
+                  <input type="checkbox" class="size-5 accent-accent" x-model="share">
+                  One envelope for the household
+                </label>
+                {% endif %}
+              </li>
+              {% endfor %}
+            </ul>
+          </section>
+          {% endfor %}
+
+          {% if not groups %}
+          <section class="border-b border-border/50" aria-label="Present, no tithe yet" x-show="waiting().length && filter !== 'gave'" style="display:none">
+            <header class="bg-surface-alt/50 px-4 py-2"><h3 class="text-base font-semibold text-txt-primary">Present, no tithe yet (<span x-text="waiting().length">0</span>)</h3></header>
+            <ul>
+              <template x-for="p in waiting()" x-bind:key="p.id">
+                <li class="border-t border-border/50 px-4 py-2 first:border-t-0" x-data="{ val: '' }" x-show="waitingShown(p)" x-bind:data-uid="p.id">
+                  <div class="flex flex-wrap items-center gap-x-3 gap-y-2">
+                    <div class="min-w-0 flex-1 basis-48">
+                      <p class="truncate text-base font-medium text-txt-primary"><span x-text="p.name"></span>
+                        <span class="ml-1 rounded-full border border-border-strong px-2 py-0.5 text-sm font-normal text-txt-secondary">Present</span>
+                        <span class="ml-1 rounded-full border border-warning px-2 py-0.5 text-sm font-normal text-txt-primary" x-show="parseFloat(val) > 0" style="display:none">Unsaved</span>
+                      </p>
+                    </div>
+                    <form method="post" autocomplete="off" action="{% role_url 'entry_add' report.pk %}" data-ask-title="Add this tithe?" data-ask-text="A tithe of this amount will be added to the report." x-bind:data-ask-name="p.name" data-ask-kind="amount" data-ask-confirm="Add tithe" class="flex items-center gap-2">
+                      {% csrf_token %}
+                      <input type="hidden" name="giver" x-bind:value="p.id">
+                      <label class="sr-only" x-bind:for="'new-' + p.id" x-text="'Amount for ' + p.name"></label>
+                      <input x-bind:id="'new-' + p.id" name="amount" type="text" inputmode="decimal" data-money maxlength="12" pattern="[0-9]*[.]?[0-9]{0,2}" autocomplete="off" placeholder="0.00" class="input w-32 font-mono" data-amt data-saved="" x-model="val">
+                      <button type="submit" class="btn btn-primary min-h-[44px] text-base" x-bind:disabled="!(parseFloat(val) > 0)">Add</button>
+                    </form>
+                  </div>
+                </li>
+              </template>
+            </ul>
+          </section>
+
+          {% if entries %}
+          <section class="border-b border-border/50" aria-label="Gave">
+            <header class="bg-surface-alt/50 px-4 py-2"><h3 class="text-base font-semibold text-txt-primary">Gave ({{ entries|length }})</h3></header>
+            <ul>
+              {% for entry in entries %}
+              <li data-uid="{{ entry.user_id }}" data-name="{{ entry.giver_name|lower }}" data-has="1"
+                  class="border-t border-border/50 px-4 py-2 first:border-t-0"
+                  x-data="{ saved: '{{ entry.amount|unlocalize }}', val: '{{ entry.amount|unlocalize }}', dirty() { const a = parseFloat(this.val), b = parseFloat(this.saved); return (isFinite(a) && a > 0 ? a : 0) !== (isFinite(b) && b > 0 ? b : 0); } }"
+                  x-show="showRow($el)">
+                <div class="flex flex-wrap items-center gap-x-3 gap-y-2">
+                  <div class="min-w-0 flex-1 basis-48">
+                    <p class="truncate text-base font-medium text-txt-primary">{{ entry.giver_name|title_case }}
+                      <span class="ml-1 rounded-full border border-warning px-2 py-0.5 text-sm font-normal text-txt-primary" x-show="dirty()" style="display:none">Unsaved</span>
+                    </p>
+                    {% if entry.co_givers.all %}<p class="truncate text-sm text-txt-secondary">with {% for co in entry.co_givers.all %}{{ co.name_snapshot|title_case }}{% if not forloop.last %}, {% endif %}{% endfor %}</p>{% endif %}
+                  </div>
+                  <form method="post" autocomplete="off" action="{% role_url 'entry_update' report.pk %}" data-ask-title="Save changes?" data-ask-text="This tithe will be updated on this report." data-ask-name="{{ entry.giver_name|title_case }}" data-ask-kind="amount" data-ask-confirm="Save changes" class="flex items-center gap-2">
+                    {% csrf_token %}
+                    <input type="hidden" name="entry_id" value="{{ entry.pk }}">
+                    <label class="sr-only" for="amount-{{ entry.pk }}">Amount for {{ entry.giver_name|title_case }}</label>
+                    <input id="amount-{{ entry.pk }}" name="amount" type="text" inputmode="decimal" data-money maxlength="12" pattern="[0-9]*[.]?[0-9]{0,2}" autocomplete="off" class="input w-32 font-mono" value="{{ entry.amount }}" data-amt data-saved="{{ entry.amount|unlocalize }}" x-model="val">
+                    <button type="submit" class="btn btn-secondary min-h-[44px] text-base" x-bind:disabled="!dirty()">Save</button>
+                  </form>
+                  <form method="post" autocomplete="off" action="{% role_url 'entry_remove' report.pk %}" data-ask-title="Remove this tithe?" data-ask-text="This tithe will be removed from the report. You can add it again." data-ask-name="{{ entry.giver_name|title_case }} &middot; &#8369;{{ entry.amount|floatformat:'2g' }}" data-ask-confirm="Remove">
+                    {% csrf_token %}
+                    <input type="hidden" name="entry_id" value="{{ entry.pk }}">
+                    <button type="submit" class="btn btn-ghost min-h-[44px] text-base" aria-label="Remove the tithe of {{ entry.giver_name|title_case }}">Remove</button>
+                  </form>
+                </div>
+              </li>
+              {% endfor %}
+            </ul>
+          </section>
+          {% endif %}
+
+          {% if not entries %}
+          <p class="px-4 py-6 text-base text-txt-secondary" x-show="!waiting().length" style="display:none">Nobody is marked present on the attendance sheet yet.</p>
+          {% endif %}
+          {% endif %}
+        </div>
+
+        <div x-show="shownCount() === 0 && {{ groups|length }} > 0" class="space-y-3 px-4 py-6" style="display:none">
+          <p class="text-base text-txt-secondary">No one matches.</p>
+          <button type="button" class="btn btn-secondary min-h-[44px] text-base" x-on:click="aq = ''; filter = 'all'; results = []">Show everyone</button>
+        </div>
+
+        {# Members who are not listed (other extensions, not on the sheet), found by the server from 3 letters. #}
+        <div id="ws-more">
+          <p class="px-4 py-3 text-base text-txt-secondary" role="status" x-show="hint()" x-text="hint()" style="display:none"></p>
+          <p class="border-y border-border px-4 py-2 text-sm font-medium text-txt-secondary" x-show="more().length" style="display:none">More people</p>
+          <ul>
+            <template x-for="p in more()" x-bind:key="p.id">
+              <li class="flex flex-wrap items-center gap-x-3 gap-y-2 border-b border-border/50 px-4 py-2">
+                <div class="min-w-0 flex-1 basis-48">
+                  <p class="truncate text-base font-medium text-txt-primary" x-text="p.name"></p>
+                  <p class="truncate text-sm text-txt-secondary" x-text="p.home_extension"></p>
+                </div>
+                <form method="post" autocomplete="off" action="{% role_url 'entry_add' report.pk %}" data-ask-title="Add this tithe?" data-ask-text="A tithe of this amount will be added to the report." x-bind:data-ask-name="p.name" data-ask-kind="amount" data-ask-confirm="Add tithe" class="flex items-center gap-2">
+                  {% csrf_token %}
+                  <input type="hidden" name="giver" x-bind:value="p.id">
+                  <label class="sr-only" x-bind:for="'more-' + p.id" x-text="'Amount for ' + p.name"></label>
+                  <input x-bind:id="'more-' + p.id" name="amount" type="text" inputmode="decimal" data-money maxlength="12" pattern="[0-9]*[.]?[0-9]{0,2}" autocomplete="off" placeholder="0.00" class="input w-32 font-mono" data-amt data-saved="">
+                  <button type="submit" class="btn btn-primary min-h-[44px] text-base">Add</button>
+                </form>
               </li>
             </template>
           </ul>
         </div>
       </div>
+    </section>
+  </div>
 
-      <div x-show="giver && coGivers.length" x-cloak>
-        <p class="label">Shared with (co-givers from their household)</p>
-        <ul>
-          <template x-for="c in coGivers" x-bind:key="c.id">
-            <li><label class="flex min-h-[44px] items-center gap-3 text-base text-txt-primary"><input type="checkbox" class="size-5" x-model="c.on"><span x-text="c.name"></span></label></li>
-          </template>
-        </ul>
-        <button type="button" class="btn btn-ghost min-h-[44px]" x-on:click="coGivers.forEach(c => c.on = false)">Clear co-givers</button>
-        <p class="field-help">One envelope, one amount. Co-givers are copied onto this entry and never split the amount.</p>
-      </div>
+  {# Confirmation for add, save and remove. The form carries the wording (data-ask-*). Nothing is sent before Confirm. #}
+  {% modal "confirm_action" title="Please confirm" %}
+  <div class="space-y-4">
+    <div class="space-y-1">
+      <p class="text-base font-medium text-txt-primary" x-text="action.title"></p>
+      <p class="text-base text-txt-secondary" x-show="action.message" x-text="action.message"></p>
+    </div>
+    <p class="rounded-lg border border-border px-3 py-2 text-base font-medium text-txt-primary" x-show="action.detail" x-text="action.detail" style="display:none"></p>
+    <div class="flex justify-end gap-3">
+      <button type="button" class="btn btn-secondary min-h-[44px] text-base" x-on:click="$store.ui.closeModal()">Cancel</button>
+      <button type="button" class="btn btn-primary min-h-[44px] text-base" x-on:click="confirmAction()" x-text="action.confirm">Confirm</button>
+    </div>
+  </div>
+  {% endmodal %}
 
-      <div>
-        <label class="label" for="entry-amount">Amount</label>
-        <input id="entry-amount" name="amount" type="text" inputmode="decimal" autocomplete="off" class="input max-w-xs font-mono">
-      </div>
-      <button type="submit" class="btn btn-primary min-h-[44px] text-base" x-bind:disabled="!giver">Add tithe</button>
-    </form>
-  </section>
-
-  <section class="card" id="breakdown" aria-labelledby="breakdown-title">
-    <form method="post" action="{% role_url 'report_breakdown' report.pk %}" class="space-y-3">
-      {% csrf_token %}
-      <h2 id="breakdown-title" class="text-lg font-semibold text-txt-primary">Bills and coins</h2>
-      <div class="overflow-x-auto">
-        <table class="w-full min-w-[22rem] text-left text-base">
-          <thead>
-            <tr class="border-b border-border text-sm text-txt-secondary">
-              <th scope="col" class="py-2 pr-2 font-medium">Denomination</th>
-              <th scope="col" class="px-2 py-2 font-medium">Count</th>
-              <th scope="col" class="py-2 pl-2 text-right font-medium">Amount</th>
-            </tr>
-          </thead>
-          <tbody class="divide-y divide-border">
-            {% for row in denominations %}
-            <tr>
-              <th scope="row" class="py-2 pr-2 font-mono font-normal text-txt-primary">&#8369;{{ row.value }}</th>
-              <td class="px-2 py-1">
-                <label class="sr-only" for="count-{{ row.value }}">Number of {{ row.value }} bills or coins</label>
-                <input id="count-{{ row.value }}" name="count_{{ row.value }}" type="text" inputmode="numeric" autocomplete="off"
-                       class="input w-28 font-mono" value="{{ row.count }}" x-model="counts['{{ row.value }}']">
-              </td>
-              <td class="py-2 pl-2 text-right font-mono tabular-nums text-txt-primary" x-text="money(line({{ row.value }}))">&#8369;{{ row.line|floatformat:"2g" }}</td>
-            </tr>
-            {% endfor %}
-          </tbody>
-          <tfoot>
-            <tr class="border-t border-border">
-              <th scope="row" colspan="2" class="py-2 pr-2 font-semibold text-txt-primary">Breakdown total</th>
-              <td class="py-2 pl-2 text-right font-mono font-semibold tabular-nums text-txt-primary" x-text="money(breakdown())">&#8369;{{ totals.breakdown_total|floatformat:"2g" }}</td>
-            </tr>
-          </tfoot>
-        </table>
-      </div>
-      <button type="submit" class="btn btn-primary min-h-[44px] text-base">Save bills and coins</button>
-    </form>
-  </section>
-
+  {# Bypass request: the existing panel (request, withdraw, decide) now opens from the top bar. #}
   {% if totals.difference != 0 or open_request or last_request %}
+  {% modal "bypass" title="Bypass request" %}
   {% include 'tithes/_bypass_panel.html' %}
+  {% endmodal %}
   {% endif %}
 
+  {# Finalize: moved out of the Numbers pane. Opens from the Finalize button in the top bar. #}
   {% if can_finalize %}
-  <section class="card space-y-3" aria-label="Finalize">
-    <h2 class="text-lg font-semibold text-txt-primary">Finalize</h2>
-    <p class="text-base text-txt-secondary">Save the numbers above first. Finalizing freezes them.</p>
+  {% modal "finalize" title="Finalize report" %}
+  <div class="space-y-3">
+    <p class="text-base text-txt-secondary">Save the numbers first. Finalizing freezes them.</p>
     {% include 'tithes/_finalize_form.html' %}
-  </section>
+  </div>
+  {% endmodal %}
   {% endif %}
 </div>
 {% endblock %}

@@ -432,6 +432,38 @@ def _search_context(request, sheet, members):
                     hint = "Nobody found. Try another spelling, or add them as a first timer below."
     return {"q": text, "search_hint": hint, "results": results}
 
+def _order_roster(roster, sheet):
+    """Flag people of the sheet's extension and list them first, then everyone else by name."""
+    home = (sheet.extension.name or "").strip().lower()
+    rows = list(roster or [])
+
+    def get(person, key):
+        return person[key] if isinstance(person, dict) else getattr(person, key, "")
+
+    for person in rows:
+        flag = str(get(person, "home_extension") or "").strip().lower() == home
+        if isinstance(person, dict):
+            person["same_extension"] = flag
+        else:
+            person.same_extension = flag
+    rows.sort(key=lambda p: (not get(p, "same_extension"), str(get(p, "name")).lower()))
+    return rows
+
+def _roster_context(request, sheet):
+    """The member checklist, filled when the page opens: this extension's people first, then everyone else."""
+    try:
+        people = services.roster_people(request.user, sheet)
+    except (ServiceError, PermissionDenied):
+        return []
+    here = title_case(sheet.extension.name)
+    for person in people:
+        person["person_type_label"] = {
+            PersonType.GUEST: "Guest",
+            PersonType.MEMBER_RECORD: "Member (no account)",
+            PersonType.MEMBER_ACCOUNT: "Member",
+        }.get(person["person_type"], "")
+        person["same_extension"] = person["home_extension"] == here
+    return people
 
 def _workspace_context(request, sheet, form=None, pending=None):
     """Everything the draft workspace shows.
@@ -488,6 +520,8 @@ def _workspace_context(request, sheet, form=None, pending=None):
         "convert_token": new_submission_token() if permissions.can_convert(request.user, sheet) else "",
     }
     context.update(_search_context(request, sheet, members))
+    context["roster"] = _roster_context(request, sheet)
+    context["roster"] = _order_roster(context.get("roster"), sheet)
     context.update(_danger_flags(request, sheet))
     return context
 

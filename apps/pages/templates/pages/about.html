@@ -4,7 +4,8 @@
   Blocks filled: title, page_title, content.
   Context variables (get_about_context in apps/pages/services.py):
     about (mission, vision, values: each title and body; values also has items, one per line).
-  Text is escaped by Django. A Give section links to the public /give/ page. Tokens only.
+  Text is escaped by Django. A Give section links to the public /give/ page.
+  The "Built by" developer credit is hardcoded here (not church content). Tokens only.
 -->
 {% extends "base_app.html" %}
 
@@ -12,28 +13,120 @@
 {% block page_title %}About{% endblock %}
 
 {% block content %}
-<div class="mt-2 grid max-w-4xl gap-6">
-  <section class="card p-6" aria-labelledby="about-mission">
-    <h2 id="about-mission" class="text-xl font-semibold text-txt-primary">{{ about.mission.title }}</h2>
-    <p class="mt-2 text-base leading-relaxed text-txt-secondary">{{ about.mission.body|linebreaksbr }}</p>
+<div class="mt-2 grid max-w-4xl gap-8">
+
+  {# Mission: featured, large type #}
+  <section class="card p-8" aria-labelledby="about-mission">
+    <p class="text-sm font-semibold uppercase tracking-wide text-txt-secondary">Our mission</p>
+    <h2 id="about-mission" class="mt-2 text-3xl font-bold leading-tight text-txt-primary">{{ about.mission.title }}</h2>
+    <p class="mt-4 text-lg leading-relaxed text-txt-secondary">{{ about.mission.body|linebreaksbr }}</p>
   </section>
 
+  {# Vision #}
   <section class="card p-6" aria-labelledby="about-vision">
-    <h2 id="about-vision" class="text-xl font-semibold text-txt-primary">{{ about.vision.title }}</h2>
-    <p class="mt-2 text-base leading-relaxed text-txt-secondary">{{ about.vision.body|linebreaksbr }}</p>
+    <p class="text-sm font-semibold uppercase tracking-wide text-txt-secondary">Our vision</p>
+    <h2 id="about-vision" class="mt-1 text-xl font-semibold text-txt-primary">{{ about.vision.title }}</h2>
+    <p class="mt-3 text-base leading-relaxed text-txt-secondary">{{ about.vision.body|linebreaksbr }}</p>
   </section>
 
-  <section class="card p-6" aria-labelledby="about-values">
+  {# Values: one small card per value #}
+  <section aria-labelledby="about-values">
     <h2 id="about-values" class="text-xl font-semibold text-txt-primary">{{ about.values.title }}</h2>
-    <ul class="mt-2 list-disc space-y-1 pl-5 text-base text-txt-secondary">
-      {% for item in about.values.items %}<li>{{ item }}</li>{% endfor %}
+    <ul class="mt-4 grid gap-4 sm:grid-cols-2">
+      {% for item in about.values.items %}
+      <li class="card flex items-start gap-3 p-4">
+        <span class="flex h-8 w-8 shrink-0 items-center justify-center rounded-full border text-sm font-semibold text-txt-primary" aria-hidden="true">{{ forloop.counter }}</span>
+        <span class="text-base text-txt-secondary">{{ item }}</span>
+      </li>
+      {% endfor %}
     </ul>
   </section>
 
-  <section class="card p-6" aria-labelledby="about-give">
-    <h2 id="about-give" class="text-xl font-semibold text-txt-primary">Give</h2>
-    <p class="mt-2 text-base text-txt-secondary">See how to support the ministry, including account details and QR codes.</p>
-    <a href="{% url 'pages:give' %}" class="btn btn-primary mt-4 min-h-11">How to give</a>
+  {# Give: call-to-action banner #}
+  <section class="card flex flex-col gap-4 p-6 sm:flex-row sm:items-center sm:justify-between" aria-labelledby="about-give">
+    <div>
+      <h2 id="about-give" class="text-xl font-semibold text-txt-primary">Give</h2>
+      <p class="mt-1 text-base text-txt-secondary">See how to support the ministry, including account details and QR codes.</p>
+    </div>
+    <a href="{% url 'pages:give' %}" class="btn btn-primary min-h-11 shrink-0">How to give</a>
   </section>
+
+  {# Developer credit: hardcoded, team grid #}
+  <section class="border-t pt-6" aria-labelledby="about-team">
+    <h2 id="about-team" class="text-sm font-semibold uppercase tracking-wide text-txt-secondary">Built by</h2>
+    <p class="mt-1 text-sm text-txt-secondary">The team behind this app.</p>
+
+    <ul class="mt-4 grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
+      <li class="card flex items-center gap-3 p-3">
+        <span class="flex h-10 w-10 shrink-0 items-center justify-center rounded-full border text-sm font-semibold text-txt-primary" aria-hidden="true">JC</span>
+        <div class="min-w-0">
+          <p class="truncate text-sm font-medium text-txt-primary">Joseph Canzana</p>
+          <p class="text-xs text-txt-secondary">Lead / Full-stack Developer</p>
+        </div>
+      </li>
+
+      <li class="card flex items-center gap-3 p-3">
+        <span class="flex h-10 w-10 shrink-0 items-center justify-center rounded-full border text-sm font-semibold text-txt-primary" aria-hidden="true">JA</span>
+        <div class="min-w-0">
+          <p class="truncate text-sm font-medium text-txt-primary">John Michael Argao</p>
+          <p class="text-xs text-txt-secondary">Frontend Developer</p>
+        </div>
+      </li>
+
+      <li class="card flex items-center gap-3 p-3">
+        <span class="flex h-10 w-10 shrink-0 items-center justify-center rounded-full border text-sm font-semibold text-txt-primary" aria-hidden="true">JB</span>
+        <div class="min-w-0">
+          <p class="truncate text-sm font-medium text-txt-primary">Jelian Bencito</p>
+          <p class="text-xs text-txt-secondary">Researcher</p>
+        </div>
+      </li>
+
+      <li class="card flex items-center gap-3 p-3">
+        <span class="flex h-10 w-10 shrink-0 items-center justify-center rounded-full border text-sm font-semibold text-txt-primary" aria-hidden="true">AD</span>
+        <div class="min-w-0">
+          <p class="truncate text-sm font-medium text-txt-primary">Anthony Dichoso</p>
+          <p class="text-xs text-txt-secondary">Documentation</p>
+        </div>
+      </li>
+
+      <li class="card flex items-center gap-3 p-3">
+        <span class="flex h-10 w-10 shrink-0 items-center justify-center rounded-full border text-sm font-semibold text-txt-primary" aria-hidden="true">JR</span>
+        <div class="min-w-0">
+          <p class="truncate text-sm font-medium text-txt-primary">John Michael Rivera</p>
+          <p class="text-xs text-txt-secondary">Documentation</p>
+        </div>
+      </li>
+
+      <li class="card flex items-center gap-3 p-3">
+        <span class="flex h-10 w-10 shrink-0 items-center justify-center rounded-full border text-sm font-semibold text-txt-primary" aria-hidden="true">SA</span>
+        <div class="min-w-0">
+          <p class="truncate text-sm font-medium text-txt-primary">Sonndrei Avila</p>
+          <p class="text-xs text-txt-secondary">Testing</p>
+        </div>
+      </li>
+    </ul>
+  </section>
+    {# App info: version, legal links, copyright. Hardcoded, not church content. #}
+  <section class="border-t pt-6" aria-labelledby="about-app">
+    <h2 id="about-app" class="text-sm font-semibold uppercase tracking-wide text-txt-secondary">App information</h2>
+    <dl class="mt-3 grid grid-cols-[auto_1fr] gap-x-6 gap-y-2 text-sm">
+      <dt class="text-txt-secondary">Version</dt>
+      <dd class="font-medium text-txt-primary">1.0.0</dd>
+
+      <dt class="text-txt-secondary">Support</dt>
+      <dd class="font-medium text-txt-primary">
+        <a href="mailto:your-email@example.com" class="underline">14462018@@holycross.edu.ph</a>
+      </dd>
+    </dl>
+
+    <p class="mt-4 flex flex-wrap gap-x-6 gap-y-2 text-sm">
+      <a href="#" class="underline text-txt-secondary">Privacy Policy</a>
+      <a href="#" class="underline text-txt-secondary">Terms of Use</a>
+    </p>
+
+
+    <p class="mt-4 text-xs text-txt-secondary">&copy; 2026 Your Church Name. All rights reserved.</p>
+  </section>
+
 </div>
 {% endblock %}

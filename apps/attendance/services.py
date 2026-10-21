@@ -23,7 +23,7 @@ from dataclasses import dataclass, field
 from datetime import date
 
 from django.db import transaction
-from django.db.models import ProtectedError, Q, RestrictedError
+from django.db.models import ProtectedError, Q, RestrictedError, Case, IntegerField, Value, When
 from django.utils import timezone
 from django.core.exceptions import PermissionDenied
 
@@ -51,6 +51,7 @@ SEARCH_MIN_LENGTH = 3
 SEARCH_MAX_RESULTS = 20
 MATCH_LIMIT = 10
 AUTO_TRANSFER_VISITS = 3
+ROSTER_MAX_PEOPLE = 500
 #: Shown as "belongs to" for an admin or super-admin, who have no home extension.
 NO_EXTENSION_LABEL = "-"
 #: Fields of a first timer a taker can change (`update_first_timer`).
@@ -223,6 +224,34 @@ def find_possible_matches(first_name, last_name, birth_date=None, suffix="", *, 
         for p in people
     ]
 
+def roster_people(actor, sheet):
+    """The checklist shown when the workspace opens: people who are not on the sheet yet, no typing needed.
+
+    Same rules and same DELIBERATE EXCEPTION to `for_user` as `search_people` (active people of every
+    type, visitors from other extensions included, needs the right to edit this draft, only the few
+    fields `_person_row` gives back). People of the sheet's own extension come first, then everyone
+    else, each group by name. Capped at ROSTER_MAX_PEOPLE; anyone beyond it is still found by search.
+    """
+    current = Attendance.objects.filter(pk=sheet.pk).first()
+    if current is None:
+        raise ServiceError("This sheet no longer exists.")
+    _check_draft(actor, current)
+    on_sheet = AttendanceMember.objects.filter(attendance=current).values("user_id")
+    people = (
+        User.objects.filter(status=Status.ACTIVE)
+        .exclude(pk__in=on_sheet)
+        .exclude(role=Role.SUPER_ADMIN)
+        .select_related("extension")
+        .annotate(
+            home_first=Case(
+                When(extension_id=current.extension_id, then=Value(0)),
+                default=Value(1),
+                output_field=IntegerField(),
+            )
+        )
+        .order_by("home_first", "last_name", "first_name", "pk")[:ROSTER_MAX_PEOPLE]
+    )
+    return [_person_row(person, current.attendance_date) for person in people]
 
 # ------------------------------------------------------------------ the ticks
 def mark_present(actor, sheet, user, gender=None, age_network=None):

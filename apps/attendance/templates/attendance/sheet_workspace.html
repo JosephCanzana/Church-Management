@@ -21,7 +21,8 @@ form (FirstTimerForm), pending, more_open, gender_choices, age_choices, q, searc
 can_upload, can_convert, upload_blocker, submit_token.
 Needed by this template (the view must supply them):
   roster              EVERY church member who can be ticked and is not on this sheet yet (account and no account),
-                      already filled when the page opens: id, name, person_type_label, home_extension.
+                      already filled when the page opens: id, name, person_type_label, home_extension, same_extension
+                      (True for people of this sheet's extension). Sorted: this extension first, then everyone else.
   member.has_account  True when the marked person has an account (set by _decorate_member). Read-only, except that a
                       value the account lacks can be filled in. The view enforces the same rule.
   visitor.is_returning  True for a first-timer row whose person attended before: shown as "Guest", not "First timer".
@@ -78,6 +79,14 @@ Partials: _choice_chips.html, _age_hint.html, _status_badge.html, _convert_butto
         return !t || name.includes(t);
       },
       inRoster(id) { return !!document.querySelector('#ws-roster-list [data-id="' + id + '"]'); },
+      sectionShown(el) {
+        this.rev;
+        return Array.from(el.querySelectorAll('li[data-name]')).some(li => this.matchRoster(li.dataset.name));
+      },
+      sectionCount(el) {
+        this.rev;
+        return Array.from(el.querySelectorAll('li[data-name]')).filter(li => this.matchRoster(li.dataset.name)).length;
+      },
       otherShown() {
         this.rev;
         let n = 0;
@@ -662,8 +671,16 @@ Partials: _choice_chips.html, _age_hint.html, _status_badge.html, _convert_butto
       </div>
 
       <div class="max-h-[65dvh] min-h-0 flex-1 overflow-y-auto lg:max-h-none">
-        <ul id="ws-roster-list">
-          {% for person in roster %}
+        <div id="ws-roster-list">
+          {% regroup roster by same_extension as roster_groups %}
+          {% for group in roster_groups %}
+          <section data-section x-show="sectionShown($el)">
+            <header class="sticky top-0 z-[1] flex items-center justify-between gap-2 border-b border-border/50 bg-surface-alt/80 px-3 py-2 backdrop-blur">
+              <h3 class="min-w-0 truncate text-sm font-semibold text-txt-primary">{% if group.grouper %}{{ sheet.extension.name|title_case }}{% else %}Other members and guests{% endif %}</h3>
+              <span class="shrink-0 text-sm text-txt-secondary" x-text="sectionCount($el.closest('[data-section]'))">{{ group.list|length }}</span>
+            </header>
+            <ul>
+          {% for person in group.list %}
           <li data-id="{{ person.id }}" data-name="{{ person.name|lower }}" data-label="{{ person.name }}"
               data-meta="{{ person.person_type_label }} &middot; {{ person.home_extension }}"
               class="border-b border-border/50" x-show="matchRoster($el.dataset.name)">
@@ -681,6 +698,10 @@ Partials: _choice_chips.html, _age_hint.html, _status_badge.html, _convert_butto
           </li>
           {% endfor %}
         </ul>
+
+          </section>
+          {% endfor %}
+        </div>
 
         <p x-show="rosterShown() === 0 && otherShown() === 0" class="px-4 py-4 text-base text-txt-secondary" style="display:none"
            x-text="q.trim() ? 'No one matches that name.' : 'Everyone in this list is on the sheet.'"></p>
