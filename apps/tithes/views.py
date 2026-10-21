@@ -687,9 +687,10 @@ def household_list(request):
             .prefetch_related(Prefetch("members", queryset=active, to_attr="active_members")).order_by("name", "pk")
         )
         # Active members of this extension who are in no household right now.
+        in_household = TitheHouseholdMember.objects.filter(ended_on__isnull=True).values("user_id")
         context["candidates"] = list(
             User.objects.filter(extension=extension, status=Status.ACTIVE, person_type__in=services.GIVER_TYPES)
-            .exclude(tithe_household_memberships__ended_on__isnull=True).order_by("last_name", "first_name", "pk")
+            .exclude(pk__in=in_household).order_by("last_name", "first_name", "pk")
         )
     return render(request, HOUSEHOLD_TEMPLATE, context)
 
