@@ -1,6 +1,6 @@
 """Public registration matching and leader decisions. Never log request personal data."""
 from dataclasses import dataclass
-from datetime import timedelta
+from datetime import date, datetime, timedelta
 
 from django.conf import settings
 from django.core.cache import cache
@@ -21,13 +21,32 @@ from apps.core.models import SiteSetting
 from apps.core.services import ServiceError, consume_submission_token, new_submission_token
 from apps.core.text import clean_suffix, clean_text
 from apps.notifications.services import notify_many
+import logging
+logger = logging.getLogger(__name__)
 
 GENERIC_REFUSAL = "We could not accept this request. Please contact your church office for help."
 MAX_PENDING_PER_IDENTITY = 3
 IP_WINDOW_SECONDS = settings.REGISTRATION_IP_WINDOW_SECONDS
 IP_MAX_SUBMISSIONS = settings.REGISTRATION_IP_MAX_SUBMISSIONS
 RETENTION_DAYS = settings.REGISTRATION_REQUEST_RETENTION_DAYS
+MAX_AGE_YEARS = 200
+MAX_REJECTION_REASON = 1000
 
+def _clean_birth_date(value):
+    """Return a real, plausible date or None."""
+    if isinstance(value, datetime):
+        value = value.date()
+    if isinstance(value, str):
+        try:
+            value = date.fromisoformat(value.strip())
+        except ValueError:
+            return None
+    if not isinstance(value, date):
+        return None
+    today = timezone.localdate()
+    if value > today or value.year < today.year - MAX_AGE_YEARS:
+        return None
+    return value
 
 def registration_auto_approve():
     row = SiteSetting.objects.filter(pk="registration_auto_approve").first()
@@ -110,8 +129,11 @@ def submit_registration(data, *, token):
     """Match, deduplicate and create one public request in one transaction."""
     data = dict(data)
     identity = _identity(data)
-    if not identity["first_name"] or not identity["last_name"] or not identity["birth_date"]:
-        raise ServiceError("Enter your first name, last name and birth date.")
+    identity["birth_date"] = _clean_birth_date(identity["birth_date"])
+    if not identity["first_name"] or not identity["last_name"]:
+        raise ServiceError("Enter your first name and last name.")
+    if identity["birth_date"] is None:
+        raise ServiceError("Enter a valid birth date.")
     if data.get("gender") not in Gender.values:
         raise ServiceError("Choose a valid gender.")
     try:
@@ -228,7 +250,7 @@ def submit_registration(data, *, token):
     return SubmissionResult(request=req)
 
 
-def approve_registration(actor, request, request_id, *, token, email_override=None):
+def approve_registration(actor, request, request_id, *, token):
     """Approve a scoped request; create or grant its account and close same-identity requests."""
     with transaction.atomic():
         req = registration_requests_for(actor).select_for_update().filter(pk=request_id).first()
@@ -236,17 +258,15 @@ def approve_registration(actor, request, request_id, *, token, email_override=No
             raise Http404("That request is no longer available.")
         if req.status != RegistrationRequest.Status.PENDING:
             raise ServiceError("That request has already been decided.")
-        approved_email = (email_override or req.email).strip().lower()
+        approved_email = req.email.strip().lower()
         try:
             validate_email(approved_email)
         except ValidationError:
-            raise ServiceError("Enter a valid email address before approving.")
+            raise ServiceError("This request has an invalid email address and cannot be approved.")
         email_owner = User.objects.filter(email__iexact=approved_email).exclude(pk=req.matched_user_id).first()
         if email_owner:
-            raise ServiceError("That email address is already used by another account. Correct it before approving.")
-        if approved_email != req.email:
-            req.email = approved_email
-            req.save(update_fields=["email"])
+            raise ServiceError("That email address is already used by another account.")
+
         user = req.matched_user
         password_info = None
         if user and user.person_type in (PersonType.MEMBER_RECORD, PersonType.GUEST):
@@ -283,7 +303,7 @@ def approve_registration(actor, request, request_id, *, token, email_override=No
             user.email, user.email_verified_at = req.email, timezone.now()
             user.save(update_fields=["email", "email_verified_at", "updated_at"])
         req.status, req.decided_by, req.decided_at = RegistrationRequest.Status.APPROVED, actor, timezone.now()
-        req.save(update_fields=["email", "status", "decided_by", "decided_at"])
+        req.save(update_fields=["status", "decided_by", "decided_at"])
         group = _pending_group({"first_name": req.first_name, "middle_name": req.middle_name,
                                 "last_name": req.last_name, "birth_date": req.birth_date})
         duplicate_ids = list(group.exclude(pk=req.pk).values_list("pk", flat=True))
@@ -306,7 +326,15 @@ def approve_registration(actor, request, request_id, *, token, email_override=No
     return req, user, password
 
 
-def reject_registration(actor, request, request_id, *, token):
+def reject_registration(actor, request, request_id, *, token, reason):
+    reason = " ".join((reason or "").split())
+    if not reason:
+        raise ServiceError("Write a message explaining why the request was rejected.")
+    if len(reason) > MAX_REJECTION_REASON:
+        raise ServiceError("Keep the message under 1000 characters.")
+    if not _approval_mail_is_configured():
+        raise ServiceError("Email is not configured, so the rejection message cannot be sent.")
+
     with transaction.atomic():
         if not consume_submission_token(token):
             return False
@@ -320,9 +348,40 @@ def reject_registration(actor, request, request_id, *, token):
         log_action("registration.reject", actor=actor, request=request,
                    entity_type="registration_request", entity_id=req.pk,
                    after={"request_id": req.pk})
+
+        email, name, req_pk = req.email, req.first_name.title(), req.pk
+        recipients = {actor.pk}
+
+        def deliver():
+            try:
+                send_rejection_email(email, name, reason)
+            except Exception:
+                logger.exception("Rejection email failed for request %s", req_pk)
+                notify_many(
+                    recipients, "registration_email_failed", entity_type="registration_request",
+                    entity_id=req_pk, data={},
+                )
+
+        transaction.on_commit(deliver)
     return True
 
-
+def send_rejection_email(email, name, reason):
+    if not _approval_mail_is_configured():
+        raise RuntimeError("Email is not configured.")
+    message = EmailMultiAlternatives(
+        subject="Your registration request",
+        body=(
+            f"Hello {name},\n\n"
+            "We could not approve your registration request.\n\n"
+            f"Reason: {reason}\n\n"
+            "You are welcome to submit a new request after correcting this."
+        ),
+        from_email=settings.DEFAULT_FROM_EMAIL,
+        to=[email],
+    )
+    if message.send(fail_silently=False) != 1:
+        raise RuntimeError("The rejection email was not accepted by the mail backend.")
+        
 def send_credentials_email(user, password, *, subject, intro):
     if not _approval_mail_is_configured():
         raise RuntimeError("Credential email is not configured; use the show-once credential page.")

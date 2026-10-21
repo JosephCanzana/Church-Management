@@ -13,9 +13,10 @@
     <div><dt class="text-txt-secondary">Phone</dt><dd>{{ registration.phone_number }}</dd></div>
     <div class="sm:col-span-2"><dt class="text-txt-secondary">Address</dt><dd>{{ registration.building_number }} {{ registration.street }}, {{ registration.barangay|title }}, {{ registration.municipality|title }}, {{ registration.province|title }}, {{ registration.country|title }} {{ registration.postal_code }}</dd></div>
   </dl>
-  <div class="flex flex-wrap gap-3">
-    <form method="post" action="{% url request.resolver_match.namespace|add:':registration_approve' registration.pk %}" class="w-full max-w-md space-y-3">{% csrf_token %}<input type="hidden" name="submission_token" value="{{ token }}"><label class="label" for="approval-email">Email for the account and password</label><input class="input" id="approval-email" type="email" name="email" maxlength="254" required value="{{ registration.email }}"><p class="text-sm text-txt-secondary">Correct a typo here before approving if needed.</p><button class="btn btn-primary" type="submit">Approve and email account details</button></form>
-    <form method="post" action="{% url request.resolver_match.namespace|add:':registration_reject' registration.pk %}">{% csrf_token %}<input type="hidden" name="submission_token" value="{{ token }}"><button class="btn btn-danger" type="submit">Reject request</button></form>
+  <div class="flex flex-wrap items-start gap-6">
+  <form method="post" action="{% url request.resolver_match.namespace|add:':registration_approve' registration.pk %}">{% csrf_token %}<input type="hidden" name="submission_token" value="{{ token }}"><button class="btn btn-primary" type="submit">Approve and email account details</button></form>
+  <form method="post" action="{% url request.resolver_match.namespace|add:':registration_reject' registration.pk %}" class="w-full max-w-md space-y-3">{% csrf_token %}<input type="hidden" name="submission_token" value="{{ token }}"><label class="label" for="reject-reason">Message to the applicant (sent by email)</label><textarea class="input" id="reject-reason" name="reason" rows="4" maxlength="1000" required></textarea><button class="btn btn-danger" type="submit">Reject and send message</button></form>
   </div>
+  
 </section>
 {% endblock %}

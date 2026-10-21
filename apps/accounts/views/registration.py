@@ -90,7 +90,6 @@ def approve(request, pk):
     try:
         outcome = approve_registration(
             request.user, request, pk, token=request.POST.get("submission_token"),
-            email_override=request.POST.get("email"),
         )
         if outcome is None:
             messages.info(request, "That request was already processed.")
@@ -114,7 +113,7 @@ def approve(request, pk):
 @never_cache
 def reject(request, pk):
     try:
-        changed = reject_registration(request.user, request, pk, token=request.POST.get("submission_token"))
+        changed = reject_registration(request.user, request, pk, token=request.POST.get("submission_token"), reason=request.POST.get("reason", ""))
         if changed:
             messages.success(request, "The request was rejected.")
         else:
