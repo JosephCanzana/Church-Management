@@ -1,0 +1,85 @@
+<!--
+tithes/household_list.html
+Households of one extension: create, add a person, end a membership. Extends base_app.html and fills: title, page_title, content.
+Context (tithes.views.household_list): extensions (admins only, to pick one), extension (None until an admin picks),
+households (each with active_members), candidates (active members of the extension in no household).
+A household only PRE-FILLS the co-givers of a new tithe entry; ending a membership never touches past entries.
+-->
+{% extends 'base_app.html' %}
+{% load ui_tags people_tags %}
+
+{% block title %}Households{% endblock %}
+{% block page_title %}Households{% endblock %}
+
+{% block content %}
+{% role_url 'report_list' as list_url %}
+{% include 'includes/breadcrumb.html' with parent_label='Tithes' parent_url=list_url current='Households' %}
+
+<div class="max-w-3xl space-y-6">
+  {% if extensions %}
+  <form method="get" class="card flex flex-wrap items-end gap-3">
+    <div class="min-w-[14rem] flex-1">
+      <label class="label" for="extension-pick">Extension</label>
+      <select id="extension-pick" name="extension" class="input">
+        <option value="">Choose an extension</option>
+        {% for item in extensions %}<option value="{{ item.pk }}"{% if extension and item.pk == extension.pk %} selected{% endif %}>{{ item.name|title_case }}</option>{% endfor %}
+      </select>
+    </div>
+    <button type="submit" class="btn btn-primary min-h-[44px]">Show</button>
+  </form>
+  {% endif %}
+
+  {% if extension %}
+  <section class="card">
+    <form method="post" action="{% role_url 'household_create' %}" class="flex flex-wrap items-end gap-3">
+      {% csrf_token %}
+      <input type="hidden" name="extension" value="{{ extension.pk }}">
+      <div class="min-w-[14rem] flex-1">
+        <label class="label" for="household-name">New household in {{ extension.name|title_case }}</label>
+        <input id="household-name" name="name" type="text" maxlength="150" class="input" placeholder="Optional name, for example Santos family">
+      </div>
+      <button type="submit" class="btn btn-primary min-h-[44px]">Create household</button>
+    </form>
+  </section>
+
+  {% for household in households %}
+  <section class="card space-y-3" aria-label="{{ household }}">
+    <h2 class="text-lg font-semibold text-txt-primary">{{ household }}</h2>
+    {% if household.active_members %}
+    <ul class="divide-y divide-border rounded-xl border border-border">
+      {% for member in household.active_members %}
+      <li class="flex flex-wrap items-center justify-between gap-3 px-4 py-2">
+        <span class="text-base text-txt-primary">{{ member.user.full_name }} <span class="text-sm text-txt-secondary">since {{ member.started_on|date:"j M Y" }}</span></span>
+        <form method="post" action="{% role_url 'household_member_end' member.pk %}"
+              data-confirm="End the membership of {{ member.user.full_name }}? Past tithe entries are not changed." data-confirm-title="End membership" data-confirm-text="End membership">
+          {% csrf_token %}
+          <button type="submit" class="btn btn-ghost min-h-[44px]">End membership</button>
+        </form>
+      </li>
+      {% endfor %}
+    </ul>
+    {% else %}
+    <p class="text-base text-txt-secondary">Nobody is in this household right now.</p>
+    {% endif %}
+    {% if candidates %}
+    <form method="post" action="{% role_url 'household_member_add' household.pk %}" class="flex flex-wrap items-end gap-3">
+      {% csrf_token %}
+      <div class="min-w-[14rem] flex-1">
+        <label class="label" for="add-{{ household.pk }}">Add a person</label>
+        <select id="add-{{ household.pk }}" name="user" class="input">
+          <option value="">Choose a member</option>
+          {% for person in candidates %}<option value="{{ person.pk }}">{{ person.full_name }}</option>{% endfor %}
+        </select>
+      </div>
+      <button type="submit" class="btn btn-secondary min-h-[44px]">Add</button>
+    </form>
+    {% endif %}
+  </section>
+  {% empty %}
+  <div class="card text-center"><p class="text-base text-txt-primary">This extension has no households yet.</p></div>
+  {% endfor %}
+  {% elif extensions %}
+  <div class="card text-center"><p class="text-base text-txt-primary">Choose an extension to see its households.</p></div>
+  {% endif %}
+</div>
+{% endblock %}

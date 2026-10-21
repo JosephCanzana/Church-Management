@@ -1,0 +1,40 @@
+<!--
+tithes/pending_requests.html
+Bypass requests waiting for a decision (admin and super-admin). Extends base_app.html and fills: title, page_title, content.
+Context (tithes.views.pending_requests): requests (each with tithes_offering.attendance, requested_by, message, difference).
+Each row links to its report, where the decision form lives.
+-->
+{% extends 'base_app.html' %}
+{% load ui_tags people_tags %}
+
+{% block title %}Bypass requests{% endblock %}
+{% block page_title %}Bypass requests{% endblock %}
+
+{% block content %}
+{% role_url 'report_list' as list_url %}
+{% include 'includes/breadcrumb.html' with parent_label='Tithes' parent_url=list_url current='Bypass requests' %}
+
+{% if requests %}
+<ul class="divide-y divide-border overflow-hidden rounded-xl border border-border bg-surface">
+  {% for item in requests %}
+  {% with sheet=item.tithes_offering.attendance %}
+  <li class="flex flex-wrap items-center gap-x-4 gap-y-2 px-4 py-3">
+    <div class="min-w-0 flex-1">
+      <p class="truncate text-base font-semibold text-txt-primary">{{ sheet.label }} &middot; {{ sheet.extension.name|title_case }}</p>
+      <p class="text-sm text-txt-secondary">
+        {{ sheet.attendance_date|date:"l, j F Y" }} &middot; asked by {% if item.requested_by %}{{ item.requested_by.full_name }}{% else %}someone no longer here{% endif %}, {{ item.created_at|date:"j M, g:i A" }}
+      </p>
+      <p class="mt-1 whitespace-pre-line text-base text-txt-primary">{{ item.message }}</p>
+    </div>
+    <p class="min-w-[8rem] text-right font-mono text-lg tabular-nums text-txt-primary">
+      {% if item.difference < 0 %}Short{% else %}Over{% endif %} &#8369;{{ item.difference|floatformat:"2g"|cut:"-" }}
+    </p>
+    <a class="btn btn-primary min-h-[44px]" href="{% role_url 'report_detail' item.tithes_offering.pk %}">Review</a>
+  </li>
+  {% endwith %}
+  {% endfor %}
+</ul>
+{% else %}
+<div class="card text-center"><p class="text-base text-txt-primary">No bypass requests are waiting.</p></div>
+{% endif %}
+{% endblock %}

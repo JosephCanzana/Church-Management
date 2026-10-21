@@ -105,14 +105,18 @@ NAV_ITEMS = [
     NavItem("Prayer", "prayer:list", "heart", roles=(MEMBER,)),
     # A member holding the attendance seat takes sheets; anyone else is refused on the page.
     NavItem("Attendance sheets", "attendance:sheet_list", "clipboard-document-check", roles=(MEMBER,)),
+    # A member holding the tithes seat works on draft reports; anyone else is refused on the page.
+    NavItem("Tithes", "tithes:report_list", "banknotes", roles=(MEMBER,)),
 
     # --- Manage (sidebar heading) -------------------------------------------
     # One Attendance entry per role: each role area has its own url namespace (see attendance/area_urls.py).
     NavItem("Attendance sheets", "superadmin:sheet_list", "clipboard-document-check", roles=(SUPER_ADMIN,), group="Manage"),
     NavItem("Attendance sheets", "admin_area:sheet_list", "clipboard-document-check", roles=(ADMIN,), group="Manage"),
     NavItem("Attendance sheets", "coordinator_area:sheet_list", "clipboard-document-check", roles=(COORDINATOR,), group="Manage"),
-    # Everyone's tithe records (the tithes screens are not built yet: dimmed until the route exists).
-    NavItem("Tithe records", "tithes:records", "banknotes", roles=LEADERS, group="Manage"),
+    # Tithes reports: one entry per role area (same pattern as Attendance, see tithes/area_urls.py).
+    NavItem("Tithes", "superadmin:report_list", "banknotes", roles=(SUPER_ADMIN,), group="Manage"),
+    NavItem("Tithes", "admin_area:report_list", "banknotes", roles=(ADMIN,), group="Manage"),
+    NavItem("Tithes", "coordinator_area:report_list", "banknotes", roles=(COORDINATOR,), group="Manage"),
     # The coordinator's prayer inbox (same page as a member's Prayer link for now).
     NavItem("Prayer requests", "prayer:list", "heart", roles=(COORDINATOR,), group="Manage"),
     NavItem("Extensions", "superadmin:extension_list", "building-office", roles=MANAGERS, group="Manage"),
@@ -130,7 +134,9 @@ SECTION_TABS = {
     "journey": [
         TabItem("Goals", "faith:goals", roles=(COORDINATOR, MEMBER)),
         TabItem("Attendance", "attendance:mine"),
-        TabItem("Tithes", "tithes:list"),
+        # Points at the tithes list of the member root (/tithes/). Only members can reach it, and only with the seat;
+        # a personal "my tithes" history page (entries where I am giver or co-giver) will replace this later.
+        TabItem("Tithes", "tithes:report_list", roles=(MEMBER,)),
     ],
     "people": [
         TabItem("People", "superadmin:user_list", roles=(SUPER_ADMIN,)),

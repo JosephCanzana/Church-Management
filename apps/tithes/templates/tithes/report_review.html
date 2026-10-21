@@ -1,0 +1,142 @@
+<!--
+tithes/report_review.html
+Read-only review of a report: a finalized one, or a draft that is locked for this person. Extends base_app.html and
+fills: title, page_title, content.
+Context (tithes.views.report_review): report, sheet, sheet_url, totals (frozen when finalized, live for a draft),
+difference_abs, entries, denominations, is_draft, is_admin, open_request, last_request, can_see_request,
+locked_for_you, can_edit, can_finalize, finalize_ready, has_approved, can_request, can_withdraw, can_decide,
+can_reopen, finalize_token, request_token, decision_token, reopen_token.
+A finalized report shows its FROZEN numbers, exactly as stored.
+-->
+{% extends 'base_app.html' %}
+{% load ui_tags people_tags %}
+
+{% block title %}Review: {{ sheet.label }}{% endblock %}
+{% block page_title %}Review{% endblock %}
+
+{% block content %}
+{% role_url 'report_list' as list_url %}
+{% include 'includes/breadcrumb.html' with parent_label='Tithes' parent_url=list_url current=sheet.label %}
+
+<div class="max-w-4xl space-y-6">
+  <section class="card space-y-4">
+    <div class="flex flex-wrap items-start justify-between gap-3">
+      <div>
+        <h2 class="text-xl font-semibold tracking-tight text-txt-primary">{{ sheet.label }}</h2>
+        <p class="text-base text-txt-secondary">{{ sheet.attendance_date|date:"l, j F Y" }} &middot; {{ sheet.extension.name|title_case }}</p>
+        {% if sheet_url %}<a class="text-base text-txt-primary underline" href="{{ sheet_url }}">Open the attendance sheet</a>{% endif %}
+      </div>
+      {% include 'tithes/_report_badge.html' with report=report locked=locked_for_you %}
+    </div>
+
+    {% if not is_draft %}
+    <dl class="grid grid-cols-1 gap-3 text-base sm:grid-cols-2">
+      <div>
+        <dt class="text-sm text-txt-secondary">Finalized by</dt>
+        <dd class="text-txt-primary">{% if report.finalized_by %}{{ report.finalized_by.full_name }}{% else %}Not recorded{% endif %}, {{ report.finalized_at|date:"j M Y, g:i A" }}</dd>
+      </div>
+      {% if report.bypass_reason %}
+      <div>
+        <dt class="text-sm text-txt-secondary">Finalized with a difference. Reason given</dt>
+        <dd class="whitespace-pre-line text-txt-primary">{{ report.bypass_reason }}</dd>
+      </div>
+      {% endif %}
+    </dl>
+    {% endif %}
+
+    <div class="grid grid-cols-2 gap-3 text-center sm:grid-cols-4">
+      <div class="rounded-lg border border-border p-3"><p class="font-mono text-2xl font-semibold tabular-nums text-txt-primary">{{ totals.tithers }}</p><p class="text-sm text-txt-secondary">Tithers</p></div>
+      <div class="rounded-lg border border-border p-3"><p class="font-mono text-2xl font-semibold tabular-nums text-txt-primary">&#8369;{{ totals.tithes|floatformat:"2g" }}</p><p class="text-sm text-txt-secondary">Tithes</p></div>
+      <div class="rounded-lg border border-border p-3"><p class="font-mono text-2xl font-semibold tabular-nums text-txt-primary">&#8369;{{ totals.offering|floatformat:"2g" }}</p><p class="text-sm text-txt-secondary">Offering</p></div>
+      <div class="rounded-lg border border-border p-3"><p class="font-mono text-2xl font-semibold tabular-nums text-txt-primary">&#8369;{{ totals.total|floatformat:"2g" }}</p><p class="text-sm text-txt-secondary">Total</p></div>
+    </div>
+
+    <div role="status" class="rounded-xl border p-4 {% if totals.difference == 0 %}border-border{% else %}border-warning{% endif %}">
+      <p class="font-mono text-lg font-semibold text-txt-primary">
+        {% if totals.difference == 0 %}Balanced{% elif totals.difference < 0 %}Short by &#8369;{{ difference_abs|floatformat:"2g" }}{% else %}Over by &#8369;{{ difference_abs|floatformat:"2g" }}{% endif %}
+      </p>
+      <p class="text-sm text-txt-secondary">Bills and coins (&#8369;{{ totals.breakdown_total|floatformat:"2g" }}) compared with the Total.</p>
+    </div>
+
+    <div class="flex flex-wrap items-start gap-3">
+      {% if can_edit %}<a class="btn btn-secondary min-h-[44px] text-base" href="{% role_url 'report_detail' report.pk %}">Back to editing</a>{% endif %}
+      {% if can_reopen %}
+      <form method="post" action="{% role_url 'report_reopen' report.pk %}"
+            data-confirm="The report goes back to draft and its frozen numbers are cleared until it is finalized again. This is logged and the admins are alerted."
+            data-confirm-title="Reopen this report?" data-confirm-text="Reopen">
+        {% csrf_token %}
+        <input type="hidden" name="submit_token" value="{{ reopen_token }}">
+        <button type="submit" class="btn btn-secondary min-h-[44px] text-base">Reopen to correct</button>
+      </form>
+      {% endif %}
+    </div>
+  </section>
+
+  {% if is_draft and can_finalize %}
+  <section class="card space-y-3" aria-label="Finalize">
+    <h2 class="text-lg font-semibold text-txt-primary">Finalize</h2>
+    {% include 'tithes/_finalize_form.html' %}
+  </section>
+  {% endif %}
+
+  {% if is_draft %}{% include 'tithes/_bypass_panel.html' %}{% endif %}
+
+  <section class="card p-0" aria-labelledby="entries-title">
+    <h2 id="entries-title" class="px-5 pt-5 text-lg font-semibold text-txt-primary">Tithes <span class="text-base font-normal text-txt-secondary">({{ entries|length }})</span></h2>
+    {% if entries %}
+    <div class="overflow-x-auto">
+      <table class="mt-2 w-full min-w-[22rem] text-left text-base">
+        <thead>
+          <tr class="border-y border-border text-sm text-txt-secondary">
+            <th scope="col" class="w-12 px-5 py-2 font-medium">#</th>
+            <th scope="col" class="px-2 py-2 font-medium">Giver</th>
+            <th scope="col" class="px-5 py-2 text-right font-medium">Amount</th>
+          </tr>
+        </thead>
+        <tbody class="divide-y divide-border">
+          {% for entry in entries %}
+          <tr>
+            <td class="px-5 py-2 tabular-nums text-txt-secondary">{{ forloop.counter }}</td>
+            <td class="px-2 py-2 text-txt-primary">{{ entry.giver_name }}{% if entry.co_givers.all %}<span class="block text-sm text-txt-secondary">with {% for co in entry.co_givers.all %}{{ co.name_snapshot }}{% if not forloop.last %}, {% endif %}{% endfor %}</span>{% endif %}</td>
+            <td class="px-5 py-2 text-right font-mono tabular-nums text-txt-primary">&#8369;{{ entry.amount|floatformat:"2g" }}</td>
+          </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+    {% else %}
+    <p class="px-5 pb-5 text-base text-txt-secondary">No tithes were recorded.</p>
+    {% endif %}
+  </section>
+
+  <section class="card p-0" aria-labelledby="breakdown-title">
+    <h2 id="breakdown-title" class="px-5 pt-5 text-lg font-semibold text-txt-primary">Bills and coins</h2>
+    <div class="overflow-x-auto">
+      <table class="mt-2 w-full min-w-[22rem] text-left text-base">
+        <thead>
+          <tr class="border-y border-border text-sm text-txt-secondary">
+            <th scope="col" class="px-5 py-2 font-medium">Denomination</th>
+            <th scope="col" class="px-2 py-2 text-right font-medium">Count</th>
+            <th scope="col" class="px-5 py-2 text-right font-medium">Amount</th>
+          </tr>
+        </thead>
+        <tbody class="divide-y divide-border">
+          {% for row in denominations %}
+          <tr>
+            <th scope="row" class="px-5 py-2 font-mono font-normal text-txt-primary">&#8369;{{ row.value }}</th>
+            <td class="px-2 py-2 text-right font-mono tabular-nums text-txt-secondary">{{ row.count }}</td>
+            <td class="px-5 py-2 text-right font-mono tabular-nums text-txt-primary">&#8369;{{ row.line|floatformat:"2g" }}</td>
+          </tr>
+          {% endfor %}
+        </tbody>
+        <tfoot>
+          <tr class="border-t border-border">
+            <th scope="row" colspan="2" class="px-5 py-2 font-semibold text-txt-primary">Breakdown total</th>
+            <td class="px-5 py-2 text-right font-mono font-semibold tabular-nums text-txt-primary">&#8369;{{ totals.breakdown_total|floatformat:"2g" }}</td>
+          </tr>
+        </tfoot>
+      </table>
+    </div>
+  </section>
+</div>
+{% endblock %}

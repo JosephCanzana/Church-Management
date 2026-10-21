@@ -1,0 +1,7 @@
+<!--
+tithes/_report_badge.html
+The state of a tithes report as TEXT (never colour alone). Include with: report (or None), locked (optional).
+-->
+<span class="inline-flex items-center rounded-full border border-border px-2.5 py-0.5 text-sm text-txt-secondary">
+  {% if not report %}No report yet{% elif report.status == 'finalized' %}Finalized{% elif locked %}Draft, locked{% else %}Draft{% endif %}
+</span>

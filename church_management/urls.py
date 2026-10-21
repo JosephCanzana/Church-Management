@@ -40,6 +40,8 @@ urlpatterns = [
     path("coordinator/", include("apps.accounts.urls.coordinator_area")),
     # Member root: attendance special members (the role areas mount the same sheet routes themselves).
     path("attendance/", include("apps.attendance.urls")),
+    # Member root for tithes special members (the role areas mount the same routes themselves).
+    path("tithes/", include("apps.tithes.urls")),
     path("settings/", include("apps.theming.urls")),
 ]
 

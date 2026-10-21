@@ -1,0 +1,74 @@
+<!--
+tithes/_bypass_panel.html
+The mismatch panel, shared by the workspace and the review. Include inside a template that has the report
+context: report, totals, open_request, last_request, can_see_request, locked_for_you, can_request, can_withdraw,
+can_decide, request_token, decision_token. Shows the request's message and note ONLY when can_see_request.
+-->
+{% load people_tags %}
+<section id="bypass" class="card space-y-4" aria-label="Bypass request">
+  <h2 class="text-lg font-semibold text-txt-primary">Bypass request</h2>
+
+  {% if locked_for_you %}
+  <p class="rounded-lg border border-warning px-3 py-2 text-base text-txt-primary" role="status">
+    This draft is locked while a bypass request is open. Only an admin can change it until the request is decided or withdrawn.
+  </p>
+  {% endif %}
+
+  {% if last_request and can_see_request %}
+  <div class="rounded-lg border border-border p-3 text-base">
+    <p class="text-txt-primary">
+      Latest request: <span class="font-semibold">{{ last_request.get_status_display }}</span>
+      &middot; difference at the time <span class="font-mono">&#8369;{{ last_request.difference|floatformat:"2g" }}</span>
+    </p>
+    <p class="mt-1 whitespace-pre-line text-txt-secondary">{{ last_request.message }}</p>
+    {% if last_request.decision_note %}
+    <p class="mt-2 text-sm text-txt-secondary">Decision note:</p>
+    <p class="whitespace-pre-line text-txt-primary">{{ last_request.decision_note }}</p>
+    {% endif %}
+  </div>
+  {% elif not can_request and not can_decide %}
+  <p class="text-base text-txt-secondary">
+    {% if open_request %}A bypass request is open on this report.{% else %}No bypass request.{% endif %}
+  </p>
+  {% endif %}
+
+  {% if can_request %}
+  <form method="post" action="{% role_url 'bypass_request' report.pk %}" class="space-y-3">
+    {% csrf_token %}
+    <input type="hidden" name="submit_token" value="{{ request_token }}">
+    <div>
+      <label class="label" for="bypass-message">Why do the bills and coins not match the Total?</label>
+      <textarea id="bypass-message" name="message" rows="3" maxlength="500" required class="input"></textarea>
+      <p class="field-help">An admin reads this. The draft is locked for everyone else until it is decided or withdrawn.</p>
+    </div>
+    <button type="submit" class="btn btn-secondary min-h-[44px] text-base">Request bypass</button>
+  </form>
+  {% endif %}
+
+  {% if can_withdraw %}
+  <form method="post" action="{% role_url 'bypass_withdraw' report.pk %}"
+        data-confirm="Withdraw this request? The draft is unlocked again." data-confirm-title="Withdraw request" data-confirm-text="Withdraw">
+    {% csrf_token %}
+    <input type="hidden" name="request_id" value="{{ open_request.pk }}">
+    <button type="submit" class="btn btn-secondary min-h-[44px] text-base">Withdraw request</button>
+  </form>
+  {% endif %}
+
+  {% if can_decide %}
+  <form method="post" action="{% role_url 'bypass_decide' report.pk %}" class="space-y-3"
+        data-confirm="Record your decision on this request? The coordinator is notified." data-confirm-title="Decide request" data-confirm-text="Confirm">
+    {% csrf_token %}
+    <input type="hidden" name="submit_token" value="{{ decision_token }}">
+    <input type="hidden" name="request_id" value="{{ open_request.pk }}">
+    <div>
+      <label class="label" for="decision-note">Note (optional)</label>
+      <textarea id="decision-note" name="note" rows="2" maxlength="500" class="input"></textarea>
+      <p class="field-help">Only the coordinator and admins can read it.</p>
+    </div>
+    <div class="flex flex-wrap gap-3">
+      <button type="submit" name="decision" value="approve" class="btn btn-primary min-h-[44px] text-base">Approve</button>
+      <button type="submit" name="decision" value="reject" class="btn btn-secondary min-h-[44px] text-base">Reject</button>
+    </div>
+  </form>
+  {% endif %}
+</section>

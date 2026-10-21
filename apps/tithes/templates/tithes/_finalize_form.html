@@ -1,0 +1,27 @@
+<!--
+tithes/_finalize_form.html
+The Finalize form, shared by the workspace and the review. Include inside a template that already has the
+report context (report, totals, is_admin, finalize_ready, has_approved, finalize_token).
+-->
+{% load people_tags %}
+<form method="post" action="{% role_url 'report_finalize' report.pk %}" class="space-y-3"
+      data-confirm="Finalize this report? The numbers are frozen and only an admin can reopen it."
+      data-confirm-title="Finalize report" data-confirm-text="Finalize">
+  {% csrf_token %}
+  <input type="hidden" name="submit_token" value="{{ finalize_token }}">
+  {% if is_admin and not totals.balanced %}
+  <div>
+    <label class="label" for="bypass_reason">Reason to finalize anyway</label>
+    <textarea id="bypass_reason" name="bypass_reason" rows="2" maxlength="500" class="input"></textarea>
+    <p class="field-help">Saved on the report. Needed because the bills and coins do not match the Total.</p>
+  </div>
+  {% endif %}
+  {% if not finalize_ready %}
+  <p class="text-base text-txt-primary" role="status">
+    Finalize is blocked until the bills and coins match the Total{% if not has_approved %}, or an admin approves a bypass request{% endif %}.
+  </p>
+  {% endif %}
+  <button type="submit" class="btn btn-primary min-h-[44px] text-base" {% if not finalize_ready %}disabled{% endif %}>
+    {% if is_admin and not totals.balanced %}Finalize with a reason{% else %}Finalize report{% endif %}
+  </button>
+</form>

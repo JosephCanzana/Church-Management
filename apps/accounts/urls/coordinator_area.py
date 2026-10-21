@@ -38,4 +38,5 @@ urlpatterns = [
     # Attendance sheets: the routes are written once in attendance/area_urls.py. A string include, so accounts
     # imports nothing from attendance (dependency rule); the names land in this namespace.
     path("attendance/", include("apps.attendance.area_urls")),
+    path("tithes/", include("apps.tithes.area_urls")),
 ]

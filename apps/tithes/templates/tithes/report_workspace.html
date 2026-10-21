@@ -1,0 +1,267 @@
+<!--
+tithes/report_workspace.html
+The draft workspace: offering, tithes, bills and coins, and the Finalize step for one report. Extends base_app.html and
+fills: title, page_title, content.
+Context (tithes.views.report_detail): report, sheet, sheet_url (None for a special member), totals (live Totals),
+difference_abs, entries (each with co_givers), denominations (value, count, line), is_admin, open_request,
+last_request, can_see_request, locked_for_you, can_finalize, finalize_ready, has_approved, can_request,
+can_withdraw, can_decide, finalize_token, request_token, decision_token, ws_config (read by the script below:
+offering, tithes, denoms, counts, present, taken, searchUrl, prefillUrl).
+The server is the source of truth (build_totals); Alpine only PREVIEWS what is typed before it is saved.
+Colours come from tokens only. Amounts are in font-mono. Short, Over and Balanced are always written out.
+-->
+{% extends 'base_app.html' %}
+{% load ui_tags people_tags %}
+
+{% block title %}Tithes: {{ sheet.label }}{% endblock %}
+{% block page_title %}Tithes{% endblock %}
+
+{% block content %}
+{% role_url 'report_list' as list_url %}
+{% include 'includes/breadcrumb.html' with parent_label='Tithes' parent_url=list_url current=sheet.label %}
+
+{{ ws_config|json_script:"ws-config" }}
+<script>
+  function tithesWorkspace() {
+    const cfg = JSON.parse(document.getElementById('ws-config').textContent);
+    return {
+      offering: cfg.offering, tithes: parseFloat(cfg.tithes) || 0, counts: cfg.counts, denoms: cfg.denoms,
+      present: cfg.present, taken: cfg.taken, presentIds: cfg.present.map(p => p.id),
+      giverQ: '', giverResults: [], giverBusy: false, giver: null, coGivers: [], reqId: 0,
+
+      /* Live preview of the numbers (the saved numbers are recalculated by the server). */
+      num(v) { const n = parseFloat(v); return isFinite(n) && n > 0 ? n : 0; },
+      cnt(d) { const n = parseInt(this.counts[d], 10); return isFinite(n) && n > 0 ? n : 0; },
+      line(d) { return d * this.cnt(d); },
+      breakdown() { return this.denoms.reduce((s, d) => s + this.line(d), 0); },
+      total() { return this.num(this.offering) + this.tithes; },
+      diff() { return Math.round((this.breakdown() - this.total()) * 100) / 100; },
+      money(n) { return '\u20b1' + Math.abs(n).toLocaleString('en-PH', { minimumFractionDigits: 2, maximumFractionDigits: 2 }); },
+      label() {
+        const d = this.diff();
+        return d === 0 ? 'Balanced' : (d < 0 ? 'Short by ' : 'Over by ') + this.money(d);
+      },
+
+      /* Giver picker: present people first; from 3 letters it asks the server for any member. */
+      listed() {
+        const t = this.giverQ.trim().toLowerCase();
+        if (t.length >= 3) return this.giverResults;
+        return this.present.filter(p => !t || p.name.toLowerCase().includes(t));
+      },
+      hint() {
+        const t = this.giverQ.trim();
+        if (t && t.length < 3) return 'Type at least 3 letters to search everyone.';
+        if (t.length >= 3 && !this.giverBusy && !this.giverResults.length) return 'Nobody found. Only active members can give a tithe.';
+        return 'People marked present on today\u2019s sheet are listed first.';
+      },
+      badge(p) {
+        if (this.taken.includes(p.id)) return 'Already on this report';
+        return this.presentIds.includes(p.id) ? 'Present' : 'Not on today\u2019s sheet';
+      },
+      async searchGivers() {
+        const t = this.giverQ.trim(); const id = ++this.reqId;
+        if (t.length < 3) { this.giverResults = []; return; }
+        this.giverBusy = true;
+        try {
+          const res = await fetch(cfg.searchUrl + '?q=' + encodeURIComponent(t), { credentials: 'same-origin' });
+          if (!res.ok || id !== this.reqId) return;
+          const data = await res.json();
+          this.giverResults = data.results.sort((a, b) => this.presentIds.includes(b.id) - this.presentIds.includes(a.id));
+        } catch (e) { this.giverResults = []; } finally { this.giverBusy = false; }
+      },
+      async choose(p) {
+        this.giver = p; this.coGivers = [];
+        try {
+          const res = await fetch(cfg.prefillUrl + '?user=' + p.id, { credentials: 'same-origin' });
+          if (res.ok) this.coGivers = (await res.json()).results.map(c => ({ id: c.id, name: c.name, on: true }));
+        } catch (e) { /* no pre-fill: the entry simply has no co-givers */ }
+      },
+      change() { this.giver = null; this.coGivers = []; this.giverQ = ''; this.giverResults = []; },
+    };
+  }
+</script>
+
+<div class="max-w-4xl space-y-6" x-data="tithesWorkspace()">
+  <section class="card space-y-4" id="numbers">
+    <div class="flex flex-wrap items-start justify-between gap-3">
+      <div>
+        <h2 class="text-xl font-semibold tracking-tight text-txt-primary">{{ sheet.label }}</h2>
+        <p class="text-base text-txt-secondary">{{ sheet.attendance_date|date:"l, j F Y" }} &middot; {{ sheet.extension.name|title_case }}</p>
+        {% if sheet_url %}<a class="text-base text-txt-primary underline" href="{{ sheet_url }}">Open the attendance sheet</a>{% endif %}
+      </div>
+      {% include 'tithes/_report_badge.html' with report=report locked=open_request %}
+    </div>
+
+    <div class="grid grid-cols-2 gap-3 text-center sm:grid-cols-4">
+      <div class="rounded-lg border border-border p-3">
+        <p class="font-mono text-2xl font-semibold tabular-nums text-txt-primary">{{ totals.tithers }}</p>
+        <p class="text-sm text-txt-secondary">Tithers</p>
+      </div>
+      <div class="rounded-lg border border-border p-3">
+        <p class="font-mono text-2xl font-semibold tabular-nums text-txt-primary">&#8369;{{ totals.tithes|floatformat:"2g" }}</p>
+        <p class="text-sm text-txt-secondary">Tithes</p>
+      </div>
+      <div class="rounded-lg border border-border p-3">
+        <p class="font-mono text-2xl font-semibold tabular-nums text-txt-primary" x-text="money(num(offering))">&#8369;{{ totals.offering|floatformat:"2g" }}</p>
+        <p class="text-sm text-txt-secondary">Offering</p>
+      </div>
+      <div class="rounded-lg border border-border p-3">
+        <p class="font-mono text-2xl font-semibold tabular-nums text-txt-primary" x-text="money(total())">&#8369;{{ totals.total|floatformat:"2g" }}</p>
+        <p class="text-sm text-txt-secondary">Total</p>
+      </div>
+    </div>
+
+    <div role="status" class="rounded-xl border p-4" x-bind:class="diff() === 0 ? 'border-border' : 'border-warning'">
+      <p class="text-lg font-semibold text-txt-primary">
+        <span class="font-mono" x-text="label()">{% if totals.difference == 0 %}Balanced{% elif totals.difference < 0 %}Short by &#8369;{{ difference_abs|floatformat:"2g" }}{% else %}Over by &#8369;{{ difference_abs|floatformat:"2g" }}{% endif %}</span>
+      </p>
+      <p class="text-sm text-txt-secondary">Bills and coins compared with the Total. This updates as you type; press Save to keep it.</p>
+    </div>
+  </section>
+
+  <section class="card">
+    <form method="post" action="{% role_url 'report_offering' report.pk %}" class="space-y-3">
+      {% csrf_token %}
+      <label class="label" for="offering">Offering</label>
+      <input id="offering" name="amount" type="text" inputmode="decimal" autocomplete="off" class="input max-w-xs font-mono"
+             value="{{ totals.offering }}" x-model="offering">
+      <p class="field-help">One number for the whole offering. Anyone may give it, guests included.</p>
+      <button type="submit" class="btn btn-primary min-h-[44px] text-base">Save offering</button>
+    </form>
+  </section>
+
+  <section class="card space-y-4" id="entries" aria-labelledby="tithes-title">
+    <h2 id="tithes-title" class="text-lg font-semibold text-txt-primary">Tithes <span class="text-base font-normal text-txt-secondary">({{ entries|length }} envelope{{ entries|length|pluralize }})</span></h2>
+    {% if entries %}
+    <ul class="divide-y divide-border rounded-xl border border-border">
+      {% for entry in entries %}
+      <li class="flex flex-wrap items-center gap-x-4 gap-y-2 px-4 py-3">
+        <div class="min-w-0 flex-1">
+          <p class="truncate text-base font-semibold text-txt-primary">{{ entry.giver_name }}</p>
+          {% if entry.co_givers.all %}<p class="text-sm text-txt-secondary">with {% for co in entry.co_givers.all %}{{ co.name_snapshot }}{% if not forloop.last %}, {% endif %}{% endfor %}</p>{% endif %}
+        </div>
+        <form method="post" action="{% role_url 'entry_update' report.pk %}" class="flex items-center gap-2">
+          {% csrf_token %}
+          <input type="hidden" name="entry_id" value="{{ entry.pk }}">
+          <label class="sr-only" for="amount-{{ entry.pk }}">Amount for {{ entry.giver_name }}</label>
+          <input id="amount-{{ entry.pk }}" name="amount" type="text" inputmode="decimal" class="input w-32 font-mono" value="{{ entry.amount }}">
+          <button type="submit" class="btn btn-secondary min-h-[44px]">Save</button>
+        </form>
+        <form method="post" action="{% role_url 'entry_remove' report.pk %}"
+              data-confirm="Remove the tithe of {{ entry.giver_name }} from this report?" data-confirm-title="Remove tithe" data-confirm-text="Remove" data-confirm-danger="true">
+          {% csrf_token %}
+          <input type="hidden" name="entry_id" value="{{ entry.pk }}">
+          <button type="submit" class="btn btn-ghost min-h-[44px]">Remove</button>
+        </form>
+      </li>
+      {% endfor %}
+    </ul>
+    {% else %}
+    <p class="text-base text-txt-secondary">No tithes yet. Add the first envelope below.</p>
+    {% endif %}
+
+    <form method="post" action="{% role_url 'entry_add' report.pk %}" class="space-y-4 border-t border-border pt-4"
+          x-on:keydown.enter="if ($event.target.id === 'giver-q') $event.preventDefault()">
+      {% csrf_token %}
+      <h3 class="text-base font-semibold text-txt-primary">Add a tithe</h3>
+      <input type="hidden" name="giver" x-bind:value="giver ? giver.id : ''">
+      <template x-for="c in coGivers" x-bind:key="c.id"><input type="hidden" name="co_giver" x-bind:value="c.id" x-bind:disabled="!c.on"></template>
+
+      <div>
+        <p class="label">Giver (the name on the envelope)</p>
+        <div x-show="giver" x-cloak class="flex items-center justify-between gap-3 rounded-lg border border-border px-4 py-2">
+          <span class="text-base text-txt-primary" x-text="giver ? giver.name : ''"></span>
+          <button type="button" class="btn btn-ghost min-h-[44px]" x-on:click="change()">Change</button>
+        </div>
+        <div x-show="!giver">
+          <label class="sr-only" for="giver-q">Search for a member</label>
+          <input id="giver-q" type="search" class="input" autocomplete="off" placeholder="Type a name"
+                 x-model="giverQ" x-on:input.debounce.300ms="searchGivers()">
+          <p class="field-help" x-text="hint()"></p>
+          <ul class="mt-2 max-h-64 divide-y divide-border overflow-y-auto rounded-xl border border-border" x-show="listed().length" x-cloak>
+            <template x-for="p in listed()" x-bind:key="p.id">
+              <li>
+                <button type="button" class="flex min-h-[44px] w-full items-center justify-between gap-3 px-4 py-2 text-left text-base hover:bg-txt-primary/5 disabled:opacity-50"
+                        x-bind:disabled="taken.includes(p.id)" x-on:click="choose(p)">
+                  <span class="min-w-0">
+                    <span class="block truncate text-txt-primary" x-text="p.name"></span>
+                    <span class="block text-sm text-txt-secondary" x-text="p.home_extension"></span>
+                  </span>
+                  <span class="shrink-0 text-sm text-txt-secondary" x-text="badge(p)"></span>
+                </button>
+              </li>
+            </template>
+          </ul>
+        </div>
+      </div>
+
+      <div x-show="giver && coGivers.length" x-cloak>
+        <p class="label">Shared with (co-givers from their household)</p>
+        <ul>
+          <template x-for="c in coGivers" x-bind:key="c.id">
+            <li><label class="flex min-h-[44px] items-center gap-3 text-base text-txt-primary"><input type="checkbox" class="size-5" x-model="c.on"><span x-text="c.name"></span></label></li>
+          </template>
+        </ul>
+        <button type="button" class="btn btn-ghost min-h-[44px]" x-on:click="coGivers.forEach(c => c.on = false)">Clear co-givers</button>
+        <p class="field-help">One envelope, one amount. Co-givers are copied onto this entry and never split the amount.</p>
+      </div>
+
+      <div>
+        <label class="label" for="entry-amount">Amount</label>
+        <input id="entry-amount" name="amount" type="text" inputmode="decimal" autocomplete="off" class="input max-w-xs font-mono">
+      </div>
+      <button type="submit" class="btn btn-primary min-h-[44px] text-base" x-bind:disabled="!giver">Add tithe</button>
+    </form>
+  </section>
+
+  <section class="card" id="breakdown" aria-labelledby="breakdown-title">
+    <form method="post" action="{% role_url 'report_breakdown' report.pk %}" class="space-y-3">
+      {% csrf_token %}
+      <h2 id="breakdown-title" class="text-lg font-semibold text-txt-primary">Bills and coins</h2>
+      <div class="overflow-x-auto">
+        <table class="w-full min-w-[22rem] text-left text-base">
+          <thead>
+            <tr class="border-b border-border text-sm text-txt-secondary">
+              <th scope="col" class="py-2 pr-2 font-medium">Denomination</th>
+              <th scope="col" class="px-2 py-2 font-medium">Count</th>
+              <th scope="col" class="py-2 pl-2 text-right font-medium">Amount</th>
+            </tr>
+          </thead>
+          <tbody class="divide-y divide-border">
+            {% for row in denominations %}
+            <tr>
+              <th scope="row" class="py-2 pr-2 font-mono font-normal text-txt-primary">&#8369;{{ row.value }}</th>
+              <td class="px-2 py-1">
+                <label class="sr-only" for="count-{{ row.value }}">Number of {{ row.value }} bills or coins</label>
+                <input id="count-{{ row.value }}" name="count_{{ row.value }}" type="text" inputmode="numeric" autocomplete="off"
+                       class="input w-28 font-mono" value="{{ row.count }}" x-model="counts['{{ row.value }}']">
+              </td>
+              <td class="py-2 pl-2 text-right font-mono tabular-nums text-txt-primary" x-text="money(line({{ row.value }}))">&#8369;{{ row.line|floatformat:"2g" }}</td>
+            </tr>
+            {% endfor %}
+          </tbody>
+          <tfoot>
+            <tr class="border-t border-border">
+              <th scope="row" colspan="2" class="py-2 pr-2 font-semibold text-txt-primary">Breakdown total</th>
+              <td class="py-2 pl-2 text-right font-mono font-semibold tabular-nums text-txt-primary" x-text="money(breakdown())">&#8369;{{ totals.breakdown_total|floatformat:"2g" }}</td>
+            </tr>
+          </tfoot>
+        </table>
+      </div>
+      <button type="submit" class="btn btn-primary min-h-[44px] text-base">Save bills and coins</button>
+    </form>
+  </section>
+
+  {% if totals.difference != 0 or open_request or last_request %}
+  {% include 'tithes/_bypass_panel.html' %}
+  {% endif %}
+
+  {% if can_finalize %}
+  <section class="card space-y-3" aria-label="Finalize">
+    <h2 class="text-lg font-semibold text-txt-primary">Finalize</h2>
+    <p class="text-base text-txt-secondary">Save the numbers above first. Finalizing freezes them.</p>
+    {% include 'tithes/_finalize_form.html' %}
+  </section>
+  {% endif %}
+</div>
+{% endblock %}

@@ -1,0 +1,91 @@
+<!--
+tithes/report_list.html
+Sheets with the state of their tithes report, shared by every role that may open tithes.
+Extends base_app.html and fills: title, page_title, content.
+Context (tithes.views.report_list): form (filters), page (each sheet carries report, can_open, can_start, bypass_open),
+total, querystring, show_extension, active_filters, can_households, pending_count.
+Links go through role_url so the same file serves superadmin, admin_area, coordinator_area and tithes.
+-->
+{% extends 'base_app.html' %}
+{% load ui_tags people_tags %}
+
+{% block title %}Tithes{% endblock %}
+{% block page_title %}Tithes{% endblock %}
+
+{% block content %}
+<div class="mb-4 flex flex-wrap items-center justify-between gap-3">
+  <h2 class="text-xl font-semibold tracking-tight text-txt-primary">
+    Sheets <span class="text-base font-normal text-txt-secondary">({{ total }})</span>
+  </h2>
+  <div class="flex flex-wrap items-center gap-2">
+    {% if pending_count %}
+    <a class="btn btn-highlight" href="{% role_url 'pending_requests' %}">
+      {% include 'includes/icon.html' with name='clipboard-document-check' class='size-5' %}
+      {{ pending_count }} bypass request{{ pending_count|pluralize }} waiting
+    </a>
+    {% endif %}
+    {% if can_households %}
+    <a class="btn btn-secondary" href="{% role_url 'household_list' %}">Households</a>
+    {% endif %}
+  </div>
+</div>
+
+<form method="get" class="card mb-4 grid grid-cols-1 items-end gap-3 sm:grid-cols-2 lg:grid-cols-5">
+  {% if form.state %}
+  <div><label class="label" for="{{ form.state.id_for_label }}">{{ form.state.label }}</label>{{ form.state }}</div>
+  {% endif %}
+  {% if form.extension %}
+  <div><label class="label" for="{{ form.extension.id_for_label }}">{{ form.extension.label }}</label>{{ form.extension }}</div>
+  {% endif %}
+  <div>
+    <label class="label" for="{{ form.date_from.id_for_label }}">{{ form.date_from.label }}</label>{{ form.date_from }}
+    {% for error in form.date_from.errors %}<p class="field-error">{{ error }}</p>{% endfor %}
+  </div>
+  <div>
+    <label class="label" for="{{ form.date_to.id_for_label }}">{{ form.date_to.label }}</label>{{ form.date_to }}
+    {% for error in form.date_to.errors %}<p class="field-error">{{ error }}</p>{% endfor %}
+  </div>
+  <div class="flex gap-2">
+    <button type="submit" class="btn btn-primary min-h-[44px]">Apply{% if active_filters %} ({{ active_filters }}){% endif %}</button>
+    {% if active_filters %}<a class="btn btn-secondary min-h-[44px]" href="{% role_url 'report_list' %}">Clear</a>{% endif %}
+  </div>
+</form>
+
+{% if page.object_list %}
+<ul class="divide-y divide-border overflow-hidden rounded-xl border border-border bg-surface">
+  {% for sheet in page.object_list %}
+  <li class="flex flex-wrap items-center gap-x-4 gap-y-2 px-4 py-3">
+    <div class="min-w-0 flex-1">
+      <p class="truncate text-base font-semibold text-txt-primary">{{ sheet.label }}</p>
+      <p class="text-sm text-txt-secondary">
+        {{ sheet.attendance_date|date:"l, j F Y" }}{% if show_extension %} &middot; {{ sheet.extension.name|title_case }}{% endif %}
+      </p>
+    </div>
+    {% include 'tithes/_report_badge.html' with report=sheet.report locked=sheet.bypass_open %}
+    {% if sheet.bypass_open %}<span class="text-sm text-txt-secondary">Bypass request open</span>{% endif %}
+    {% if sheet.report.status == 'finalized' %}
+    <p class="min-w-[7rem] text-right font-mono text-lg font-semibold tabular-nums text-txt-primary">&#8369;{{ sheet.report.total_amount|floatformat:"2g" }}</p>
+    {% endif %}
+    {% if sheet.can_open %}
+    <a class="btn btn-secondary min-h-[44px]" href="{% role_url 'report_detail' sheet.report.pk %}">Open</a>
+    {% elif sheet.can_start %}
+    <form method="post" action="{% role_url 'report_create' sheet.pk %}">
+      {% csrf_token %}
+      <button type="submit" class="btn btn-primary min-h-[44px]">Start report</button>
+    </form>
+    {% endif %}
+  </li>
+  {% endfor %}
+</ul>
+{% include 'includes/pagination.html' with page=page querystring=querystring %}
+{% else %}
+<div class="card text-center">
+  {% if active_filters %}
+  <p class="text-base text-txt-primary">No sheets match these filters.</p>
+  <a class="btn btn-secondary mt-4" href="{% role_url 'report_list' %}">Clear filters</a>
+  {% else %}
+  <p class="text-base text-txt-primary">There are no attendance sheets to report on yet.</p>
+  {% endif %}
+</div>
+{% endif %}
+{% endblock %}

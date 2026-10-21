@@ -59,4 +59,5 @@ urlpatterns = [
 
     # Attendance sheets: written once in attendance/area_urls.py (string include: accounts imports nothing from attendance).
     path("attendance/", include("apps.attendance.area_urls")),
+    path("tithes/", include("apps.tithes.area_urls")),
 ]
