@@ -67,12 +67,16 @@ def _default_plain_for_display(actor, role):
 
 # ------------------------------------------------------------------ passwords
 @dataclass
-@dataclass
 class PasswordInfo:
     """How a password was chosen, and what (if anything) may be shown once."""
 
     kind: str                 # "typed" | "default" | "generated" | "none" (cannot sign in)
-    value: str = ""           # the plain text, for "generated" and "default"
+    value: str = ""           # shown on the page, for "generated" and "default"
+    plain_value: str = ""     # the real password, for the email only; "" when unknown
+
+    @property
+    def plain(self):
+        return self.plain_value
 
     @property
     def display(self):
@@ -171,14 +175,18 @@ def _set_initial_password(actor, person, typed):
         except ValidationError as exc:
             raise ServiceError(exc.messages[0])
         person.set_password(typed)
-        return PasswordInfo("typed")
+        return PasswordInfo("typed", plain_value=typed)
     stored = _default_password_hash(actor, person.role)
     if stored:
         person.password = stored          # already a hash; copied, never decoded
-        return PasswordInfo("default", _default_plain_for_display(actor, person.role))
+        row = default_password_row(actor, person.role)
+        return PasswordInfo(
+            "default", _default_plain_for_display(actor, person.role),
+            plain_value=(row.plain if row else None) or "",
+        )
     value = generate_strong_password()
     person.set_password(value)
-    return PasswordInfo("generated", value)
+    return PasswordInfo("generated", value, plain_value=value)
 
 
 # ---------------------------------------------------------------------- names
@@ -450,6 +458,9 @@ def create_user(actor, request, data, *, token):
             raise ServiceError("Choose a valid person type.")
         if person_type != PersonType.MEMBER_ACCOUNT and role != Role.MEMBER:
             raise ServiceError("Only a member can be a guest or a member without an account.")
+        email = (data.get("email") or "").strip().lower() or None
+        if email and User.objects.filter(email__iexact=email).exists():
+            raise ServiceError("Someone already uses that email address.")
         person = User(
             first_name=data["first_name"],
             middle_name=data.get("middle_name", ""),
@@ -465,6 +476,8 @@ def create_user(actor, request, data, *, token):
             person_type=person_type,
             status=Status.ACTIVE,
             must_change_password=person_type == PersonType.MEMBER_ACCOUNT and not skip_change,
+            email=email,
+            email_verified_at=timezone.now() if email else None,
             created_by=actor,
         )
         info = _set_initial_password(actor, person, data.get("password") or "")
@@ -549,6 +562,15 @@ def update_user(actor, request, ref, data):
         # blank until someone edits them, and then they must be given one.
         _require_gender(person.gender)
         details_changed = [n for n in USER_DETAIL_FIELDS if before[n] != getattr(person, n)]
+        old_email = (person.email or "").lower()
+        new_email = ((data.get("email") or "").strip().lower() or None) if "email" in data else (person.email or None)
+        email_changed = (new_email or "") != old_email
+        if email_changed:
+            person.email = new_email
+            person.email_verified_at = timezone.now() if new_email else None   # keep the pair constraint happy
+            person.pending_email = None
+        email_fields = ["email", "email_verified_at", "pending_email"] if email_changed else []
+        person.save(update_fields=[*details_changed, *email_fields, "role", "extension", "updated_at"])
         if any(n in IDENTITY_FIELDS for n in details_changed):
             # Only a change to who they are can clash; fixing a phone number must never be blocked by one.
             _refuse_duplicate({n: getattr(person, n) for n in IDENTITY_FIELDS}, exclude_pk=person.pk)
@@ -566,7 +588,7 @@ def update_user(actor, request, ref, data):
             require_can_act(actor, person, CHANGE_PLACEMENT)
         if ext_changed and new_ext is not None and new_ext.is_archived:
             raise ServiceError("Choose an extension that is not archived.")
-        if not (details_changed or role_changed or ext_changed):
+        if not (details_changed or role_changed or ext_changed or email_changed):
             return person, False
 
         # The seat is wanted but taken: demote its coordinator (only when confirmed).
@@ -604,12 +626,14 @@ def update_user(actor, request, ref, data):
                     reason=UserExtensionHistory.Reason.MANUAL,
                 )
 
-        if details_changed:
+        if details_changed or email_changed:
             shown = [n for n in details_changed if n not in PRIVATE_FIELDS]
             after = {n: getattr(person, n) for n in shown}
             contact = [n for n in details_changed if n in PRIVATE_FIELDS]
+            if email_changed:
+                contact.append("email")
             if contact:
-                after["contact_fields_changed"] = contact     # names only, never the phone, address or gender
+                after["contact_fields_changed"] = contact
             _log_person(
                 "account.update", actor, request, person,
                 before={n: before[n] for n in shown}, after=after,

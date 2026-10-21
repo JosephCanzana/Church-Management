@@ -323,13 +323,15 @@ def reject_registration(actor, request, request_id, *, token):
     return True
 
 
-def send_approval_email(user, password):
+def send_credentials_email(user, password, *, subject, intro):
     if not _approval_mail_is_configured():
         raise RuntimeError("Credential email is not configured; use the show-once credential page.")
+    if not user.email:
+        raise RuntimeError("This person has no email address.")
     sign_in = settings.SITE_URL.rstrip("/") + "/accounts/login/"
     message = EmailMultiAlternatives(
-        subject="Your church account is ready",
-        body=(f"Your account has been approved.\n\nAccount ID: {user.account_id}\n"
+        subject=subject,
+        body=(f"{intro}\n\nAccount ID: {user.account_id}\n"
               f"Sign in: {sign_in}\nTemporary password: {password}\n\n"
               "You must change this password when you first sign in."),
         from_email=settings.DEFAULT_FROM_EMAIL, to=[user.email],
@@ -337,6 +339,13 @@ def send_approval_email(user, password):
     if message.send(fail_silently=False) != 1:
         raise RuntimeError("The credential email was not accepted by the mail backend.")
 
+
+def send_approval_email(user, password):
+    send_credentials_email(
+        user, password,
+        subject="Your church account is ready",
+        intro="Your account has been approved.",
+    )
 
 def cleanup_decided_requests(*, retention_days=RETENTION_DAYS):
     cutoff = timezone.now() - timedelta(days=retention_days)

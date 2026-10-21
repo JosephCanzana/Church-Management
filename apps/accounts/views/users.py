@@ -29,6 +29,8 @@ from django.views.decorators.http import require_http_methods, require_POST
 
 from apps.core.services import ServiceError, new_submission_token
 from apps.core.text import name_case, suffix_case, title_case
+import logging
+logger = logging.getLogger(__name__)
 
 from ..address import ADDRESS_FIELDS, canonical_country
 from ..decorators import role_required
@@ -52,6 +54,7 @@ from ..services.users import (
     unsuspend_user,
     update_user,
 )
+from ..services.registration import send_credentials_email
 
 PAGE_SIZE = 25
 RETURN_QS_MAX = 1000               # longest "return to this filtered list" string accepted
@@ -193,6 +196,25 @@ def _form_initial(person):
         initial[name] = title_case(getattr(person, name))
     return initial
 
+def _email_credentials(request, person, password, *, subject, intro):
+    if not person.email or not person.can_sign_in:
+        return
+    if not password:
+        messages.warning(
+            request,
+            f"The password could not be emailed to {person.full_name}. Give them the one shown below.",
+        )
+        return
+    try:
+        send_credentials_email(person, password, subject=subject, intro=intro)
+    except Exception:
+        logger.exception("Credential email failed for account %s", person.account_id)
+        messages.warning(
+            request,
+            f"The password could not be emailed to {person.full_name}. Give them the one shown below.",
+        )
+    else:
+        messages.info(request, f"The password was also emailed to {person.email}.")
 
 # ------------------------------------------------------------------- list
 def _list_context(params, viewer):
@@ -412,6 +434,11 @@ def user_create(request):
                 messages.info(request, "That form was already submitted, so nothing was created a second time.")
                 return _to(request, "user_list")
             person = result.user
+            _email_credentials(
+                request, person, result.password.plain,
+                subject="Your church account is ready",
+                intro="An account has been created for you.",
+            )
             messages.success(request, f"{person.full_name} was created. Account ID {person.account_id}.")
             return _render_detail(request, person, secrets=_secrets(
                 [[person.full_name, person.account_id, result.password.display]], "Account created",
@@ -575,6 +602,11 @@ def user_reset_password(request, pk):
         messages.info(request, "That password reset was already done. Reset again if you need a new one.")
         return _to(request, "user_detail", pk=pk)
     messages.success(request, f"{person.full_name} has a new password.")
+    _email_credentials(
+        request, person, result.password.plain,
+        subject="Your church password was reset",
+        intro="Your password has been reset.",
+    )
     return _render_detail(request, _person_or_none(request.user, pk), secrets=_secrets(
         [[person.full_name, person.account_id, result.password.display]], "New password",
     ))
