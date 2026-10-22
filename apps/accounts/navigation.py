@@ -132,7 +132,8 @@ NAV_ITEMS = [
 # Page tabs for each hub. The order here is the order of the tabs.
 SECTION_TABS = {
     "journey": [
-        TabItem("Goals", "faith:goals", roles=(COORDINATOR, MEMBER)),
+        # Goals: every role that can sign in may hold goals. The whole /goals/ area belongs to this tab.
+        TabItem("Goals", "faith:goals", prefixes=("/goals/",)),
         TabItem("Attendance", "attendance:mine"),
         # "My tithes": the person's own giving history (entries where I am giver or co-giver), every role.
         # It lives at /tithes/mine/ in the member root only (tithes/urls.py).

@@ -43,6 +43,7 @@ urlpatterns = [
     # Member root for tithes special members (the role areas mount the same routes themselves).
     path("tithes/", include("apps.tithes.urls")),
     path("settings/", include("apps.theming.urls")),
+    path("goals/", include("apps.faith.urls")),
 ]
 
 # Dev only: Django serves uploaded photos. In production Caddy serves /media/.
