@@ -73,6 +73,12 @@ A household only PRE-FILLS the co-givers of a new tithe entry; ending a membersh
       </div>
       <button type="submit" class="btn btn-secondary min-h-[44px]">Add</button>
     </form>
+    <form method="post" action="{% role_url 'household_disband' household.pk %}"
+      data-confirm="Disband {{ household }}? Everyone is removed from it. Past tithe entries are not changed."
+      data-confirm-title="Disband household" data-confirm-text="Disband household" data-confirm-danger>
+  {% csrf_token %}
+  <button type="submit" class="btn btn-danger min-h-[44px]">Disband household</button>
+</form>
     {% endif %}
   </section>
   {% empty %}

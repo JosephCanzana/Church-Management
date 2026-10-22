@@ -710,6 +710,18 @@ def household_create(request):
         "Household created.",
     )
 
+@tithes_screen
+@require_http_methods(["POST"])
+def household_disband(request, pk):
+    """Disband a household: remove it and its memberships. Past entries are never touched."""
+    household = TitheHousehold.objects.filter(pk=pk).first()
+    if household is None:
+        messages.info(request, "That household no longer exists.")
+        return redirect(_households_url(request, None))
+    return _household_action(
+        request, household.extension_id,
+        lambda: services.disband_household(request.user, household.pk), "Household disbanded.",
+    )
 
 @tithes_screen
 @require_http_methods(["POST"])

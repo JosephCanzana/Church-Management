@@ -202,18 +202,19 @@ class TitheEntryGiver(models.Model):
 
     def __str__(self):
         return self.name_snapshot
-
-
 class TitheHousehold(TimestampedModel):
     """A standing group of people who usually give together (a couple, a family).
 
     It only PRE-FILLS the co-givers of a new entry. Not archivable, so it has no retention policy.
+    Disbanding is soft: `disbanded_on` is set, every membership is ended, and the row stays for history.
     """
 
     extension = models.ForeignKey(
         "accounts.Extension", on_delete=models.RESTRICT, related_name="tithe_households",
     )
     name = models.CharField(max_length=150, blank=True)
+    # NULL means the household is still active; a date means it was disbanded that day.
+    disbanded_on = models.DateField(null=True, blank=True)
     created_by = models.ForeignKey(
         settings.AUTH_USER_MODEL, null=True, blank=True,
         on_delete=models.SET_NULL, related_name="+",
@@ -224,7 +225,6 @@ class TitheHousehold(TimestampedModel):
 
     def __str__(self):
         return self.name or f"Household {self.pk}"
-
 
 class TitheHouseholdMember(models.Model):
     """A dated membership in a household. `ended_on` NULL means the person is in it now."""

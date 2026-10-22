@@ -986,3 +986,18 @@ def bypass_note_for(report):
         return None
     by = used.decided_by.full_name if used.decided_by_id else "an admin"
     return {"difference": report.difference, "by": by, "reason": used.message, "kind": "approved"}
+
+def disband_household(actor, household_id):
+    """Disband a household: remove it and all its memberships. Past entries are never touched."""
+    with transaction.atomic():
+        extension_id = (
+            TitheHousehold.objects.filter(pk=household_id).values_list("extension_id", flat=True).first()
+        )
+        if extension_id is None:
+            raise ServiceError("That household no longer exists.")
+        Extension.objects.select_for_update().get(pk=extension_id)  # lock order: extension first
+        household = TitheHousehold.objects.select_for_update().filter(pk=household_id).first()
+        if household is None:
+            raise ServiceError("That household no longer exists.")
+        require(can_manage_households, actor, household.extension_id)
+        household.delete()  # the memberships cascade; entries hold snapshots, so history is safe

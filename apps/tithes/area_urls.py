@@ -39,4 +39,5 @@ urlpatterns = [
     path("<int:pk>/bypass/decide/", views.bypass_decide, name="bypass_decide"),
     path("<int:pk>/finalize/", views.report_finalize, name="report_finalize"),
     path("<int:pk>/reopen/", views.report_reopen, name="report_reopen"),
+    path("households/<int:pk>/disband/", views.household_disband, name="household_disband"),
 ]
