@@ -3,8 +3,11 @@ Extends base_app.html and fills: page_title, content.
 Context: version, statuses, book (Book), chapter (int), text (ChapterText or None),
 locked_reason (str, set when the version is locked), missing (bool, local text not imported),
 already_read (bool), previous / following (dict with book, chapter, url, or None), bookmarked (bool).
-Next posts to bible:finish (after=next), which counts the chapter as read, moves the bookmark and redirects to the following chapter.
-"I'm done for now" posts to the same url without after. The Bookmark button posts to bible:bookmark. -->
+Next posts to bible:finish (after=next): that counts the chapter as read, moves the bookmark and goes to the following chapter.
+The last chapter shows "Finish" (same url, no after). No separate button counts a chapter as read; only Next and Finish do.
+The Bookmark button posts to bible:bookmark. While the chapter text is showing, a small Alpine component on the article
+also posts there once, after 20 seconds on the page (counted only while the tab is visible), with X-Requested-With so the
+server answers 204 and sets no message. Locked and not-imported chapters render no component and no timer. -->
 {% extends "base_app.html" %}
 {% block title %}{{ book.name }} {{ chapter }}{% endblock %}
 {% block page_title %}{{ book.name }} {{ chapter }}{% endblock %}
@@ -34,21 +37,45 @@ Next posts to bible:finish (after=next), which counts the chapter as read, moves
       </div>
     </section>
   {% else %}
-    <article class="overflow-hidden rounded-xl border border-border bg-surface shadow-sm" lang="{{ version.language }}">
+    <article class="overflow-hidden rounded-xl border border-border bg-surface shadow-sm" lang="{{ version.language }}"
+      data-auto-bookmark
+      x-data="{
+        url: '{% url 'bible:bookmark' book.osis_id chapter %}',
+        csrf: '{{ csrf_token }}',
+        bookmarked: {% if bookmarked %}true{% else %}false{% endif %},
+        seconds: 0,
+        timer: null,
+        init() {
+          if (this.bookmarked) return;
+          this.timer = setInterval(() => {
+            if (document.visibilityState !== 'visible') return;
+            this.seconds += 1;
+            if (this.seconds >= 20) this.save();
+          }, 1000);
+        },
+        async save() {
+          clearInterval(this.timer);
+          try {
+            const reply = await fetch(this.url, {
+              method: 'POST',
+              headers: { 'X-CSRFToken': this.csrf, 'X-Requested-With': 'XMLHttpRequest' },
+              credentials: 'same-origin',
+            });
+            if (reply.status === 204) this.bookmarked = true;
+          } catch (error) { /* quiet: the manual Bookmark button still works */ }
+        },
+      }">
       <header class="flex flex-wrap items-center justify-between gap-x-4 gap-y-2 border-b border-border bg-surface-alt px-6 py-4">
         <h2 class="text-xl font-semibold tracking-tight text-txt-primary">{{ book.name }} {{ chapter }}</h2>
         <div class="flex items-center gap-2">
           {% if already_read %}
             <span class="inline-flex items-center gap-1.5 rounded-md bg-success/15 px-2.5 py-1 text-sm font-medium text-success">{% include "includes/icon.html" with name="check" class="size-4" %}Read today</span>
           {% endif %}
-          {% if bookmarked %}
-            <span class="inline-flex items-center gap-1.5 rounded-md bg-accent/15 px-2.5 py-1 text-sm font-medium text-accent">{% include "includes/icon.html" with name="bookmark" class="size-4" %}Bookmarked</span>
-          {% elif not locked_reason and not missing %}
-            <form method="post" action="{% url 'bible:bookmark' book.osis_id chapter %}">
-              {% csrf_token %}
-              <button type="submit" class="btn btn-secondary min-h-11 text-sm">Bookmark</button>
-            </form>
-          {% endif %}
+          <span x-show="bookmarked" {% if not bookmarked %}x-cloak{% endif %} class="inline-flex items-center gap-1.5 rounded-md bg-accent/15 px-2.5 py-1 text-sm font-medium text-accent">{% include "includes/icon.html" with name="bookmark" class="size-4" %}Bookmarked</span>
+          <form method="post" action="{% url 'bible:bookmark' book.osis_id chapter %}" x-show="!bookmarked" {% if bookmarked %}x-cloak{% endif %}>
+            {% csrf_token %}
+            <button type="submit" class="btn btn-secondary min-h-11 text-sm">Bookmark</button>
+          </form>
           <span class="rounded-md bg-txt-primary/10 px-2.5 py-1 text-sm font-medium text-txt-secondary">{{ version.label }}</span>
         </div>
       </header>
@@ -61,12 +88,8 @@ Next posts to bible:finish (after=next), which counts the chapter as read, moves
     </article>
   {% endif %}
 
-  {% if not locked_reason and not missing and following %}
-    <form method="post" action="{% url 'bible:finish' book.osis_id chapter %}" class="text-center">
-      {% csrf_token %}
-      <button type="submit" class="btn btn-secondary min-h-11">I'm done for now</button>
-    </form>
-    {% if not already_read %}<p class="text-center text-sm text-txt-secondary">Going to the next chapter counts this one as read.</p>{% endif %}
+  {% if not locked_reason and not missing and following and not already_read %}
+    <p class="text-center text-sm text-txt-secondary">Going to the next chapter counts this one as read.</p>
   {% endif %}
 
   <nav class="grid grid-cols-2 gap-3" aria-label="Chapter navigation">

@@ -4,7 +4,7 @@
 the result to a template. Pieces:
 
 * shared by every role: greeting name, verse of the day (in the reader's Bible
-  version), "continue reading", quick links (taken from ``NAV_ITEMS``, so a menu
+  version), "continue reading" (the person's Bible bookmark), quick links (taken from ``NAV_ITEMS``, so a menu
   change is picked up here too) and the "coming soon" cards;
 * leaders only (super-admin, admin, coordinator): counts and charts for what they
   manage. Attendance and tithes numbers come from *uploaded* sheets (tithes: finalized
@@ -22,15 +22,13 @@ from decimal import Decimal
 from django.db.models import Count, Q, Sum
 from django.db.models.functions import Coalesce
 from django.urls import NoReverseMatch, reverse
-from django.utils import timezone
 
 from apps.accounts.models import Extension, Role, Status, User
 from apps.accounts.navigation import build_nav
 from apps.attendance.models import Attendance
 from apps.bible import daily_verse
 from apps.bible import services as bible_services
-from apps.bible.books import BOOKS_BY_ID, neighbor_chapters
-from apps.bible.models import BibleChapterRead
+from apps.bible.books import BOOKS_BY_ID
 from apps.core.text import title_case
 from apps.tithes.models import TithesOffering
 
@@ -75,6 +73,7 @@ def get_dashboard_context(user, version_code, path):
         "verse": _verse_of_the_day(version_code),
         "continue_reading": _continue_reading(user),
         "bible_url": _safe_reverse("bible:reader"),
+        "start_url": _bible_chapter_url("Gen", 1),
         "quick_links": _quick_links(user, path),
         "coming_soon": COMING_SOON,
         "leader": _leader_overview(user) if user.role in LEADER_ROLES else None,
@@ -153,22 +152,19 @@ def _verse_of_the_day(version_code):
 
 
 def _continue_reading(user):
-    """Return the person's last chapter read and the next one, or None if they have read nothing."""
-    last = BibleChapterRead.objects.filter(user=user).order_by("-read_date", "-created_at").first()
-    book = BOOKS_BY_ID.get(last.book) if last else None
+    """Return the person's bookmark as ``{"label", "url"}``, or None when they have none.
+
+    The bookmark is the only source (the reader moves it on Next and after 20 seconds on a
+    chapter). With no bookmark, or one that points at a book that no longer exists, the
+    template offers "Start reading" at Genesis 1 instead (``start_url`` in the context).
+    """
+    bookmark = bible_services.get_bookmark(user)
+    book = BOOKS_BY_ID.get(bookmark.book) if bookmark else None
     if book is None:
         return None
-    _previous, following = neighbor_chapters(last.book, last.chapter)
-    next_label = next_url = ""
-    if following:
-        next_book = BOOKS_BY_ID[following[0]]
-        next_label = f"{next_book.name} {following[1]}"
-        next_url = _bible_chapter_url(*following)
     return {
-        "last_label": f"{book.name} {last.chapter}",
-        "read_today": last.read_date == timezone.localdate(),
-        "next_label": next_label,
-        "next_url": next_url,
+        "label": f"{book.name} {bookmark.chapter}",
+        "url": _bible_chapter_url(bookmark.book, bookmark.chapter),
     }
 
 

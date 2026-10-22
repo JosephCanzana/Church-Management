@@ -1,5 +1,5 @@
 """Tests for the role dashboards (apps/dashboards)."""
-from datetime import date, timedelta
+from datetime import date
 from decimal import Decimal
 from unittest.mock import patch
 
@@ -9,7 +9,7 @@ from django.utils import timezone
 
 from apps.accounts.models import Extension, Role, Status, User
 from apps.attendance.models import Attendance
-from apps.bible.models import BibleChapterRead, BibleVerse, DailyVerse
+from apps.bible.models import BibleBookmark, BibleChapterRead, BibleVerse, DailyVerse
 from apps.dashboards import services
 from apps.tithes.models import TithesOffering
 
@@ -149,15 +149,14 @@ class ContinueReadingTests(TestCase):
         context = services.get_dashboard_context(self.member, None, "/")
         self.assertIsNone(context["continue_reading"])
 
-    def test_last_and_next_chapter(self):
-        """The newest read wins and the next chapter is suggested, across book ends too."""
+    def test_bookmark_is_the_card(self):
+        """Brick 2: the card shows the bookmark, not the newest read (a read alone changes nothing)."""
         today = timezone.localdate()
-        BibleChapterRead.objects.create(user=self.member, translation="KJV", book="Gen", chapter=1, read_date=today - timedelta(days=2))
         BibleChapterRead.objects.create(user=self.member, translation="KJV", book="Gen", chapter=50, read_date=today)
+        self.assertIsNone(services.get_dashboard_context(self.member, None, "/")["continue_reading"])
+        BibleBookmark.objects.create(user=self.member, book="Exod", chapter=1)
         card = services.get_dashboard_context(self.member, None, "/")["continue_reading"]
-        self.assertEqual(card["last_label"], "Genesis 50")
-        self.assertEqual(card["next_label"], "Exodus 1")
-        self.assertTrue(card["read_today"])
+        self.assertEqual(card["label"], "Exodus 1")
 
 
 class LeaderNumbersTests(TestCase):

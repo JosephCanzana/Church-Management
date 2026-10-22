@@ -1,4 +1,4 @@
-"""bible.views: book list, chapter list, chapter reader, version picker, "mark as read".
+"""bible.views: book list, chapter list, chapter reader, version picker, Next (counts a read), bookmark.
 
 Every view is open to all four roles (a person reads their own Bible), but each
 still carries role_required, as the project rules ask. The chosen version lives
@@ -6,7 +6,7 @@ in a cookie on that device; it is checked against the catalog on every request,
 so a tampered value just falls back to the default version.
 """
 from django.contrib import messages
-from django.http import Http404
+from django.http import Http404, HttpResponse
 from django.shortcuts import redirect, render
 from django.urls import reverse
 from django.utils.http import url_has_allowed_host_and_scheme
@@ -132,10 +132,11 @@ def set_version_view(request):
 @role_required(*ALL_ROLES)
 @require_POST
 def finish_chapter_view(request, book, chapter):
-    """Count the chapter as read and move the bookmark on; "Next" and "I'm done" both post here.
+    """Count the chapter as read and move the bookmark on; "Next" (and "Finish" on Rev 22) post here.
 
-    ``after=next`` goes straight to the following chapter. The target is worked
-    out here, never taken from the form, so there is no redirect to validate.
+    Next is the only way a chapter counts as read. ``after=next`` goes straight to
+    the following chapter. The target is worked out here, never taken from the
+    form, so there is no redirect to validate.
     """
     book = _book_or_404(book)
     if not 1 <= chapter <= book.chapters:
@@ -155,13 +156,32 @@ def finish_chapter_view(request, book, chapter):
     return redirect("bible:chapter", book=book.osis_id, chapter=chapter)
 
 
+def _is_background_request(request):
+    """True for a request sent by the page's own JavaScript (fetch), not a form submit.
+
+    The auto bookmark sends ``X-Requested-With: XMLHttpRequest`` (a JSON ``Accept``
+    header counts too), so it gets a quiet reply instead of a redirect and a toast.
+    """
+    return (
+        request.headers.get("X-Requested-With") == "XMLHttpRequest"
+        or "application/json" in request.headers.get("Accept", "")
+    )
+
+
 @role_required(*ALL_ROLES)
 @require_POST
 def bookmark_view(request, book, chapter):
-    """Put the bookmark on this chapter without counting it as read."""
+    """Put the bookmark on this chapter without counting it as read.
+
+    The Bookmark button posts a normal form (message and redirect). The 20-second
+    auto bookmark posts from JavaScript and gets a plain 204 with no message. A GET
+    never writes (``require_POST``).
+    """
     book = _book_or_404(book)
     if not 1 <= chapter <= book.chapters:
         raise Http404("Unknown chapter")
     services.save_bookmark(request.user, book.osis_id, chapter)
+    if _is_background_request(request):
+        return HttpResponse(status=204)
     messages.success(request, f"Bookmarked {book.name} {chapter}.")
     return redirect("bible:chapter", book=book.osis_id, chapter=chapter)
