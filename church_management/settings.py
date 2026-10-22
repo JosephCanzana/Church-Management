@@ -65,6 +65,7 @@ MIDDLEWARE = [
     'django.middleware.common.CommonMiddleware',
     'django.middleware.csrf.CsrfViewMiddleware',
     'django.contrib.auth.middleware.AuthenticationMiddleware',
+    'apps.faith.middleware.DailyOpenMiddleware',  # before the password-change redirect
     'django.contrib.messages.middleware.MessageMiddleware',
     'apps.accounts.middleware.PasswordChangeRequiredMiddleware',
     'django.middleware.clickjacking.XFrameOptionsMiddleware',

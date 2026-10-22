@@ -24,6 +24,9 @@ class Goal(ArchivableModel):
     description = models.TextField(blank=True)
     start_date = models.DateField()
     end_date = models.DateField(null=True, blank=True)       # NULL = never ends
+    # Optional time of day. Both empty = all-day. A range cannot cross midnight.
+    start_time = models.TimeField(null=True, blank=True)
+    end_time = models.TimeField(null=True, blank=True)
     repeat_type = models.CharField(max_length=10, choices=Repeat.choices)
     # 0 = Monday ... 6 = Sunday; only for weekly goals
     weekdays = ArrayField(
@@ -51,12 +54,26 @@ class Goal(ArchivableModel):
                 ),
                 name="goal_repeat_matches_weekdays",
             ),
+            # No time at all, or a start time alone, or a start time followed by a later end time.
+            # An end time without a start time is never allowed.
+            models.CheckConstraint(
+                condition=(
+                    Q(start_time__isnull=True, end_time__isnull=True)
+                    | Q(start_time__isnull=False, end_time__isnull=True)
+                    | Q(start_time__isnull=False, end_time__gt=F("start_time"))
+                ),
+                name="goal_time_range",
+            ),
             archived_matches_status("goal_archived_matches_status"),
         ]
         indexes = [models.Index(fields=["user", "status"], name="ix_goal_user_status")]
 
     def clean(self):
-        # array length / duplicates are checked here, not in the database
+        """Validate the time range and the weekday list (array rules live here, not in the database)."""
+        if self.end_time and not self.start_time:
+            raise ValidationError({"end_time": "Set a start time first."})
+        if self.start_time and self.end_time and self.end_time <= self.start_time:
+            raise ValidationError({"end_time": "End time must be after the start time."})
         if self.repeat_type == self.Repeat.WEEKLY:
             if not self.weekdays:
                 raise ValidationError({"weekdays": "Pick at least one weekday."})
