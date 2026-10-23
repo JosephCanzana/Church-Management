@@ -24,4 +24,5 @@ urlpatterns = [
     path("messages/poll/", message_views.poll, name="message_poll"),
     path("messages/earlier/", message_views.earlier, name="message_earlier"),
     path("messages/read/", message_views.read, name="message_read"),
+    path("goals/", views.partner_goals, name="goals"),
 ]

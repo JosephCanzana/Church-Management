@@ -21,6 +21,7 @@ from apps.audit.services import log_action
 from apps.core.services import ServiceError
 from apps.core.text import clean_text
 from apps.notifications.services import notify
+from apps.faith.partner import partner_goal_overview
 
 from .models import BuddyRequest, UserBuddy
 from .permissions import can_use_buddy, signable_q
@@ -41,6 +42,10 @@ END_REQUEST_DAYS_KEY = "buddy_end_request_days"   # site_setting key
 DEFAULT_END_REQUEST_DAYS = 7                      # used when the setting is missing or invalid
 
 NOT_FOUND = "That request was not found."
+
+PARTNER_GOALS_LIVE = "live"            # a live partner: the goals are shown
+PARTNER_GOALS_INACTIVE = "inactive"    # partner cannot sign in: goals hidden
+PARTNER_GOALS_NONE = "no_partner"      # no un-ended partnership at all
 
 
 class CandidateState(models.TextChoices):
@@ -670,3 +675,32 @@ def close_stale_end_requests(now=None, days=None):
             )
             closed += 1
     return closed
+
+def partner_goals_for(viewer):
+    """What the "Their goals" screen shows `viewer`: their LIVE partner's goals, nothing else.
+
+    Takes no id from the request. The partner is read from the viewer's own partnership row
+    (`partner_of`), so a person can only ever see the one buddy they are paired with. Returns
+    `{"state", "partner_name", "overview"}`: `state` is "live" (overview filled), "inactive"
+    (partner can no longer sign in, goals hidden) or "no_partner". Read-only: nothing is
+    audited and the partner is not notified.
+    """
+    if not can_use_buddy(viewer):
+        raise ServiceError("You cannot use Buddy right now.")
+    row = live_partnership(viewer)
+    if row is None:
+        stale = active_partnership(viewer)
+        if stale is None:
+            return {"state": PARTNER_GOALS_NONE, "partner_name": "", "overview": None}
+        return {
+            "state": PARTNER_GOALS_INACTIVE,
+            "partner_name": partner_of(stale, viewer).full_name,
+            "overview": None,
+        }
+    partner = partner_of(row, viewer)
+    return {
+        "state": PARTNER_GOALS_LIVE,
+        "partner_name": partner.full_name,
+        "overview": partner_goal_overview(partner, timezone.localdate()),
+    }
+

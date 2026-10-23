@@ -146,3 +146,13 @@ def end_inactive(request):
     return _back_to_buddy(
         request, "The partnership has ended.", services.end_without_approval, request.POST.get("note"),
     )
+
+@buddy_screen
+def partner_goals(request):
+    """The "Their goals" tab: the live partner's goals, read-only. No id in the URL."""
+    try:
+        goals_view = services.partner_goals_for(request.user)
+    except ServiceError as error:
+        messages.error(request, str(error))
+        return redirect("buddy:home")
+    return render(request, "buddy/partner_goals.html", {"goals_view": goals_view})

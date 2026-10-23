@@ -146,7 +146,7 @@ SECTION_TABS = {
     "buddy": [
         TabItem("Buddy", "buddy:home", prefixes=("/buddy/",)),
         TabItem("Messages", "buddy:messages"),
-        TabItem("Their goals", "buddy:goals"),
+        TabItem("Their goals", "buddy:goals", ),
     ],
     "people": [
         TabItem("People", "superadmin:user_list", roles=(SUPER_ADMIN,)),

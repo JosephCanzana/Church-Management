@@ -1,0 +1,32 @@
+<!--
+  _partner_goal_card.html: one goal of the buddy, read-only (Brick 9).
+  Context: goal = one row of overview.goals / to_do_today / done_today (id, title, description,
+  repeat_label, time_label, current, best, done_today, strip). No check-in note exists in a row.
+  Include example: include buddy/_partner_goal_card.html with goal=row.
+-->
+<article class="card space-y-3 p-4">
+  <div>
+    <h4 class="font-semibold text-txt-primary">{{ goal.title }}</h4>
+    <p class="text-sm text-txt-secondary">{{ goal.repeat_label }} &middot; {{ goal.time_label }}</p>
+  </div>
+  {% if goal.description %}<p class="text-sm text-txt-primary">{{ goal.description|linebreaksbr }}</p>{% endif %}
+  <p class="text-sm text-txt-secondary">
+    Streak {{ goal.current }} &middot; Best {{ goal.best }}
+  </p>
+  <ol class="flex gap-1" aria-label="Last 7 days">
+    {% for cell in goal.strip %}
+      <li class="flex flex-col items-center gap-1 text-xs text-txt-secondary">
+        <span>{{ cell.label }}</span>
+        <span class="flex h-8 w-8 items-center justify-center rounded-md
+          {% if cell.state == 'done' %}bg-highlight text-on-highlight
+          {% elif cell.state == 'missed' %}border border-border bg-bg text-txt-primary
+          {% elif cell.state == 'open' %}border border-accent bg-bg text-txt-primary
+          {% else %}bg-surface text-txt-secondary{% endif %}"
+          title="{{ cell.label }}: {{ cell.text }}">
+          <span aria-hidden="true">{{ cell.symbol }}</span>
+          <span class="sr-only">{{ cell.text }}</span>
+        </span>
+      </li>
+    {% endfor %}
+  </ol>
+</article>
