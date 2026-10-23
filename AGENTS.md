@@ -22,20 +22,30 @@ buddies, prayer requests, events, resources, notifications and audit logging.
   - Public registration and approvals (`/accounts/register/`, role-scoped registration approval inboxes), matching, one-time password emails and nightly request cleanup (see Accounts).
   - A global toast and confirm dialog (`static/js/ui.js`, rendered by `includes/messages.html`).
   - Bible: reader with three versions (KJV and Ang Dating Biblia from the database, ESV from api.esv.org), version
-    picker with locking, chapter reads (Next counts a chapter as read), a per-account bookmark, ESV call limits, locks and a size-capped cache, and the super-admin
+    picker with locking, chapter reads (Next counts a chapter as read), a per-account bookmark with an automatic bookmark
+    after 20 seconds, ESV call limits, locks and a size-capped cache, and the super-admin
     switches for every version (`/superadmin/site-settings/`, see Bible), and the verse of the day.
+  - Faith (bricks 1 to 4 and 10): goals with optional times, daily check-ins, streaks (daily open, Bible, perfect day,
+    per goal), goal detail and history pages, dashboard streak and goals-today widgets, goal reminders and the nightly
+    completion of ended goals (see Faith).
+  - Buddy (bricks 6 to 9): requests and partnerships, messages with nudge and "prayed", and the partner's goals
+    (see Buddy).
+  - Prayer (brick 5): member send form and the role-scoped inbox with replies and completion (see Prayer).
   - Dashboards: one page per role (super-admin, admin, coordinator, member) with the verse of the day, continue
-    reading, quick links and, for leaders, counts and charts (see Dashboards).
+    reading, quick links, streaks and today's goals and, for leaders, counts and charts (see Dashboards).
   - Attendance (bricks 1 to 14): gender and age networks, model changes, permissions and scoping, draft services,
     summary, upload, reopen, the sheet screens for every role, A4 print page, first timer conversion, repeat-visitor
     auto-transfer, reset-to-password-change, guest promotion and personal history (see Attendance).
   - Tithes: reports on tithes and offering per attendance sheet, denomination count, finalize with a bypass
     request flow, households, A4 print page and "My tithes" (see Tithes).
+  - Events (calendar, list, notices and reminders), Web Push on top of the bell, and the Site settings sections
+    `jobs` and `retention` (see Events and Push notifications).
 - **Not built yet:**
   - Brute-force login throttling.
-  - The `faith` listener that turns a chapter read into a streak, MBBTAG. The dashboards show "Coming soon"
-    cards for the Bible streak, goals and events until those apps have views.
-  - Beyond the list above, services, views and forms are mostly not built yet: features are being added on top of
+  - Bell list lines for several notification types (`admin_alert`, `buddy_request`, `buddy_accepted`, `buddy_message`,
+    `goal_reminder`, `prayer_request`, `prayer_replied`): the bell items exist, the list needs a generic line for each.
+  - An unread dot on the Buddy Messages tab (`buddy.messaging.unread_count(user)` exists but is not wired).
+  - Beyond the list above, some services, views and forms are not built yet: features are being added on top of
     the models, one app at a time.
 
 Reference docs (the source of truth for behaviour):
@@ -46,7 +56,7 @@ Reference docs (the source of truth for behaviour):
 ## Tech stack
 Python 3.12, Django 5.1+ (tested on 5.2 and 6.0), PostgreSQL 16, Tailwind CSS
 (standalone CLI), Alpine.js, Docker Compose. Outgoing HTTP (the ESV API) uses the
-standard library, so there is no extra Python package for it.
+standard library, so there is no extra Python package for it (Web Push adds `pywebpush`, see Push notifications).
 
 ## Repository layout
 - `church_management/`: project package (settings, urls, asgi/wsgi). Config only.
@@ -68,8 +78,9 @@ standard library, so there is no extra Python package for it.
 - `static/`: `css/input.css` (Tailwind source and design tokens), `css/themes.css`
   (dark overrides), `css/output.css` (generated, not committed), `fonts/`,
   `icons/sprite.svg`, `images/` (logos), `js/alpine.min.js`, `js/ui.js` (toast and
-  confirm store).
+  confirm store), `js/goals.js` (goal check-ins), `js/buddy_chat.js` (Buddy messages).
 - `theme/` (Tailwind CLI binary, gitignored), `docs/`.
+- `production/` (`docker-compose.prod.yml`, `deploy/scheduler.py`): production only; see Nightly jobs.
 - `Dockerfile`, `docker-compose.yml`, `Makefile`, `requirements.txt`, `.env.example`.
 
 ## Commands (always through Docker)
@@ -83,6 +94,7 @@ docker compose exec web python manage.py makemigrations --check --dry-run
 docker compose exec web python manage.py test
 docker compose exec web python manage.py test apps.core.test_text -v 2
 docker compose exec web python manage.py test apps.bible
+docker compose exec web python manage.py test apps.faith apps.buddy apps.prayer
 docker compose exec web python manage.py import_bible KJV --url https://raw.githubusercontent.com/seven1m/open-bibles/master/eng-kjv.osis.xml
 docker compose exec web python manage.py import_bible ADB --url https://raw.githubusercontent.com/seven1m/open-bibles/master/tgl-tagalog.osis.xml
 make tailwind-watch    # separate terminal
@@ -103,7 +115,8 @@ moving or reorganizing app code.
   it on a migrated database.
 - `INSTALLED_APPS` includes `django.contrib.postgres` (needed for `ArrayField`
   on Django 6.0) and all 14 project apps. Use `theming.apps.ThemingConfig` for
-  `theming` (it registers the signal).
+  `theming` (it registers the signal). Use `faith.apps.FaithConfig` for `faith` (`ready()` connects the chapter-read listener).
+- `MIDDLEWARE` includes the faith daily-open middleware (`apps.faith.middleware`, one line, after authentication).
 - `TIME_ZONE = 'Asia/Manila'`, `USE_TZ = True`.
 - Plain `date` columns (check-ins, streaks, daily verse, attendance, chapter reads) use the
   Manila calendar date.
@@ -115,19 +128,19 @@ moving or reorganizing app code.
 
 | App | Tables | Logic that lives here |
 |---|---|---|
-| `core` | `site_setting`, `retention_policy`, `submission_token` | Abstract bases (`TimestampedModel`, `ArchivableModel`), `archived_matches_status()`, generic archive / restore / force-delete, upload validation and storage helpers (`uploads.py`), nightly `purge_archived`, permission hierarchy helpers, retention screen. `site_setting` also holds the Bible switches and ESV state (keys `bible_api_enabled`, `bible_esv_enabled`, `bible_esv_state`, `bible_esv_cache_lock`) |
+| `core` | `site_setting`, `retention_policy`, `submission_token` | Abstract bases (`TimestampedModel`, `ArchivableModel`), `archived_matches_status()`, generic archive / restore / force-delete, upload validation and storage helpers (`uploads.py`), nightly `purge_archived`, permission hierarchy helpers, retention screen, job-setting readers (`job_settings.py`). `site_setting` also holds the Bible switches and ESV state (keys `bible_api_enabled`, `bible_esv_enabled`, `bible_esv_state`, `bible_esv_cache_lock`) |
 | `audit` | `audit_log` | `log_action()` in `audit/services.py` (strips sensitive keys, sends `action_logged` from `audit/signals.py`), log viewer, `cleanup_audit_log` |
 | `accounts` | `extension`, `app_user`, `special_role`, `user_special_role`, `extension_special_role_limit`, `default_password`, `email_token`, `user_extension_history` | Login/logout/forced password change, forgot + reset password, email verification, profile, create/manage accounts, extensions, special roles and limits, default passwords, `archive_inactive_users`, `auto_transfer_extension`, `cleanup_email_tokens`, `mark_attended()` |
 | `theming` | `theme`, `theme_palette`, `user_settings` | Theme CRUD (both palettes in one transaction), contrast warning (including `highlight` / `on_highlight`), CSS generation + cache, context processor; `UserSettings` row created by `signals.py` |
 | `pages` | `church_content`, `landing_image`, `donation_account`, `jil_video` | Landing page (`get_landing_context()` in `pages/services.py`, a default for every block) and terms editing, donation page, `fetch_jil_videos` |
 | `bible` | `bible_verse`, `bible_esv_cache`, `daily_verse`, `bible_chapter_read`, `bible_bookmark` | Reader (KJV, Ang Dating Biblia, ESV), `import_bible`, ESV client with limits, locks and cache, version picker, daily verse (`daily_verse.py`, `seed_daily_verses`), `record_chapter_read()`, `finish_chapter()`, bookmark |
-| `faith` | `goal`, `goal_checkin`, `user_daily_activity`, `user_streak` | Goals, check-ins, consistency, heatmap, streak rules, `complete_ended_goals` |
+| `faith` | `goal`, `goal_checkin`, `user_daily_activity`, `user_streak` | Goals, check-ins, schedule rules (`schedule.py`), streak engine (`streaks.py`), stats, read-only overview pictures (`overview.py`), partner view (`partner.py`), daily-open middleware, chapter-read listener, `complete_ended_goals`, `send_goal_reminders` |
 | `events` | `event` | Event CRUD, change/cancel notices, `send_event_reminders` |
 | `resources` | `monthly_theme`, `monthly_resource`, `weekly_powerpoint`, `general_resource` | Resource permissions (`permissions.py`) and transactional create/edit/publish/archive/restore/delete services (`services.py`); monthly themes + files, weekly PPT, general resources |
 | `attendance` | `attendance`, `attendance_member`, `attendance_first_timer` | Sheets, draft services (ticks, first timers, search), summary, upload (freeze counts, update `last_attended_at`), reopen (admin) |
 | `tithes` | `tithes_offering`, `tithe_entry`, `tithe_entry_giver`, `tithe_household`, `tithe_household_member`, `tithes_bypass_request` | Entries and co-givers, live totals, denomination count, finalize and bypass flow, reopen, households, print page, "My tithes" (see Tithes) |
-| `buddy` | `user_buddy`, `buddy_request`, `buddy_note` | Request/accept (transactional one-partner check), notes/nudges, end partnership, view partner goals |
-| `prayer` | `prayer_request`, `prayer_reply` | Send, inbox (coordinator scope, anonymous masking), reply, done, delete |
+| `buddy` | `user_buddy`, `buddy_request`, `buddy_note` | Request/accept (transactional one-partner check), messages, nudges and "prayed" notes (`messaging.py`), end partnership, view partner goals, `close_stale_end_requests` |
+| `prayer` | `prayer_request`, `prayer_reply` | Send, inbox (coordinator scope, anonymous masking), reply, complete. There is no delete route |
 | `notifications` | `notification`, `notification_preference`, `notification_rule` | `notify()`, bell + list, preferences, the admin-alert receiver (`notifications/listeners.py`, applies `notification_rule` to `action_logged`), `cleanup_notifications` |
 
 Before adding a model, put it in the app whose data it shares a lifecycle
@@ -233,13 +246,18 @@ with. Only create a new app if the answer is "none".
 1. Direction: `core` <- `audit` <- `accounts` <- everything else. `theming`
    depends on `accounts`; `tithes` depends on `attendance`; `attendance` depends
    on `events`; `bible` uses `core` (`site_setting`) and `accounts` (`role_required`, roles).
+   `faith` reads `bible` only through a signal. `buddy` reads `faith` (`faith.partner`, `faith.streaks`; the streak import is
+   guarded) and never the other way. `dashboards` imports `apps.faith.overview` and `faith.permissions.can_use_goals`
+   (read-only). `faith` and `buddy` read job settings from `core/job_settings.py`, never from `accounts`.
 2. `audit` and `notifications` never import feature apps. They refer to other
    records with `entity_type` / `entity_id`, not foreign keys.
 3. Cross-app reactions use signals, not imports upward:
    `audit.log_action()` sends `action_logged` and `notifications` listens to
-   apply `notification_rule`; the daily open streak hooks Django's
-   `user_logged_in` signal from `faith`; `bible` sends `bible.signals.chapter_read`
-   and `faith` listens to it for the Bible streak (`bible` never imports `faith`).
+   apply `notification_rule`; the daily open streak is recorded inside `faith` (`faith/middleware.py`, which skips
+   polling requests that send `Accept: application/json`); `bible` sends `bible.signals.chapter_read`
+   and `faith` listens to it for the Bible streak (`bible` never imports `faith`):
+   `faith.listeners.on_chapter_read` is connected in `FaithConfig.ready()` (with a `dispatch_uid`) and calls
+   `streaks.record_read(entry.user, entry.read_date)`.
 4. Each app owns its jobs as management commands. Business logic goes in
    `services.py`, wrapped in `transaction.atomic()`, calling `log_action()` and
    `notify()` in the same transaction. Views stay thin.
@@ -249,6 +267,11 @@ with. Only create a new app if the answer is "none".
   matches `retention_policy.entity_type` to the table name, so a new archivable
   table needs: `db_table`, a `retention_policy` row, a trigger + partial index
   (add to a new migration, copy the pattern in `core/migrations/0002`).
+- **Retention rule (core migration 0002):** `goal` (180 days) and `prayer_request` (90 days) already have
+  `retention_policy` rows. The `set_purge_at()` trigger runs `BEFORE INSERT OR UPDATE OF archived_at` and returns early when
+  `archived_at` did not change, so a changed period applies ONLY to records archived from now on. Records already archived
+  keep their old `purge_at`. The Retention screen says so. (`notification` and `audit_log` are not archivable; their own
+  cleanup commands read the policy when they run.)
 - `Meta.constraints` uses `condition=` (not `check=`, removed in Django 6.0).
 - Enums are `TextChoices`; cross-field rules are database constraints.
 - Archivable models inherit `ArchivableModel` and use
@@ -260,7 +283,9 @@ with. Only create a new app if the answer is "none".
 - `on_delete` is enforced by Django, not by database foreign keys. Do not delete
   rows with raw SQL. Rules: personal content CASCADE; church records that
   mention a user SET NULL (names are snapshotted); `created_by` style columns
-  SET NULL; extensions with people or records RESTRICT.
+  SET NULL; extensions with people or records RESTRICT. A constraint that ties a
+  nullable `SET_NULL` column to another column must be one-way (see `user_buddy_end_request_time`), or deleting the
+  referenced user violates it.
 - Money is `Decimal(12,2)`, never float. Totals on uploaded attendance/tithes
   are frozen values, not recalculated.
 - Four join tables use a surrogate `id` plus a unique constraint instead of a
@@ -278,7 +303,7 @@ with. Only create a new app if the answer is "none".
   before deleting rows and tolerate missing files.
 - A table added in Django first (`bible_verse`, `bible_esv_cache`) must also be added to `docs/schema.sql`,
   A column added to an existing table (for example the contact
-  fields on `app_user`) is added there too.
+  fields on `app_user`, or the `user_buddy` end-request columns and `buddy_note.kind`) is added there too.
 
 ## Roles and routing
 - Four roles: super-admin, admin, coordinator, member. Role is stored in
@@ -289,14 +314,16 @@ with. Only create a new app if the answer is "none".
   custom Admin role area, not Django admin. Never "fix" this by moving
   Django admin back to `/admin/`.
 - Route groups: `/superadmin/`, `/admin/`, `/coordinator/`, and member
-  pages at the root (the Bible is at `/bible/`, open to all four roles). Each group has its own urls module and URL
+  pages at the root (the Bible is at `/bible/`, open to all four roles; goals at `/goals/`, Buddy at `/buddy/`, prayer
+  requests at `/prayer/`). Each group has its own urls module and URL
   namespace: `superadmin`, `admin_area` and `coordinator_area`. Never name one `admin`: that is Django's own admin.
 - Every view in a role group must be protected with `role_required(...)`.
   Hiding a link in a template is not access control.
 - Coordinator-scoped data must be fetched through the `for_user(user)`
   queryset helper, not with ad hoc `.filter(extension=...)` calls in views. For people this is
   `User.objects.for_user(actor)` (see People screens for admin and coordinator); for attendance it is
-  `Attendance.objects.for_user(actor)` (see Attendance); for tithes it is `TithesOffering.objects.for_user(actor)` (see Tithes).
+  `Attendance.objects.for_user(actor)` (see Attendance); for tithes it is `TithesOffering.objects.for_user(actor)` (see Tithes);
+  for prayer it is `PrayerRequest.objects.mine(user)` and `.inbox_for(actor)` (see Prayer).
 - Use `{% url 'admin:index' %}` to link to Django admin, never a hardcoded
   path.
 
@@ -310,9 +337,11 @@ with. Only create a new app if the answer is "none".
   (logged and alerts admins). Force delete is super admin only, archived rows
   only, logged before deleting; delete files from disk first.
 - **Privacy:** never write passwords, tokens, goal text, notes, prayer text or
-  tithe amounts, bypass messages, decision notes, bypass reasons to `audit_log` or `notification.data`. Notifications say that
+  tithe amounts, bypass messages, decision notes, bypass reasons, chat messages to `audit_log` or `notification.data`. Notifications say that
   something happened; the linked page does the permission check. Anonymous
-  prayer requests hide the sender in UI/API but keep `user_id`.
+  prayer requests hide the sender in UI/API but keep `user_id` (never rendered). Two push-only exceptions
+  show a little text in the push body and nowhere else: `goal_reminder` (the goal title) and `buddy_message`
+  (the sender name and about the first 40 characters).
 - **Enumeration:** forgot-password always shows the same message.
 - **Licensed Bible text (ESV):** never store it anywhere except `bible_esv_cache` (at most 450 verses in total).
   Not in `bible_verse` (a database constraint refuses it), not in `daily_verse.verse_text`, not in logs, not in
@@ -882,6 +911,153 @@ shared one at full amount, draft/reopened/archived excluded, no id from the requ
 `test_tithes_scope` (coordinator scoping, drafts and reopened reports out, frozen same-date sums).
 Run: `docker compose exec web python manage.py test apps.tithes apps.dashboards`.
 
+## Faith: goals, streaks and history
+
+Code: `apps/faith/` (`models.py`, `permissions.py`, `services.py`, `stats.py`, `schedule.py`, `streaks.py`, `overview.py`,
+`partner.py`, `middleware.py`, `listeners.py`, `views.py`, `views_overview.py`, templates in `templates/faith/`,
+`static/js/goals.js`, tests in `tests/`).
+
+### Schedule, streaks and middleware (Brick 1)
+- `Goal` has optional `start_time` and `end_time` (database constraint `goal_time_range`). A goal with a start time is a
+  "timed goal" (used by reminders).
+- `faith/schedule.py` answers which dates a goal is scheduled on (`scheduled_dates(goal, start, end)`, inclusive of both ends).
+- `faith/streaks.py` owns the streak rules: the daily open streak, the Bible streak (`record_read(user, read_date)`) and
+  `streak_snapshot(user, today)`. Other apps read streaks only through it.
+- `faith/middleware.py` records the daily open (one line in `MIDDLEWARE`). It skips polling requests (`Accept: application/json`).
+
+### Goals (Brick 3)
+- Routes (namespace `faith`, mounted at `/goals/` for every role): `""` Today (`faith:goals`), `new/`, `all/`,
+  `<pk>/edit/`, `<pk>/check/` (POST, JSON or redirect), `<pk>/note/` (POST), `<pk>/change-schedule/`,
+  `<pk>/archive/`, `<pk>/restore/`. Brick 4 adds `history/` and `<pk>/` (see below).
+- Permissions: `faith/permissions.py` only. `can_use_goals` = `User.can_sign_in`; `can_manage_goal` = owner.
+  A missing goal and another person's goal are both a 404 in views and `PermissionDenied` in services.
+- Services (`faith/services.py`): `clean_goal_data` (used by form and services), `create_goal`, `update_goal`,
+  `change_schedule`, `archive_goal`, `restore_goal`, `set_checkin`, `set_checkin_note`. Each is atomic, locks the
+  person then the goal, and re-checks the owner. Cap: 20 active goals.
+- Check-ins: the server decides "today" (`timezone.localdate()`); no service accepts a date. Unchecking sets
+  `done=False` and keeps the row and note. Only `done=True` rows count in stats. Notes are private to the owner.
+- Edit rules: start date cannot move later than the first check-in; end date cannot be earlier than today or the
+  last done check-in (an unchanged past end date is allowed); repeat type and weekdays lock once ANY check-in row
+  exists; "Change schedule" ends the old goal today and creates a linked goal (`previous_goal`) starting tomorrow;
+  a completed goal given a future or empty end date becomes active again.
+- Stats (`faith/stats.py`, all take `today`): `goal_streaks`, `streak_chips`, `today_overview`, `today_counts`,
+  `goal_list`, `done_dates_for`. The unchecked current day never breaks a streak until midnight.
+- Audit: `goal.create`, `goal.update`, `goal.change_schedule`, `goal.archive`, `goal.restore` carry the goal id and
+  field NAMES only. Check-ins and notes are not audited. `faith/services.py::_audit` is the one place that calls
+  `log_action`.
+- Frontend: `static/js/goals.js` (plain global functions `goalToday`, `goalRow`, `goalForm`, loaded with a normal
+  script tag before the markup). Check-in uses fetch with an optimistic update; errors reload so the server's
+  Django message shows as a toast.
+- Journey hub: the Goals tab is `TabItem("Goals", "faith:goals", prefixes=("/goals/",))` and shows for every role.
+
+### Overview and history (Brick 4)
+- `faith/overview.py` builds the read-only pictures. `goal_overview(goal, today)` and `global_overview(user, today)` take
+  `today` as a parameter, never read check-in notes, and never write audit or notification rows. Also `streak_cards` and
+  `today_summary` (thin DB wrappers). Archived goals are left out of global history; completed goals stay.
+- An unticked goal scheduled today is "open" (outlined cell): not expected, never "missed" until midnight, never breaks a
+  streak; ticking it counts as done. Perfect-day streak: only days with at least one scheduled goal take part; empty days
+  neither add nor break; today is skipped until all are done. Week and month rates are rolling 7 and 30 days ending today.
+  Best weekday needs 2 settled days on that weekday and at least 1 done. Daily-habit strips are 28 days.
+- Routes: `/goals/<pk>/` (`faith:detail`, owner only, a missing or foreign goal is 404; archived goals are allowed because
+  All goals lists them) and `/goals/history/` (`faith:history`). Per-goal nav is `faith/_goal_nav.html`
+  (`{% include 'faith/_goal_nav.html' with active='today' %}` or `'all'`); a wrong url name hides a link, it does not crash.
+- Visual rules: server-rendered CSS grid and inline SVG, no chart library, no JavaScript. Heatmap cells use `bg-accent` at
+  /20 /40 /70 and full, `bg-highlight` for a perfect day, `bg-border` for missed; every cell has a `title` and
+  `aria-label`, and the legend is written in words.
+- Dashboards: `get_dashboard_context` adds `streaks` and `goals_today` (None for people who cannot use goals);
+  `dashboards/_faith_widgets.html` (with `_streaks.html`, `_goals_today.html`) draws them.
+- Tests: `apps.faith.tests.test_overview`, `apps.dashboards.tests.test_faith_widgets`.
+
+### Reminders and completion (Brick 10)
+- `complete_ended_goals` (nightly): active goals with `end_date` before today (Manila) become `completed` with
+  `completed_at`. Idempotent. Audit `goal.complete`, source `system_job`, ids only.
+- `send_goal_reminders` (every 5 minutes): timed goals scheduled today, not done, whose start time is within the last
+  15 minutes, owner can sign in. Dedupe key `goal_reminder:<goal id>:<date>`. Off when `faith_goal_reminders_enabled`
+  is false (Site settings > Jobs). The goal title appears in the push body only; the bell item and `notification.data`
+  hold only `{"goal_id": id}`.
+
+### Partner view (Brick 9)
+- `faith/partner.py: partner_goal_overview(user, today)` is read-only and does no permission check; the caller (Buddy) must
+  have checked. It shows only ACTIVE goals that have started and not ended. Check-in notes are never read (it only uses
+  `stats.done_dates_for`). The 7-day strip ends today; cell states are done, missed, not_scheduled, open.
+
+## Buddy
+
+Code: `apps/buddy/` (`models.py`, `permissions.py`, `services.py`, `messaging.py`, `views.py`, `message_views.py`, `urls.py`,
+templates in `templates/buddy/`, `static/js/buddy_chat.js`, tests in `tests/`). Mounted at `/buddy/` (namespace `buddy`).
+
+### Requests and partnerships (Brick 6)
+- Routes (every view `buddy_screen`): `""` home, `requests/send/<user_id>/`, `requests/<id>/accept|decline|cancel/` (POST only).
+- Hub: `SECTION_TABS["buddy"]` = Buddy | Messages | Their goals; one `NavItem(tabs="buddy")`, visible to all roles.
+- Permission: `buddy.permissions.can_use_buddy(user)` = `can_sign_in`, any role. `signable_q(prefix)` is its database twin
+  (a test compares the two for every person type and status). `buddy_screen` guards every view (login + `never_cache` +
+  `can_use_buddy`) instead of `role_required`, because any role may use Buddy.
+- Services (`buddy/services.py`): atomic, users locked in ascending id order, state re-checked under lock. `send_request`
+  (not yourself, both can sign in, neither has a LIVE buddy, max 3 pending outgoing, one pending request per pair in either
+  direction), `accept_request` (creates the sorted pair, cancels every other pending request involving either person, quiet
+  when repeated), `decline_request`, `cancel_request`, `candidates`, `partner_card`, `active_partnership`, `is_live`.
+- A partnership is LIVE when both people can sign in. A row that is not live is "inactive": it never blocks a new partnership
+  and is auto-ended (`ended_by` NULL, audit `buddy.end`, reason `partner_cannot_sign_in`) when either person sends or accepts
+  a request. A person whose partner can no longer sign in sees the normal search screen.
+- `candidates()` is a deliberate exception to `User.objects.for_user()`: any extension, any role that can sign in, max 20 per
+  page, returns only id, name, extension name and state. Empty or short search: own extension (admins and super-admins:
+  everyone); 3+ characters: everyone.
+- Notification types `buddy_request`, `buddy_accepted` (declared in `NOTIFICATION_TYPES`): ids only in `data`, sender through
+  `actor`. No push for them. Decline notifies nobody; requests auto-cancelled by an accept are not announced.
+  Audit: `buddy.request`, `buddy.accept`, `buddy.decline`, `buddy.cancel`, `buddy.end`: ids, counts and a fixed reason only.
+- Schema: `user_buddy` gains `end_requested_by`, `end_requested_at`, `end_request_note`, `partner_final_note`; constraints
+  `user_buddy_end_request_time` (a requester always has a time; one-way on purpose, because SET_NULL on a deleted requester
+  must not break the row) and `user_buddy_partner_note_needs_end`. `buddy_note` gains `kind` (message|nudge|prayed), the
+  `buddy_note_kind_body` constraint and index `ix_buddy_note_buddy_id`. Old NULL-body notes were backfilled as nudges.
+- Tests: `apps.buddy.tests.test_requests`, `test_candidates`, `test_views` (helpers in `tests/helpers.py`). Without the faith
+  streak engine the partner card shows "Not available yet".
+
+### Messages (Brick 8)
+- `buddy/messaging.py` owns chat. Services: `send_message`, `send_nudge`, `send_prayed`, `mark_read`, `thread_for`,
+  `poll_since`, `limits_for`, `seen_state`, `unread_count`. Kinds: message (1 to 1000 chars), nudge (1 per hour per person,
+  rolling), prayed (1 per Manila day per person).
+- Writes need a live partnership (both people can sign in) and lock the `UserBuddy` row (no joins), re-check it is still
+  open, then check limits and consume the one-time token inside the same `atomic()`. A replay is a quiet no-op. When the
+  partner cannot sign in the thread is read-only (`thread_for` uses the open row, not `is_live`; `mark_read` still works).
+- No audit rows for any note. `notification.data` holds `kind` and `sender_id` only. Messages are removed only through the
+  user cascade (never when a partnership ends).
+- Push: type `buddy_message`; shows the sender name and about the first 40 characters, in the push only. `dedupe_key` is
+  `buddy_msg:<recipient>:<sender>:<oldest unread note id from that sender>`, so a burst pushes once and the next push comes
+  after the thread is read (a nudge then a message in one burst is one push).
+- `thread_for` merges every period of the same sorted pair (50 per page, `before=<note id>`), with a divider holding the end
+  date and both final notes between periods.
+- Routes under `/buddy/messages/` take no ids: `messages/` (page), `send/`, `nudge/`, `prayed/`, `poll/`, `earlier/`, `read/`.
+  JSON endpoints; the page is `buddy/messages.html` with the `buddyChat()` Alpine component. Bell items are not marked read
+  when the thread opens.
+
+### Their goals (Brick 9)
+- `partner_goals_for(viewer)` in `buddy/services.py` returns the LIVE partner's goals; the partner is read from the viewer's
+  own `UserBuddy` row, never from the request. Route `/buddy/goals/` (`buddy:goals`) takes no id. No partner: a friendly empty
+  state. Inactive partner: goals hidden. Reads are not audited and the partner is not notified.
+- Templates `buddy/partner_goals.html` and `_partner_goal_card.html`; data from `faith.partner.partner_goal_overview`.
+- Tests: `apps.buddy.tests.test_partner_goals`, `test_messages`.
+
+### Ending a partnership
+- `close_stale_end_requests` (nightly) closes end requests the partner has not answered after `buddy_end_request_days`
+  (default 7, 1 to 90, Site settings > Jobs).
+
+## Prayer
+- Only people with role `member` who can sign in and have an extension send requests (`prayer.permissions.can_send`). Max 5
+  per Manila day, text 1 to 2000 characters, one-time token on the send form.
+- `PrayerRequest.objects.mine(user)` and `.inbox_for(actor)` are the ONLY scoping rules. Coordinator: requests of their own
+  extension. Admin and super-admin: requests whose extension has no coordinator who can sign in. Archived requests are never
+  listed.
+- `permissions.sender_label(request, viewer)` is used by every template: anonymous reads "Anonymous" for everyone, "You
+  (anonymous)" for the sender. `user_id` is stored but never rendered.
+- Services (`send_prayer_request`, `reply_to_request`, `complete_request`) are atomic, re-check on the locked row, and answer
+  "no longer exists" for both a missing and an out-of-reach request. Audit: `prayer.send`, `prayer.reply`, `prayer.complete`,
+  ids only. Notifications `prayer_request` (to the extension's coordinators, else admins) and `prayer_replied` (to the sender)
+  carry no text and no name.
+- Routes: member `/prayer/` (`prayer:list`, `prayer:send`). The inbox is written once in `prayer/area_urls.py`, mounted at
+  `/coordinator/prayer/`, `/admin/prayer/`, `/superadmin/prayer/` (names `prayer_inbox`, `prayer_detail`, `prayer_reply`,
+  `prayer_complete`). No delete route.
+- Navigation: members keep "Prayer"; coordinator, admin and super-admin get "Prayer inbox" in Manage.
+
 ## Bible
 - **Where:** `apps/bible/`: `models.py`, `books.py` (the 66 books, OSIS ids), `osis.py` (file reader),
   `versions.py` (version catalog), `services.py`, `esv.py` + `esv_client.py` (ESV), `errors.py`, `signals.py`,
@@ -923,7 +1099,18 @@ Run: `docker compose exec web python manage.py test apps.tithes apps.dashboards`
   which goes through `services.get_chapter()`, so switches, ESV locks and the ESV cache all apply. A version that
   cannot be read gives a notice, never another version. `manage.py seed_daily_verses [--days N]` saves the next N
   days ahead (optional, safe to repeat). Tests: `apps/bible/tests/test_daily_verse.py`.
-- **Bookmark and Next:** there is no "mark as read" button. The Next button on `chapter.html` is a POST form to `bible:finish` (`after=next`): `services.finish_chapter()` calls `record_chapter_read()`, moves the person's single `BibleBookmark` to the following chapter (crossing book ends) and the view redirects there. The target is computed on the server, never read from the form. "I'm done for now" posts to the same url without `after` and stays on the page. On Revelation 22 the button reads "Finish", the bookmark stays and a toast is shown. Previous is a plain link and counts nothing. A GET never writes. A "Bookmark" button (`bible:bookmark`) sets the bookmark without counting a read. When the text is locked or not imported, Next is a plain link and changes nothing.
+- **Bookmark and Next:** "I'm done for now" and any "mark as read" control are removed. Next (POST `bible:finish`,
+  `after=next`) is the only way a chapter counts as read: `services.finish_chapter()` calls `record_chapter_read()` (a
+  `BibleChapterRead`), moves the person's single `BibleBookmark` to the following chapter (crossing book ends), on a new row
+  sends `bible.signals.chapter_read`, and the view redirects there. The target is computed on the server, never read from
+  the form. The last chapter (Revelation 22) shows Finish (same url, no `after`): the bookmark stays and a toast is shown.
+  Previous is a plain link and counts nothing. A GET never writes. When the text is locked or not imported, Next is a plain
+  link and changes nothing.
+- **Auto bookmark:** while the chapter text is showing, an Alpine component on the article POSTs to `bible:bookmark` once
+  after 20 seconds on the page (counted only while `document.visibilityState` is `visible`). It sends `X-Requested-With`,
+  and `bookmark_view` answers 204 with no message; a normal form post still redirects with a message. Locked and
+  not-imported chapters render no component. The manual "Bookmark" button stays (it sets the bookmark without counting a
+  read); its badge follows the component state.
 - **Chapter reads:** `record_chapter_read()` is idempotent and sends `bible.signals.chapter_read` only for a new row;
   `faith` listens to it for the Bible streak. It does not check version availability (the text may have come from the
   cache). Reads are not written to `audit_log` (high volume, not an administrative action).
@@ -971,9 +1158,20 @@ Run: `docker compose exec web python manage.py test apps.tithes apps.dashboards`
   A section is a `SiteSection` (key, title, icon, partial template, `context(request)`, order) added with
   `register_section(...)` from `accounts/site_sections.py`. To add a function: write its partial and its POST views, register
   the section from the owning app (import the module once, for example from that app's urls). The shell needs no change.
-  Sections today: `bible` (`apps/bible/site_section.py`, order 10), `special-roles` (order 20) and `registration` (order 30). `accounts` never imports
+  Sections today: `bible` (`apps/bible/site_section.py`, order 10), `special-roles` (order 20), `registration` (order 30),
+  `jobs` (order 40) and `retention` (order 50). `accounts` never imports
   feature apps; they register themselves. A section's POST views keep their own `role_required` and service guard: the
-  registry only decides what is displayed. Section icons must exist in `sprite.svg`.
+  registry only decides what is displayed. Section icons must exist in `sprite.svg` (`jobs` uses `clock` and `calendar`).
+  The `jobs` and `retention` views are mounted with `path("site-settings/", include("apps.accounts.urls.site_jobs"))` in the
+  super-admin url module; `SITE_SETTINGS_URL_NAME` at the top of `accounts/views/job_settings.py` must match the real url
+  name of the Site settings page.
+- **`jobs` (super-admin):** the goal reminder switch (`faith_goal_reminders_enabled`) and `buddy_end_request_days` (1 to 90).
+  Services in `accounts/services/job_settings.py`; readers in `core/job_settings.py` (so faith and buddy never import
+  accounts). Forms post the wanted state; an unchanged value writes no audit row; a change logs `site_setting.*` with
+  before/after.
+- **`retention` (super-admin):** lists `retention_policy` rows, edits days (1 to 3650) or "never". Audit
+  `retention_policy.change` (before and after days). Rows cannot be created here. A changed period applies only to records
+  archived from now on (see Model conventions).
 - **Special-role limits live in two places with one panel.** The super-admin uses the "Special roles" section; an admin uses
   the "Special roles" button on `/admin/users/` (`admin_area:special_role_limits`). Both include
   `accounts/people/_special_role_limits.html` with `views.special_roles.limits_context()`. A super-admin GET of
@@ -1038,14 +1236,17 @@ Run: `docker compose exec web python manage.py test apps.tithes apps.dashboards`
   `apps/dashboards/tests/`. Role home URLs still live only in `accounts/decorators.py` (`ROLE_HOME_NAMES`).
 - **One template per role** (`superadmin.html`, `admin.html`, `coordinator.html`, `member.html`) extending
   `dashboard_base.html`, so a role can change on its own. Shared sections are includes: `_daily_verse`,
-  `_continue_reading`, `_quick_links`, `_coming_soon`; leaders also get `_leader_overview` with the charts
+  `_continue_reading`, `_quick_links`, `_coming_soon`, `_faith_widgets` (with `_streaks` and `_goals_today`; each role
+  template includes `_faith_widgets.html` next to `_coming_soon.html`); leaders also get `_leader_overview` with the charts
   `_bar_list` and `_column_chart`. Members get no overview.
 - **Shared sections:** greeting (device clock, "Welcome" without JavaScript); verse of the day in the version from the
-  `bible_version` cookie (`VERSION_COOKIE` in `services.py`, must match the reader); continue reading (newest
-  `BibleChapterRead`, suggests the next chapter, crosses book ends); quick links taken from `NAV_ITEMS` through
+  `bible_version` cookie (`VERSION_COOKIE` in `services.py`, must match the reader); continue reading (the person's
+  `BibleBookmark` only, as `{"label", "url"}`; no bookmark gives a "Start reading" link to Genesis 1, `start_url`; the old
+  "newest read" logic is gone); quick links taken from `NAV_ITEMS` through
   `build_nav()` (so they always match the sidebar; Home is left out; routes that do not exist yet
-  show "Soon"); "Coming soon" cards for the Bible streak, goals and events (replace each with the real widget when
-  its app has views).
+  show "Soon"); streak cards and today's goals (`streaks` and `goals_today`, None for people who cannot use goals, from
+  `apps.faith.overview`, read-only); a "Coming soon" card for events only (replace it with the real widget when
+  the events widget exists).
 - **Leader overview:** headline tiles, people by role (not archived) and by status (everyone), people per extension
   (super-admin and admin only, top 10), and three trend charts over the last 8 gathering dates: attendance,
   first-timers, tithes and offering. Trends use **uploaded** sheets only and their **frozen** values (never a
@@ -1068,9 +1269,14 @@ Run: `docker compose exec web python manage.py test apps.tithes apps.dashboards`
 `purge_archived` (core, children first, files before rows, skips extensions
 still in use), `archive_inactive_users`, `auto_transfer_extension`,
 `cleanup_email_tokens` (accounts), `complete_ended_goals` (faith),
-`cleanup_notifications`, `cleanup_registration_requests`, `cleanup_audit_log`; every 15 minutes
-`send_event_reminders`; hourly `fetch_jil_videos`. Jobs log with
+`close_stale_end_requests` (buddy), `cleanup_notifications`, `cleanup_registration_requests`, `cleanup_audit_log`; every
+15 minutes `send_event_reminders`; every 5 minutes `send_goal_reminders` (faith); hourly `fetch_jil_videos`. Jobs log with
 `source='system_job'` and no actor. (`import_bible` is run by hand, not on a schedule.)
+- **Scheduling:** production runs them with the `scheduler` service in `production/docker-compose.prod.yml`
+  (`production/deploy/scheduler.py`). In `scheduler.py` the NIGHTLY order is archive first, purge last; the 5-minute job is
+  `EVERY_5_MIN`. The dev compose file has NO scheduler: run jobs by hand with
+  `docker compose exec web python manage.py <job>`.
+- Super-admins tune the reminder switch and `buddy_end_request_days` in Site settings > Jobs.
 
 ## Frontend conventions
 - Colors come from CSS custom properties (design tokens) generated from the
@@ -1084,7 +1290,8 @@ still in use), `archive_inactive_users`, `auto_transfer_extension`,
   `<use href="{% static 'icons/sprite.svg' %}#name">`. No icon fonts or CDNs.
   `aria-hidden="true"` on the icon, `aria-label` on the parent button/link. Icons inside Alpine toggles
   (`x-show`) go in a wrapper `<span>`, since `includes/icon.html` only accepts `name` and `class`.
-  An icon name missing from the sprite renders as nothing, so check `sprite.svg` when adding one.
+  An icon name missing from the sprite renders as nothing, so check `sprite.svg` when adding one (recent additions
+  to check: `flame`, `clock`, `calendar`).
 - Layouts: `base_public.html` for logged-out pages, `base_app.html` for the
   authenticated app. Nav entries are data in `accounts/navigation.py` (`NAV_ITEMS`), not markup: never hardcode a
   link in a sidebar or bottom-bar template. Page templates extend one of these two and fill the
@@ -1153,7 +1360,7 @@ still in use), `archive_inactive_users`, `auto_transfer_extension`,
     enforces permissions and the frozen-record rules.
   - Style with tokens only: the danger button uses a danger token (add one to
     `input.css` if it is missing) and `--color-on-primary` / `--color-on-accent` for
-    text. No `bg-red-*` or `text-white`.
+    text. No `bg-red-*` or `text-white`. Inline error text uses `text-danger` (use the project's error token if it differs).
 - **App shell (`base_app.html`):** the header shows the logo (`brand_mark.html`, the one place its size is set) and
   the page title. From `sm` up an icon rail (its top button opens the panel) plus an expandable panel (Alpine store `sidebar`,
   `expanded`, `open()`, `close()`, `toggle()`); below `sm` a bottom bar or a drawer from `mobile_nav_style`
@@ -1165,8 +1372,8 @@ still in use), `archive_inactive_users`, `auto_transfer_extension`,
   names render as disabled placeholders, never `NoReverseMatch`.
   **Hubs and page tabs:** a `NavItem` with `tabs="key"` is ONE sidebar link (to the first visible tab that resolves,
   lit on every tab's pages) whose sub-pages are `TabItem`s in `SECTION_TABS["key"]`. Never put sub-pages in the
-  sidebar; add a `TabItem`. Hubs: `journey` (Goals | Attendance | Tithes), `people` (People | Guests | Approvals) and
-  `website` (Landing | Give page | Resources). `base_app.html` draws the tab row above `content` for every page whose
+  sidebar; add a `TabItem`. Hubs: `journey` (Goals | Attendance | Tithes), `people` (People | Guests | Approvals),
+  `website` (Landing | Give page | Resources) and `buddy` (Buddy | Messages | Their goals, shown to every role). `base_app.html` draws the tab row above `content` for every page whose
   path belongs to a hub (`{% block hub_tabs %}{% hub_tabs %}{% endblock %}`, tag in `accounts/templatetags/nav_tags.py`,
   markup in `includes/section_tabs.html`); a page hides it by overriding that block with an empty one, and
   `{% section_tabs "key" %}` places a row by hand. A tab owns sibling pages with `TabItem.also` (url names) and whole
@@ -1252,7 +1459,8 @@ still in use), `archive_inactive_users`, `auto_transfer_extension`,
   as `admin_area:user_list`, never `admin:user_list`.
 - The attendance routes exist only where `include("apps.attendance.area_urls")` is added. If `superadmin.py`, `admin_area.py`
   or `coordinator_area.py` lacks it, `{% role_url 'sheet_list' %}` and every attendance link fail for that role. A new
-  attendance route goes in `attendance/area_urls.py` once, never in a role url module.
+  attendance route goes in `attendance/area_urls.py` once, never in a role url module. The same holds for
+  `include("apps.prayer.area_urls")` (prayer inbox).
 - `attendance/print.html` is standalone on purpose. Do not make it extend `base_app.html` or reuse `includes/logo.html`: the app
   shell's tokens, dark mode and the logo mask would put colours and an empty logo on paper. Rebuilding Tailwind does not affect it.
 - The tithes routes exist only where `include("apps.tithes.area_urls")` is added. A new tithes route goes in
@@ -1261,6 +1469,11 @@ still in use), `archive_inactive_users`, `auto_transfer_extension`,
 - The people templates are shared by three roles. Link through `{% role_url %}` and gate buttons with
   `{% person_actions %}`; a hardcoded `superadmin:` URL works for the super-admin and raises `NoReverseMatch` or sends an
   admin or coordinator to the wrong area.
+- The faith daily-open middleware and the Buddy chat poll: the poll sends `Accept: application/json` so it is not counted
+  as a daily open. A new background-polling endpoint must do the same.
+- `notify()` keeps a `dedupe_key` for ever. A key that must repeat later needs a part that changes (see `buddy_msg:...`
+  and `goal_reminder:<goal id>:<date>`).
+- The goal and Buddy `Meta.constraints` that tie a `SET_NULL` column to another column must be one-way (see Buddy).
 
 ## Working rules for agents
 - Use Docker commands; run `check` and `makemigrations --check --dry-run` after any model change.
@@ -1277,6 +1490,7 @@ still in use), `archive_inactive_users`, `auto_transfer_extension`,
 - Tests must not touch real external services (see Behaviour rules). A test that needs a logged-in user creates an
   one with `must_change_password=False` and `person_type="member_account"` (see Password change).
 - Prefer the smallest relevant command or page load to verify a change.
+
 ### Events (brick 10: services and permissions)
 - `event` gained `location`, `cancelled_at`, `cancelled_by` (migration `event_location_cancel`), a check that `end_at` is after
   `start_at`, and an index on `start_at`. `extension` NULL = global event. Cancel is final: the row stays, marked cancelled
@@ -1342,6 +1556,12 @@ still in use), `archive_inactive_users`, `auto_transfer_extension`,
   `/notifications/` for a link that is not a path on this site. The server only pushes to hosts in `PUSH_ENDPOINT_HOSTS`
   (stops a user registering an internal address as a device). Up to 10 devices per person. A 404 or 410 from the push
   service deletes the device. The test button has a 10 second cooldown per person.
+- **Privacy exceptions (push body only):** `goal_reminder` shows `Time for "<title>"`; `buddy_message` shows the sender name
+  and about the first 40 characters. The bell item and `notification.data` never hold that text.
 - **Browsers:** desktop browsers and Android work. iPhone and iPad need iOS 16.4+ and Add to Home Screen first; the card
   explains it. Needs HTTPS in production (`localhost` / `127.0.0.1` is fine for development).
 - **Tests:** `apps.notifications.test_push` (flat module: `notifications/tests.py` already exists, so no `tests/` package).
+- **Open item:** the bell list needs a generic line for `buddy_request`, `buddy_accepted`, `buddy_message` (for example
+  "<name> sent you a message"; `data["kind"]` is `message`, `nudge` or `prayed`), `goal_reminder` ("A goal is due"),
+  `prayer_request`, `prayer_replied` and `admin_alert`. Declare each type the way `events` declares `event_changed` so it
+  can be muted.

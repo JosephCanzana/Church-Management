@@ -1,0 +1,44 @@
+<!--
+  Site settings > Retention section (partial, included inside the Site settings shell).
+  Context: retention_rows (list of dicts: entity_type, label, days or None, archivable),
+  retention_max (int). Posts to: superadmin:site_retention_update.
+  Include example: the shell includes it from the registered SiteSection.template.
+-->
+<div class="space-y-4">
+  <p class="text-sm text-txt-secondary">
+    How long archived records are kept before the nightly job deletes them for good.
+    A new period applies to records archived <strong>from now on</strong>; records that are already
+    archived keep the date they were given when they were archived.
+  </p>
+  <ul class="space-y-3">
+    {% for row in retention_rows %}
+      <li class="card p-4">
+        <form method="post" action="{% url 'superadmin:site_retention_update' %}"
+              data-confirm="Change how long {{ row.label }} are kept?"
+              class="flex flex-wrap items-end gap-3" x-data="{ never: {% if row.days is None %}true{% else %}false{% endif %} }">
+          {% csrf_token %}
+          <input type="hidden" name="entity_type" value="{{ row.entity_type }}">
+          <div class="min-w-[10rem] flex-1">
+            <p class="text-sm font-medium text-txt-primary">{{ row.label }}</p>
+            <p class="text-xs text-txt-secondary">
+              {% if row.archivable %}Deleted this long after being archived.{% else %}Cleaned up by its own nightly job.{% endif %}
+            </p>
+          </div>
+          <div>
+            <label class="label" for="days-{{ row.entity_type }}">Days</label>
+            <input id="days-{{ row.entity_type }}" class="input w-28 font-mono" type="number" name="days"
+                   inputmode="numeric" min="1" max="{{ retention_max }}"
+                   value="{% if row.days %}{{ row.days }}{% endif %}" x-bind:disabled="never">
+          </div>
+          <label class="flex min-h-[44px] items-center gap-2 text-sm text-txt-primary">
+            <input type="checkbox" name="never" x-model="never" {% if row.days is None %}checked{% endif %}>
+            Never delete
+          </label>
+          <button type="submit" class="btn btn-primary min-h-[44px]">Save</button>
+        </form>
+      </li>
+    {% empty %}
+      <li class="text-sm text-txt-secondary">No retention rows found.</li>
+    {% endfor %}
+  </ul>
+</div>

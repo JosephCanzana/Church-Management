@@ -2,6 +2,7 @@
 """Runs the project's periodic management commands (stdlib only, no cron needed).
 
 Schedule comes from AGENTS.md ("Nightly jobs"), in Asia/Manila time:
+  every 5 min   send_goal_reminders
   every 15 min  send_event_reminders
   hourly (:05)  fetch_jil_videos
   nightly       the rest, one after another, starting at SCHEDULER_DAILY_HOUR (default 02:00)
@@ -22,6 +23,7 @@ TZ = ZoneInfo(os.environ.get("SCHEDULER_TZ", "Asia/Manila"))
 DAILY_HOUR = int(os.environ.get("SCHEDULER_DAILY_HOUR", "2"))
 JOB_TIMEOUT = 3600  # seconds
 
+EVERY_5_MIN = ["send_goal_reminders"]
 EVERY_15_MIN = ["send_event_reminders"]
 HOURLY = ["fetch_jil_videos"]
 # Order matters: archive first, purge last.
@@ -29,6 +31,7 @@ NIGHTLY = [
     "archive_inactive_users",
     "auto_transfer_extension",
     "complete_ended_goals",
+    "close_stale_end_requests",
     "cleanup_email_tokens",
     "cleanup_registration_requests",
     "cleanup_notifications",
@@ -44,6 +47,8 @@ def log(msg):
 def due(now):
     """Return the command names that should run at this minute."""
     jobs = []
+    if now.minute % 5 == 0:
+        jobs += EVERY_5_MIN
     if now.minute % 15 == 0:
         jobs += EVERY_15_MIN
     if now.minute == 5:

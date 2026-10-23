@@ -1,0 +1,44 @@
+<!--
+  Site settings > Jobs section (partial, included inside the Site settings shell).
+  Context: reminders_on (bool), end_request_days (int), end_days_min, end_days_max (ints).
+  Posts to: superadmin:site_goal_reminders and superadmin:site_end_request_days.
+  Include example: the shell includes it from the registered SiteSection.template.
+-->
+<div class="space-y-6">
+  <section class="card p-4 space-y-3" aria-labelledby="reminders-title">
+    <h3 id="reminders-title" class="text-base font-semibold text-txt-primary">Goal reminders</h3>
+    <p class="text-sm text-txt-secondary">
+      Sends a device notification at a goal's start time when it is not done yet. Runs every 5 minutes.
+    </p>
+    <p class="text-sm text-txt-primary">
+      Status: <strong>{% if reminders_on %}On{% else %}Off{% endif %}</strong>
+    </p>
+    <form method="post" action="{% url 'superadmin:site_goal_reminders' %}">
+      {% csrf_token %}
+      {% if reminders_on %}
+        <input type="hidden" name="enabled" value="off">
+        <button type="submit" class="btn btn-secondary min-h-[44px]">Turn reminders off</button>
+      {% else %}
+        <input type="hidden" name="enabled" value="on">
+        <button type="submit" class="btn btn-primary min-h-[44px]">Turn reminders on</button>
+      {% endif %}
+    </form>
+  </section>
+
+  <section class="card p-4 space-y-3" aria-labelledby="endreq-title">
+    <h3 id="endreq-title" class="text-base font-semibold text-txt-primary">Buddy end requests</h3>
+    <p class="text-sm text-txt-secondary">
+      When one buddy asks to end the partnership and the other does not answer, it closes by itself
+      after this many days. Runs nightly.
+    </p>
+    <form method="post" action="{% url 'superadmin:site_end_request_days' %}" class="flex flex-wrap items-end gap-3">
+      {% csrf_token %}
+      <div>
+        <label class="label" for="end-days">Days to wait</label>
+        <input id="end-days" class="input w-28 font-mono" type="number" name="days" inputmode="numeric"
+               min="{{ end_days_min }}" max="{{ end_days_max }}" value="{{ end_request_days }}" required>
+      </div>
+      <button type="submit" class="btn btn-primary min-h-[44px]">Save</button>
+    </form>
+  </section>
+</div>

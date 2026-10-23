@@ -62,3 +62,38 @@ register_section(SiteSection(
     description="How many members of each extension may hold the tithes and attendance roles.",
     order=20,
 ))
+
+
+def _jobs_context(request):
+    """Context for the Jobs section (reminder switch, buddy end-request wait)."""
+    from .views.job_settings import jobs_context  # lazy: views import services
+
+    return jobs_context(request)
+
+
+def _retention_context(request):
+    """Context for the Retention section (one editable row per retention policy)."""
+    from .views.job_settings import retention_context  # lazy: views import services
+
+    return retention_context(request)
+
+
+register_section(SiteSection(
+    key="jobs",
+    title="Jobs",
+    icon="clock",  # verify: must exist in static/icons/sprite.svg
+    template="accounts/site_settings/_jobs_section.html",
+    context=_jobs_context,
+    description="Goal reminders and how long buddy end requests wait.",
+    order=40,
+))
+
+register_section(SiteSection(
+    key="retention",
+    title="Retention",
+    icon="calendar",  # verify: must exist in static/icons/sprite.svg
+    template="accounts/site_settings/_retention_section.html",
+    context=_retention_context,
+    description="How long archived records are kept before they are deleted for good.",
+    order=50,
+))

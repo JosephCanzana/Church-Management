@@ -61,4 +61,5 @@ urlpatterns = [
     path("attendance/", include("apps.attendance.area_urls")),
     path("tithes/", include("apps.tithes.area_urls")),
     path("prayer/", include("apps.prayer.area_urls")),
+    path("site-settings/", include("apps.accounts.urls.site_jobs")),
 ]
