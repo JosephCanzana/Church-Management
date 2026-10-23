@@ -60,30 +60,35 @@
   };
 
   window.goalRow = function () {
-    return {
+     return {
       done: false,
       busy: false,
       noteOpen: false,
       note: "",
       noteState: "",
       streak: 0,
+      checkUrl: "",   // add
+      noteUrl: "",    // add
+      csrf: "",       // add
       init: function () {
         var d = this.$el.dataset;
         this.done = d.done === "1";
         this.note = d.note || "";
         this.streak = parseInt(d.streak || "0", 10);
+        this.checkUrl = d.checkUrl || "";     // add
+        this.noteUrl = d.noteUrl || "";       // add
+        this.csrf = csrfOf(this.$el);         // add
         this.noteOpen = false;
       },
       toggle: function () {
         if (this.busy) { return; }
         var self = this;
         var wanted = !this.done;
-        var csrf = csrfOf(this.$el);
         var today = (this.$el.closest("[data-today]") || {dataset: {}}).dataset.today;
         this.done = wanted;                       // optimistic: show it at once
         this.busy = true;
         this.$dispatch("goal-delta", { delta: wanted ? 1 : -1 });
-        post(this.$el.dataset.checkUrl, { done: wanted ? "1" : "0" }, csrf).then(function (reply) {
+        post(this.checkUrl, { done: wanted ? "1" : "0" }, this.csrf).then(function (reply) {
           self.busy = false;
           if (!reply.ok) { window.location.reload(); return; }
           self.done = reply.done;
@@ -95,7 +100,7 @@
       saveNote: function () {
         var self = this;
         this.noteState = "Saving...";
-        post(this.$el.dataset.noteUrl, { note: this.note }, csrfOf(this.$el)).then(function (reply) {
+        post(this.noteUrl, { note: this.note }, this.csrf).then(function (reply) {
           if (!reply.ok) { window.location.reload(); return; }
           self.noteState = "Saved";
         }).catch(function () { self.noteState = "Could not save. Try again."; });

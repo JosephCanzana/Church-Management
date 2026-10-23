@@ -3,13 +3,13 @@
   Context: ending (dict from services.partnership_state): mode ("live", "waiting", "asked",
     "inactive"), partner_name, requested_at, request_note (only in mode "asked"), auto_close_days.
   Include example: include this template with ending set to the partnership_state dict.
-  (verify) The End button opens the modal with data-modal-open="end-partnership". Check
-  static/js/ui.js and ui_tags for the real opener attribute and use that one.
+
 -->
 {% load ui_tags %}
 {% if ending.mode == "live" %}
-  <div class="mt-4">
-    <button type="button" class="btn btn-secondary min-h-[44px]" data-modal-open="end-partnership">End partnership</button>
+  <div class="mt-4" x-data>
+    <button type="button" class="btn btn-secondary min-h-[44px]"
+            @click="$store.ui.openModal('end-partnership')">End partnership</button>
   </div>
   {% modal "end-partnership" title="End partnership" %}
     <p class="text-txt-secondary">
