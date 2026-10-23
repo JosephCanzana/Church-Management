@@ -5,6 +5,7 @@ The Goals tab of the journey hub points at `faith:goals` (the Today screen).
 from django.urls import path
 
 from . import views
+from apps.faith import views_overview
 
 app_name = "faith"
 
@@ -18,4 +19,7 @@ urlpatterns = [
     path("<int:pk>/change-schedule/", views.change_schedule_view, name="goal_change_schedule"),
     path("<int:pk>/archive/", views.archive_view, name="goal_archive"),
     path("<int:pk>/restore/", views.restore_view, name="goal_restore"),
+    path("history/", views_overview.history, name="history"),
+    path("<int:pk>/", views_overview.goal_detail, name="detail"),
+
 ]

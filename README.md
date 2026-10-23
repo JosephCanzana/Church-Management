@@ -39,6 +39,9 @@ prayer requests, events, and shared worship resources.
    `createsuperuser` asks for **Account id**: press Enter, it is generated
    (format: counter starting at 1000 + year, e.g. `10002026`). Then enter
    first name, last name and password. Log in with the account id.
+docker compose exec web python manage.py import_bible KJV --url https://raw.githubusercontent.com/seven1m/open-bibles/master/eng-kjv.osis.xml
+docker compose exec web python manage.py import_bible ADB --url https://raw.githubusercontent.com/seven1m/open-bibles/master/tgl-tagalog.osis.xml
+
 
 ### Resetting dev data and seeding a super-admin
 Add a password for the seeded account to `.env` (it is never stored in code):

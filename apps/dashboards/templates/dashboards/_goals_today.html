@@ -1,0 +1,35 @@
+<!--
+dashboards/_goals_today.html
+Today's goals at a glance: a progress ring, "3 of 5 done" and the next goals still to do.
+Context: dashboard.goals_today, a dict with total, done, remaining, all_done, ring, next_up (id, title, when), more,
+and url (the Goals page, may be empty). Renders nothing when it is empty (people who cannot use goals).
+Include example: include dashboards/_goals_today.html
+-->
+{% if dashboard.goals_today %}
+<section class="card p-5" aria-labelledby="goals-today-heading">
+  <div class="flex items-baseline justify-between gap-3">
+    <h2 id="goals-today-heading" class="text-lg font-semibold text-txt-primary">Goals today</h2>
+    {% if dashboard.goals_today.url %}<a href="{{ dashboard.goals_today.url }}" class="inline-flex min-h-11 items-center text-sm font-medium text-accent underline">Open goals</a>{% endif %}
+  </div>
+  {% if dashboard.goals_today.total %}
+  <div class="mt-3 flex items-center gap-5">
+    {% include 'faith/_ring.html' with ring=dashboard.goals_today.ring label='Goals done today' class='size-20' %}
+    <div class="min-w-0">
+      <p class="text-base text-txt-primary"><span class="font-mono text-2xl font-semibold">{{ dashboard.goals_today.done }}</span> of <span class="font-mono">{{ dashboard.goals_today.total }}</span> done</p>
+      {% if dashboard.goals_today.all_done %}
+      <p class="mt-1 text-base text-txt-secondary">All done for today.</p>
+      {% else %}
+      <ul class="mt-1 space-y-1">
+        {% for goal in dashboard.goals_today.next_up %}
+        <li class="truncate text-base text-txt-secondary">{{ goal.title }}{% if goal.when %} <span class="font-mono text-sm">&middot; {{ goal.when }}</span>{% endif %}</li>
+        {% endfor %}
+      </ul>
+      {% if dashboard.goals_today.more %}<p class="mt-1 text-sm text-txt-secondary">and {{ dashboard.goals_today.more }} more</p>{% endif %}
+      {% endif %}
+    </div>
+  </div>
+  {% else %}
+  <p class="mt-3 text-base text-txt-secondary">Nothing is scheduled for today.</p>
+  {% endif %}
+</section>
+{% endif %}

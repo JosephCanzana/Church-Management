@@ -1,0 +1,16 @@
+<!--
+faith/_goal_nav.html
+Link bar shown at the top of the Goals pages: Today | All goals | History.
+Pass: active ("today", "all" or "history"), which link is marked as the current page.
+Include example: include faith/_goal_nav.html with active='history'
+VERIFY the url names faith:today and faith:all against Brick 3 (a wrong name hides that link instead of failing).
+-->
+{% url 'faith:today' as today_url %}{% url 'faith:all' as all_url %}{% url 'faith:history' as history_url %}
+<nav aria-label="Goals" class="flex flex-wrap gap-2">
+  {% if today_url %}<a href="{{ today_url }}" {% if active == 'today' %}aria-current="page"{% endif %}
+     class="inline-flex min-h-11 items-center rounded-xl border px-4 text-sm font-medium {% if active == 'today' %}border-accent bg-accent text-on-accent{% else %}border-border text-txt-secondary hover:text-txt-primary{% endif %}">Today</a>{% endif %}
+  {% if all_url %}<a href="{{ all_url }}" {% if active == 'all' %}aria-current="page"{% endif %}
+     class="inline-flex min-h-11 items-center rounded-xl border px-4 text-sm font-medium {% if active == 'all' %}border-accent bg-accent text-on-accent{% else %}border-border text-txt-secondary hover:text-txt-primary{% endif %}">All goals</a>{% endif %}
+  {% if history_url %}<a href="{{ history_url }}" {% if active == 'history' %}aria-current="page"{% endif %}
+     class="inline-flex min-h-11 items-center rounded-xl border px-4 text-sm font-medium {% if active == 'history' %}border-accent bg-accent text-on-accent{% else %}border-border text-txt-secondary hover:text-txt-primary{% endif %}">History</a>{% endif %}
+</nav>

@@ -1,0 +1,13 @@
+<!--
+dashboards/_faith_widgets.html
+The two faith widgets side by side: _streaks.html and _goals_today.html. Add ONE include of this file in each role
+dashboard template, where the "Coming soon" include is, so the role templates do not repeat the grid.
+Context: dashboard.streaks and dashboard.goals_today (see those two partials).
+Include example: include dashboards/_faith_widgets.html
+-->
+{% if dashboard.streaks or dashboard.goals_today %}
+<div class="grid gap-3 md:grid-cols-2">
+  {% include 'dashboards/_streaks.html' %}
+  {% include 'dashboards/_goals_today.html' %}
+</div>
+{% endif %}

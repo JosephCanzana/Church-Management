@@ -1,0 +1,39 @@
+<!--
+dashboards/_streaks.html
+Two streak tiles: opened the app and read the Bible, each with the current run and the best run.
+Context: dashboard.streaks, a dict with open and read (each current and best) and url (the history page, may be empty).
+Renders nothing when dashboard.streaks is empty (people who cannot use goals).
+Include example: include dashboards/_streaks.html
+-->
+{% if dashboard.streaks %}
+<section class="card p-5" aria-labelledby="streaks-heading">
+  <div class="flex items-baseline justify-between gap-3">
+    <h2 id="streaks-heading" class="text-lg font-semibold text-txt-primary">Your streaks</h2>
+    {% if dashboard.streaks.url %}<a href="{{ dashboard.streaks.url }}" class="inline-flex min-h-11 items-center text-sm font-medium text-accent underline">History</a>{% endif %}
+  </div>
+  <dl class="mt-3 grid grid-cols-2 gap-3">
+    <div class="rounded-xl border border-border bg-surface-alt p-4">
+      <dt class="flex items-center gap-2 text-sm font-medium text-txt-secondary">
+        {% include 'includes/icon.html' with name='calendar-days' class='size-5 shrink-0' %}Opened the app
+      </dt>
+      <dd class="mt-2 flex items-center gap-2 text-txt-primary">
+        {% include 'includes/icon.html' with name='flame' class='size-6 shrink-0 text-highlight' %}
+        <span class="font-mono text-3xl font-semibold">{{ dashboard.streaks.open.current }}</span>
+        <span class="text-sm text-txt-secondary">day{{ dashboard.streaks.open.current|pluralize }}</span>
+      </dd>
+      <dd class="mt-1 text-sm text-txt-secondary">Best <span class="font-mono text-txt-primary">{{ dashboard.streaks.open.best }}</span></dd>
+    </div>
+    <div class="rounded-xl border border-border bg-surface-alt p-4">
+      <dt class="flex items-center gap-2 text-sm font-medium text-txt-secondary">
+        {% include 'includes/icon.html' with name='book-open' class='size-5 shrink-0' %}Read the Bible
+      </dt>
+      <dd class="mt-2 flex items-center gap-2 text-txt-primary">
+        {% include 'includes/icon.html' with name='flame' class='size-6 shrink-0 text-highlight' %}
+        <span class="font-mono text-3xl font-semibold">{{ dashboard.streaks.read.current }}</span>
+        <span class="text-sm text-txt-secondary">day{{ dashboard.streaks.read.current|pluralize }}</span>
+      </dd>
+      <dd class="mt-1 text-sm text-txt-secondary">Best <span class="font-mono text-txt-primary">{{ dashboard.streaks.read.best }}</span></dd>
+    </div>
+  </dl>
+</section>
+{% endif %}

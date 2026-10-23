@@ -5,7 +5,8 @@ the result to a template. Pieces:
 
 * shared by every role: greeting name, verse of the day (in the reader's Bible
   version), "continue reading" (the person's Bible bookmark), quick links (taken from ``NAV_ITEMS``, so a menu
-  change is picked up here too) and the "coming soon" cards;
+  change is picked up here too), the faith widgets (streaks and today's goals: read-only
+  numbers from ``apps.faith.overview``) and the "coming soon" cards;
 * leaders only (super-admin, admin, coordinator): counts and charts for what they
   manage. Attendance and tithes numbers come from *uploaded* sheets (tithes: finalized
   reports) and use the frozen values stored on them, never a recount.
@@ -22,6 +23,7 @@ from decimal import Decimal
 from django.db.models import Count, Q, Sum
 from django.db.models.functions import Coalesce
 from django.urls import NoReverseMatch, reverse
+from django.utils import timezone
 
 from apps.accounts.models import Extension, Role, Status, User
 from apps.accounts.navigation import build_nav
@@ -30,6 +32,8 @@ from apps.bible import daily_verse
 from apps.bible import services as bible_services
 from apps.bible.books import BOOKS_BY_ID
 from apps.core.text import title_case
+from apps.faith import overview as faith_overview
+from apps.faith.permissions import can_use_goals
 from apps.tithes.models import TithesOffering
 
 # Name of the cookie the Bible reader uses for the chosen version (apps/bible).
@@ -45,9 +49,8 @@ CURRENCY = "₱"          # peso sign; amounts are Decimal(12,2)
 NAV_LABELS_NOT_QUICK_LINKS = {"Home", "Django admin"}
 
 # Cards for features that are planned but not built yet (shown as "Coming soon").
+# The Bible streak and goals cards were replaced by real widgets (_streaks.html, _goals_today.html).
 COMING_SOON = (
-    {"label": "Bible streak", "icon": "book-open", "text": "Your daily reading streak will appear here."},
-    {"label": "Faith goals", "icon": "flag", "text": "Your goals and check-ins will appear here."},
     {"label": "Upcoming events", "icon": "calendar-days", "text": "The next gatherings will appear here."},
 )
 
@@ -67,7 +70,9 @@ def get_dashboard_context(user, version_code, path):
 
     ``version_code`` is the Bible version cookie (or None) and ``path`` is the
     current URL path, used to mark quick links. ``leader`` is None for members.
+    ``streaks`` and ``goals_today`` are None for people who cannot use goals (the templates then draw nothing).
     """
+    today = timezone.localdate()
     return {
         "greeting_name": title_case(user.first_name),
         "verse": _verse_of_the_day(version_code),
@@ -75,6 +80,8 @@ def get_dashboard_context(user, version_code, path):
         "bible_url": _safe_reverse("bible:reader"),
         "start_url": _bible_chapter_url("Gen", 1),
         "quick_links": _quick_links(user, path),
+        "streaks": _streaks(user, today),
+        "goals_today": _goals_today(user, today),
         "coming_soon": COMING_SOON,
         "leader": _leader_overview(user) if user.role in LEADER_ROLES else None,
     }
@@ -166,6 +173,20 @@ def _continue_reading(user):
         "label": f"{book.name} {bookmark.chapter}",
         "url": _bible_chapter_url(bookmark.book, bookmark.chapter),
     }
+
+
+def _streaks(user, today):
+    """Return the open and Bible-reading streaks for the streak widget, or None when the person cannot use goals."""
+    if not can_use_goals(user):
+        return None
+    return {**faith_overview.streak_cards(user, today), "url": _safe_reverse("faith:history")}
+
+
+def _goals_today(user, today):
+    """Return today's goal counts and next goals for the goals widget, or None when the person cannot use goals."""
+    if not can_use_goals(user):
+        return None
+    return {**faith_overview.today_summary(user, today), "url": _safe_reverse("faith:today")}
 
 
 def _quick_links(user, path):
