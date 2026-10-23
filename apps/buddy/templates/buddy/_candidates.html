@@ -1,0 +1,77 @@
+<!--
+  buddy/_candidates.html - search box and the list of people you could ask.
+  Context: search (dict from services.candidates: rows, page, has_next, has_previous,
+    query, scope, too_short), at_cap (bool), max_pending (int).
+  Each row: id, name, extension, state (available, pending_sent, pending_received, has_buddy).
+  Include example: include this template with search, at_cap and max_pending set.
+-->
+<section class="card p-4 mb-6" aria-labelledby="find-heading">
+  <h3 id="find-heading" class="text-lg font-semibold text-txt-primary">Find a buddy</h3>
+
+  <form method="get" action="{% url 'buddy:home' %}" role="search" class="mt-3 flex gap-2" data-no-lock>
+    <label for="buddy-q" class="sr-only">Search people by name</label>
+    <input id="buddy-q" name="q" type="search" value="{{ search.query }}" maxlength="100"
+           autocomplete="off" placeholder="Search everyone by name" class="input flex-1">
+    <button type="submit" class="btn btn-secondary">Search</button>
+  </form>
+
+  <p class="mt-2 text-sm text-txt-secondary">
+    {% if search.scope == "search" %}Showing matches from every extension.
+    {% elif search.scope == "everyone" %}Showing everyone.
+    {% else %}Showing people in your extension.{% endif %}
+    {% if search.too_short %}Type at least 3 letters to search.{% elif search.scope != "search" %}Type 3 or more letters to search everyone.{% endif %}
+  </p>
+
+  {% if at_cap %}
+    <p class="mt-3 text-sm text-txt-primary">You have {{ max_pending }} pending requests. Cancel one to send another.</p>
+  {% endif %}
+
+  {% if search.rows %}
+    <ul class="mt-3">
+      {% for row in search.rows %}
+        <li class="flex items-center justify-between gap-3 border-b border-border py-3 last:border-b-0">
+          <div class="min-w-0">
+            <p class="truncate font-medium text-txt-primary">{{ row.name }}</p>
+            {% if row.extension %}<p class="truncate text-sm text-txt-secondary">{{ row.extension }}</p>{% endif %}
+          </div>
+          <div class="shrink-0 text-right">
+            {% if row.state == "available" %}
+              {% if at_cap %}
+                <span class="text-sm text-txt-secondary">Request limit reached</span>
+              {% else %}
+                <form method="post" action="{% url 'buddy:request_send' row.id %}">
+                  {% csrf_token %}
+                  <input type="hidden" name="q" value="{{ search.query }}">
+                  <input type="hidden" name="page" value="{{ search.page }}">
+                  <button type="submit" class="btn btn-primary min-h-[44px]" aria-label="Send {{ row.name }} a buddy request">Request</button>
+                </form>
+              {% endif %}
+            {% elif row.state == "pending_sent" %}
+              <span class="text-sm text-txt-secondary">Request sent</span>
+            {% elif row.state == "pending_received" %}
+              <span class="text-sm text-txt-secondary">Asked you. See Requests for you below.</span>
+            {% else %}
+              <span class="text-sm text-txt-secondary">Already has a buddy</span>
+            {% endif %}
+          </div>
+        </li>
+      {% endfor %}
+    </ul>
+  {% else %}
+    <p class="mt-4 text-txt-secondary">
+      {% if search.scope == "search" %}No one matches that search.{% else %}No one to show here yet. Try searching by name.{% endif %}
+    </p>
+  {% endif %}
+
+  {% if search.has_previous or search.has_next %}
+    <nav class="mt-4 flex items-center justify-between" aria-label="More people">
+      {% if search.has_previous %}
+        <a class="btn btn-ghost" href="?{% if search.query %}q={{ search.query|urlencode }}&amp;{% endif %}page={{ search.page|add:'-1' }}">Previous</a>
+      {% else %}<span></span>{% endif %}
+      <span class="text-sm text-txt-secondary">Page {{ search.page }}</span>
+      {% if search.has_next %}
+        <a class="btn btn-ghost" href="?{% if search.query %}q={{ search.query|urlencode }}&amp;{% endif %}page={{ search.page|add:'1' }}">Next</a>
+      {% else %}<span></span>{% endif %}
+    </nav>
+  {% endif %}
+</section>

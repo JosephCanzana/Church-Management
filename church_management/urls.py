@@ -45,6 +45,7 @@ urlpatterns = [
     path("settings/", include("apps.theming.urls")),
     path("goals/", include("apps.faith.urls")),
     path("prayer/", include("apps.prayer.urls")),
+    path("buddy/", include("apps.buddy.urls")),
 ]
 
 # Dev only: Django serves uploaded photos. In production Caddy serves /media/.

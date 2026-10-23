@@ -1,0 +1,29 @@
+<!--
+  buddy/home.html - the Buddy tab.
+  Blocks: page_title, content.
+  Context: card (partner card dict, or None), and when card is None:
+    search (candidates() result), incoming, outgoing (lists of BuddyRequest),
+    max_pending (int), at_cap (bool).
+  Include example: none, this is a full page.
+-->
+{% extends "base_app.html" %}
+{% load nav_tags %}
+
+{% block page_title %}Buddy{% endblock %}
+
+{% block content %}
+{% section_tabs "buddy" %}
+
+<h2 class="text-xl font-semibold text-txt-primary mb-4">Buddy</h2>
+
+{% if card %}
+  {% include "buddy/_partner_card.html" with card=card %}
+{% else %}
+  <p class="text-txt-secondary mb-6">
+    A buddy is one person who walks with you: you can see each other's streaks and cheer each other on.
+    Find someone, send a request, and start when they accept.
+  </p>
+  {% include "buddy/_candidates.html" with search=search at_cap=at_cap max_pending=max_pending %}
+  {% include "buddy/_requests.html" with incoming=incoming outgoing=outgoing max_pending=max_pending %}
+{% endif %}
+{% endblock %}
