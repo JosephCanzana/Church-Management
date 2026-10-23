@@ -24,9 +24,7 @@ Links go through role_url so the same file serves superadmin, admin_area, coordi
       {{ pending_count }} bypass request{{ pending_count|pluralize }} waiting
     </a>
     {% endif %}
-    {% if can_households %}
-    <a class="btn btn-secondary" href="{% role_url 'household_list' %}">Households</a>
-    {% endif %}
+
   </div>
 </div>
 
