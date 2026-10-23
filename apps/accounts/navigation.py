@@ -117,8 +117,10 @@ NAV_ITEMS = [
     NavItem("Tithes", "superadmin:report_list", "banknotes", roles=(SUPER_ADMIN,), group="Manage"),
     NavItem("Tithes", "admin_area:report_list", "banknotes", roles=(ADMIN,), group="Manage"),
     NavItem("Tithes", "coordinator_area:report_list", "banknotes", roles=(COORDINATOR,), group="Manage"),
-    # The coordinator's prayer inbox (same page as a member's Prayer link for now).
-    NavItem("Prayer requests", "prayer:list", "heart", roles=(COORDINATOR,), group="Manage"),
+    # Prayer inbox: one entry per role area (same pattern as Attendance, see prayer/area_urls.py).
+    NavItem("Prayer inbox", "superadmin:prayer_inbox", "heart", roles=(SUPER_ADMIN,), group="Manage"),
+    NavItem("Prayer inbox", "admin_area:prayer_inbox", "heart", roles=(ADMIN,), group="Manage"),
+    NavItem("Prayer inbox", "coordinator_area:prayer_inbox", "heart", roles=(COORDINATOR,), group="Manage"),
     NavItem("Extensions", "superadmin:extension_list", "building-office", roles=MANAGERS, group="Manage"),
     # People hub: People | Guests | Approvals, one entry per role area (see accounts/urls/).
     NavItem("People", HUB, "users", roles=LEADERS, group="Manage", tabs="people"),

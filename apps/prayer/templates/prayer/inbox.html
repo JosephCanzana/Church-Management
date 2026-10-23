@@ -1,0 +1,41 @@
+<!--
+prayer/inbox.html
+Inbox shared by coordinator, admin and super-admin (mounted in the three role areas).
+Blocks: page_title, content. Context: tabs (label, count, active, href), status, page (Page of PrayerRequest,
+each with .sender and .detail_url), querystring, no_coordinator_note.
+Names come from permissions.sender_label, so anonymous requests read "Anonymous" for everyone.
+-->
+{% extends "base_app.html" %}
+{% block page_title %}Prayer inbox{% endblock %}
+{% block content %}
+<div class="mx-auto max-w-3xl">
+  <h2 class="text-lg font-semibold text-txt-primary">Prayer inbox</h2>
+  {% if no_coordinator_note %}
+  <p class="mt-1 text-sm text-txt-secondary">You see requests from extensions that have no coordinator.</p>
+  {% endif %}
+  <nav class="mt-4 flex gap-2 overflow-x-auto" aria-label="Request status">
+    {% for tab in tabs %}
+    <a href="{{ tab.href }}" class="btn {% if tab.active %}btn-primary{% else %}btn-secondary{% endif %}"{% if tab.active %} aria-current="page"{% endif %}>
+      {{ tab.label }} ({{ tab.count }})
+    </a>
+    {% endfor %}
+  </nav>
+  <ul class="mt-4 space-y-3">
+    {% for item in page.object_list %}
+    <li>
+      <a href="{{ item.detail_url }}" class="card block p-4 hover:bg-surface/80">
+        <div class="flex items-center justify-between gap-3">
+          <p class="text-sm font-medium text-txt-primary">{{ item.sender }}</p>
+          {% include "prayer/_status_badge.html" with status=item.status %}
+        </div>
+        <p class="mt-1 line-clamp-2 text-txt-primary">{{ item.body }}</p>
+        <p class="mt-1 text-xs text-txt-secondary">{{ item.created_at|date:"j M Y, g:i A" }}</p>
+      </a>
+    </li>
+    {% empty %}
+    <li class="text-txt-secondary">Nothing here.</li>
+    {% endfor %}
+  </ul>
+  {% include "includes/pagination.html" with page=page querystring=querystring %}
+</div>
+{% endblock %}

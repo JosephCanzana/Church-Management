@@ -39,4 +39,5 @@ urlpatterns = [
     # imports nothing from attendance (dependency rule); the names land in this namespace.
     path("attendance/", include("apps.attendance.area_urls")),
     path("tithes/", include("apps.tithes.area_urls")),
+    path("prayer/", include("apps.prayer.area_urls")),
 ]

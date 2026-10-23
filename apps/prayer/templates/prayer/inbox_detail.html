@@ -1,0 +1,53 @@
+<!--
+prayer/inbox_detail.html
+One prayer request with its replies, a reply form and a Done button (confirm dialog).
+Blocks: page_title, content. Context: item, sender (already masked), replies, form (PrayerReplyForm),
+back_url, reply_url, complete_url, can_complete. Never reads item.user.
+-->
+{% extends "base_app.html" %}
+{% block page_title %}Prayer request{% endblock %}
+{% block content %}
+<div class="mx-auto max-w-2xl space-y-6">
+  <a href="{{ back_url }}" class="btn btn-ghost">
+    {% include "includes/icon.html" with name="chevron-left" class="size-4" %}
+    Back to inbox
+  </a>
+  <article class="card p-4 sm:p-6">
+    <div class="flex items-center justify-between gap-3">
+      <h2 class="text-lg font-semibold text-txt-primary">{{ sender }}</h2>
+      {% include "prayer/_status_badge.html" with status=item.status %}
+    </div>
+    <p class="text-sm text-txt-secondary">{{ item.created_at|date:"j M Y, g:i A" }}</p>
+    <p class="mt-3 whitespace-pre-line text-txt-primary">{{ item.body }}</p>
+  </article>
+
+  <section aria-labelledby="replies-heading">
+    <h2 id="replies-heading" class="text-lg font-semibold text-txt-primary">Replies</h2>
+    {% for reply in replies %}
+    <div class="mt-3 border-l-2 border-border pl-3">
+      <p class="text-sm font-medium text-txt-primary">{{ reply.by }}</p>
+      <p class="whitespace-pre-line text-txt-primary">{{ reply.body }}</p>
+      <p class="text-xs text-txt-secondary">{{ reply.created_at|date:"j M Y, g:i A" }}</p>
+    </div>
+    {% empty %}
+    <p class="mt-2 text-txt-secondary">No replies yet.</p>
+    {% endfor %}
+  </section>
+
+  <form method="post" action="{{ reply_url }}" class="space-y-3">
+    {% csrf_token %}
+    {% if form.non_field_errors %}<p class="text-sm text-txt-primary" role="alert">{{ form.non_field_errors.0 }}</p>{% endif %}
+    <label class="label" for="{{ form.body.id_for_label }}">{{ form.body.label }}</label>
+    {{ form.body }}
+    {% for error in form.body.errors %}<p class="text-sm text-txt-primary" role="alert">{{ error }}</p>{% endfor %}
+    <button type="submit" class="btn btn-primary">Send reply</button>
+  </form>
+
+  {% if can_complete %}
+  <form method="post" action="{{ complete_url }}" data-confirm="Mark this prayer request as done?">
+    {% csrf_token %}
+    <button type="submit" class="btn btn-secondary">Mark as done</button>
+  </form>
+  {% endif %}
+</div>
+{% endblock %}
