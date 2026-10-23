@@ -1,0 +1,126 @@
+<!--
+  buddy/messages.html: the chat with your buddy (the Messages tab of the Buddy hub).
+  Extends base_app.html and fills: title, page_title, content. Page content uses h2 and below.
+  Context: chat (dict from messaging.thread_for: active, read_only, partner_name, ...) and
+  payload (the JSON the chat component starts from: items, token, urls, limits; None when unpaired).
+  The whole conversation is drawn by one Alpine component, buddyChat(), from static/js/buddy_chat.js.
+  That file is loaded with a normal script tag BEFORE the markup, like goals.js. The page needs
+  JavaScript: a no-script note explains it.
+  Bubbles: mine on the right (accent), theirs on the left. A nudge and an "I prayed for you" tap are
+  small centered events. Under my last note a "Seen" label shows once the partner has read it.
+  A divider between two partnership periods shows the end date and both final notes.
+  Composer: the nudge hand shows while the box is empty and swaps to Send once text is typed.
+  Every control is at least 44px. Meaning is never by color alone: every bubble has a hidden
+  "You:" or "Name:" prefix for screen readers.
+  Note: this comment contains no template tags on purpose.
+-->
+{% extends "base_app.html" %}
+{% load static %}
+
+{% block title %}Messages{% endblock %}
+{% block page_title %}Messages{% endblock %}
+
+{% block content %}
+<div class="mx-auto w-full max-w-3xl">
+  {% if not chat.active %}
+    {% url 'buddy:index' as buddy_home %}
+    <section class="rounded-xl border border-border bg-surface p-6 shadow-sm" role="status">
+      <h2 class="text-lg font-semibold tracking-tight text-txt-primary">No buddy yet</h2>
+      <p class="mt-1 text-txt-secondary">Messages open up once you and a buddy have accepted each other.</p>
+      {% if buddy_home %}<p class="mt-4"><a href="{{ buddy_home }}" class="btn btn-primary min-h-11">Find a buddy</a></p>{% endif %}
+    </section>
+  {% else %}
+    <script src="{% static 'js/buddy_chat.js' %}"></script>
+    {{ payload|json_script:"buddy-chat-data" }}
+    <noscript><p class="mb-3 rounded-lg border border-border bg-surface p-4 text-txt-secondary">Messages need JavaScript. Turn it on to chat with your buddy.</p></noscript>
+
+    <section class="flex h-[75vh] min-h-[26rem] flex-col overflow-hidden rounded-xl border border-border bg-surface shadow-sm"
+      x-data="buddyChat()" data-csrf="{{ csrf_token }}" aria-label="Conversation with {{ chat.partner_name }}">
+
+      <header class="flex items-center justify-between gap-3 border-b border-border bg-surface-alt px-4 py-3">
+        <h2 class="truncate text-lg font-semibold tracking-tight text-txt-primary">{{ chat.partner_name }}</h2>
+        <span x-show="readOnly" {% if not chat.read_only %}x-cloak{% endif %} class="shrink-0 rounded-md bg-txt-primary/10 px-2.5 py-1 text-sm font-medium text-txt-secondary">Read-only</span>
+      </header>
+
+      {# ------------------------------------------------------------ the thread #}
+      <div x-ref="list" role="log" aria-live="polite" aria-label="Messages" class="flex-1 space-y-2 overflow-y-auto px-4 py-4">
+        <div x-show="hasMore" x-cloak class="text-center">
+          <button type="button" class="btn btn-ghost min-h-11 text-sm" :disabled="busy" @click="loadEarlier()">Load earlier messages</button>
+        </div>
+
+        <p x-show="items.length === 0" x-cloak class="py-10 text-center text-txt-secondary">
+          Say hello to <span x-text="partnerName"></span>. A 👋 works too.
+        </p>
+
+        <template x-for="(item, index) in items" :key="item.key">
+          <div>
+            <template x-if="showDay(index)">
+              <p class="my-3 text-center text-xs font-medium text-txt-secondary" x-text="item.day"></p>
+            </template>
+
+            {# a period ended: the end date and both final notes #}
+            <template x-if="item.type === 'divider'">
+              <div class="my-4 rounded-lg border border-border bg-surface-alt p-3 text-center text-sm text-txt-secondary">
+                <p class="font-medium text-txt-primary">Partnership ended <span x-text="item.ended"></span></p>
+                <template x-for="note in item.notes" :key="note.name">
+                  <p class="mt-2 whitespace-pre-wrap break-words"><span class="font-medium text-txt-primary" x-text="note.name + ':'"></span> <span x-text="note.text"></span></p>
+                </template>
+              </div>
+            </template>
+
+            {# a text message #}
+            <template x-if="item.type === 'note' && item.kind === 'message'">
+              <div class="flex flex-col" :class="item.mine ? 'items-end' : 'items-start'">
+                <div class="max-w-[85%] rounded-2xl px-4 py-2 sm:max-w-[75%]"
+                  :class="item.mine ? 'bg-accent text-on-accent' : 'border border-border bg-surface-alt text-txt-primary'">
+                  <span class="sr-only" x-text="item.mine ? 'You: ' : partnerName + ': '"></span>
+                  <p class="whitespace-pre-wrap break-words" x-text="item.body"></p>
+                </div>
+                <p class="mt-0.5 px-1 text-xs text-txt-secondary">
+                  <span x-text="item.time"></span>
+                  <span x-show="item.mine && item.id === lastMineId && lastMineSeen"> · Seen</span>
+                </p>
+              </div>
+            </template>
+
+            {# a nudge or an "I prayed for you" tap #}
+            <template x-if="item.type === 'note' && item.kind !== 'message'">
+              <div class="py-1 text-center text-sm text-txt-secondary">
+                <span x-text="(item.mine ? 'You' : partnerName) + (item.kind === 'nudge' ? ' 👋 nudged' + (item.mine ? ' ' + partnerName : ' you') : ' 🙏 prayed for ' + (item.mine ? partnerName : 'you'))"></span>
+                · <span x-text="item.time"></span><span x-show="item.mine && item.id === lastMineId && lastMineSeen"> · Seen</span>
+              </div>
+            </template>
+          </div>
+        </template>
+      </div>
+
+      {# ------------------------------------------------------------ composer #}
+      <p x-show="error" x-cloak role="alert" class="border-t border-border px-4 pt-2 text-sm text-danger" x-text="error"></p>
+
+      <p x-show="readOnly" {% if not chat.read_only %}x-cloak{% endif %} role="status" class="border-t border-border bg-surface-alt px-4 py-4 text-center text-txt-secondary">
+        <span x-text="partnerName"></span> can no longer sign in, so this chat is read-only.
+      </p>
+
+      <form x-show="!readOnly" {% if chat.read_only %}x-cloak{% endif %} class="space-y-2 border-t border-border p-3" @submit.prevent="send()">
+        <div>
+          <button type="button" class="btn btn-ghost min-h-11 text-sm" :disabled="busy || prayedToday" @click="prayed()">
+            <span aria-hidden="true">🙏</span>
+            <span x-text="prayedToday ? 'You prayed for them today' : 'I prayed for you'"></span>
+          </button>
+        </div>
+        <div class="flex items-end gap-2">
+          <label for="buddy-message-box" class="sr-only">Message</label>
+          <textarea id="buddy-message-box" x-ref="box" x-model="text" rows="1" maxlength="1000" autocomplete="off"
+            class="input min-h-11 flex-1 resize-none" placeholder="Write a message"
+            @input="resize()" @keydown.enter="onEnter($event)"></textarea>
+          <button type="button" x-show="text.trim() === ''" class="btn btn-secondary min-h-11 min-w-11 text-xl"
+            :disabled="busy || nudgeMinutes > 0" @click="nudge()"
+            :aria-label="nudgeMinutes > 0 ? 'You can nudge again in ' + nudgeMinutes + ' minutes' : 'Send a nudge'"
+            :title="nudgeMinutes > 0 ? 'You can nudge again in ' + nudgeMinutes + ' min' : 'Send a nudge'">👋</button>
+          <button type="submit" x-show="text.trim() !== ''" x-cloak class="btn btn-primary min-h-11" :disabled="busy">Send</button>
+        </div>
+      </form>
+    </section>
+  {% endif %}
+</div>
+{% endblock %}

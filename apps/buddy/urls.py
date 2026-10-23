@@ -2,6 +2,7 @@
 from django.urls import path
 
 from . import views
+from . import message_views
 
 app_name = "buddy"
 
@@ -16,4 +17,11 @@ urlpatterns = [
     path("end/cancel/", views.end_cancel, name="end_cancel"),
     path("end/agree/", views.end_agree, name="end_agree"),
     path("end/inactive/", views.end_inactive, name="end_inactive"),
+    path("messages/", message_views.thread, name="messages"),
+    path("messages/send/", message_views.send, name="message_send"),
+    path("messages/nudge/", message_views.nudge, name="message_nudge"),
+    path("messages/prayed/", message_views.prayed, name="message_prayed"),
+    path("messages/poll/", message_views.poll, name="message_poll"),
+    path("messages/earlier/", message_views.earlier, name="message_earlier"),
+    path("messages/read/", message_views.read, name="message_read"),
 ]
