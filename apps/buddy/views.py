@@ -38,7 +38,7 @@ def home(request):
     """The Buddy tab. With a live partner: the partner card. Without: search, list, requests."""
     user = request.user
     card = services.partner_card(user)
-    context = {"card": card}
+    context = {"card": card, "ending": services.partnership_state(user)}
     if card is None:
         outgoing = services.outgoing_requests(user)
         context.update(
@@ -102,3 +102,47 @@ def request_cancel(request, request_id):
     else:
         messages.success(request, "Request cancelled.")
     return _back_to_home(request)
+
+
+def _back_to_buddy(request, ok_message, action, *args):
+    """Run an ending service, show its message, and go back to the Buddy tab."""
+    try:
+        action(request.user, *args)
+    except ServiceError as exc:
+        messages.error(request, str(exc))
+    else:
+        messages.success(request, ok_message)
+    return redirect("buddy:home")
+
+
+@buddy_screen
+@require_POST
+def end_request(request):
+    """Ask your buddy to end the partnership (optional final note in `note`)."""
+    return _back_to_buddy(
+        request, "Your request was sent. Your buddy has to agree before it ends.",
+        services.request_end, request.POST.get("note"),
+    )
+
+
+@buddy_screen
+@require_POST
+def end_cancel(request):
+    """Take back your own end request."""
+    return _back_to_buddy(request, "Your request to end was cancelled.", services.cancel_end_request)
+
+
+@buddy_screen
+@require_POST
+def end_agree(request):
+    """Agree to end the partnership your buddy asked to end (optional note in `note`)."""
+    return _back_to_buddy(request, "The partnership has ended.", services.agree_end, request.POST.get("note"))
+
+
+@buddy_screen
+@require_POST
+def end_inactive(request):
+    """End a partnership whose other person can no longer sign in. No approval is needed."""
+    return _back_to_buddy(
+        request, "The partnership has ended.", services.end_without_approval, request.POST.get("note"),
+    )

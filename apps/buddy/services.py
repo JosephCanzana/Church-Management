@@ -9,12 +9,14 @@ Rules (see AGENTS.md and PLAN-faith-buddy-prayer.md, Brick 6):
   * `buddy` may import read-only functions from `faith`; `faith` never imports `buddy`.
 """
 from collections.abc import Mapping
+from datetime import timedelta
 
 from django.db import IntegrityError, models, transaction
 from django.db.models import Q
 from django.utils import timezone
 
 from apps.accounts.models import Role, User
+from apps.audit.models import AuditLog
 from apps.audit.services import log_action
 from apps.core.services import ServiceError
 from apps.core.text import clean_text
@@ -26,12 +28,17 @@ from .permissions import can_use_buddy, signable_q
 #: Notification types created here (declared in the owning app, like events' `event_changed`).
 BUDDY_REQUEST = "buddy_request"
 BUDDY_ACCEPTED = "buddy_accepted"
-NOTIFICATION_TYPES = (BUDDY_REQUEST, BUDDY_ACCEPTED)
+BUDDY_END_REQUESTED = "buddy_end_requested"   # Brick 7: your buddy asked to end the partnership
+BUDDY_ENDED = "buddy_ended"                   # Brick 7: your buddy agreed, the partnership ended
+NOTIFICATION_TYPES = (BUDDY_REQUEST, BUDDY_ACCEPTED, BUDDY_END_REQUESTED, BUDDY_ENDED)
 
 MAX_PENDING_REQUESTS = 3     # outgoing pending requests per person
 SEARCH_MIN_LENGTH = 3        # characters before a search crosses extensions
 PAGE_SIZE = 20               # people per page of the candidate list
 MAX_PAGE = 10_000            # stops absurd offsets
+MAX_END_NOTE = 500           # characters in a final note
+END_REQUEST_DAYS_KEY = "buddy_end_request_days"   # site_setting key
+DEFAULT_END_REQUEST_DAYS = 7                      # used when the setting is missing or invalid
 
 NOT_FOUND = "That request was not found."
 
@@ -432,3 +439,234 @@ def partner_card(user):
         "since": row.started_at,
         "streaks": _partner_streaks(partner),
     }
+
+
+# ------------------------------------------------------------ ending (Brick 7)
+def _clean_end_note(note):
+    """A final note trimmed; None when empty. Over 500 characters is refused, never cut."""
+    text = (note or "").strip()
+    if len(text) > MAX_END_NOTE:
+        raise ServiceError(f"A final note can have up to {MAX_END_NOTE} characters.")
+    return text or None
+
+
+def _find_row(user, *, live=None):
+    """The person's newest un-ended row that is live (True), inactive (False) or either (None)."""
+    for row in _active_rows(user):
+        if live is None or is_live(row) is live:
+            return row
+    return None
+
+
+def _lock_row(actor, *, live=None, missing="You do not have a buddy right now."):
+    """Lock both people (ascending id), then the actor's un-ended row. Returns (row, me, partner).
+
+    Everything is re-checked on the locked rows: the actor may still use Buddy, the row is still
+    un-ended, and it is still live / inactive as the caller expects (`live=None` accepts both).
+    Call it inside `transaction.atomic()`.
+    """
+    found = _find_row(actor, live=live)
+    if found is None:
+        raise ServiceError(missing)
+    locked = _lock_users([found.user_a_id, found.user_b_id])
+    me = locked.get(actor.pk)
+    partner = locked.get(found.user_b_id if found.user_a_id == actor.pk else found.user_a_id)
+    if me is None or not can_use_buddy(me):
+        raise ServiceError("You cannot use Buddy right now.")
+    row = UserBuddy.objects.select_for_update().filter(pk=found.pk, ended_at__isnull=True).first()
+    if row is None:
+        raise ServiceError("This partnership has already ended.")
+    if partner is None:
+        raise ServiceError(missing)
+    if live is not None and partner.can_sign_in is not live:
+        raise ServiceError("Your buddy's account just changed. Reload the page and try again.")
+    return row, me, partner
+
+
+def request_end(actor, note=None):
+    """Ask your buddy to end the partnership, with an optional final note (up to 500 characters).
+
+    Live partnership only. A second request changes nothing (the first one, by either person,
+    stays), so a double tap is quiet. The partner gets a `buddy_end_requested` bell item.
+    """
+    text = _clean_end_note(note)
+    with transaction.atomic():
+        row, me, partner = _lock_row(actor, live=True)
+        if row.end_requested_at is not None:
+            return row
+        now = timezone.now()
+        row.end_requested_by = me
+        row.end_requested_at = now
+        row.end_request_note = text
+        row.save(update_fields=["end_requested_by", "end_requested_at", "end_request_note"])
+        log_action(
+            "buddy.end_request", actor=me, entity_type="user_buddy", entity_id=row.pk,
+            after={"requested_by_id": me.pk},
+        )
+        # The time is in the key because the dedupe key is permanent: a request that was cancelled
+        # and made again must still reach the partner.
+        notify(
+            partner, BUDDY_END_REQUESTED, actor=me, entity_type="user_buddy", entity_id=row.pk,
+            data={"buddy_id": row.pk}, dedupe_key=f"buddy_end_requested:{row.pk}:{now:%Y%m%d%H%M%S%f}",
+        )
+    return row
+
+
+def cancel_end_request(actor):
+    """Take back your own end request. Nothing pending: quiet. Someone else's request: refused."""
+    with transaction.atomic():
+        row, me, _partner = _lock_row(actor)
+        if row.end_requested_at is None:
+            return row
+        if row.end_requested_by_id != me.pk:
+            raise ServiceError("Only the person who asked can cancel the request.")
+        row.end_requested_by = None
+        row.end_requested_at = None
+        row.end_request_note = None
+        row.save(update_fields=["end_requested_by", "end_requested_at", "end_request_note"])
+        log_action("buddy.end_cancel", actor=me, entity_type="user_buddy", entity_id=row.pk)
+    return row
+
+
+def agree_end(actor, note=None):
+    """The OTHER person agrees to end it, with their own optional note. Ends the partnership.
+
+    Stores `ended_by` = the requester, `final_note` = the requester's note and
+    `partner_final_note` = this person's note. The requester gets a `buddy_ended` bell item.
+    """
+    text = _clean_end_note(note)
+    with transaction.atomic():
+        row, me, partner = _lock_row(actor, live=True)
+        if row.end_requested_at is None:
+            raise ServiceError("Your buddy has not asked to end the partnership.")
+        if row.end_requested_by_id == me.pk:
+            raise ServiceError("You asked to end this partnership. Your buddy has to agree.")
+        row.ended_at = timezone.now()
+        row.ended_by = partner                      # only two people: the requester is the partner
+        row.final_note = row.end_request_note
+        row.partner_final_note = text
+        row.save(update_fields=["ended_at", "ended_by", "final_note", "partner_final_note"])
+        log_action(
+            "buddy.end", actor=me, entity_type="user_buddy", entity_id=row.pk,
+            after={"mode": "agreed", "ended_by_id": partner.pk},
+        )
+        notify(
+            partner, BUDDY_ENDED, actor=me, entity_type="user_buddy", entity_id=row.pk,
+            data={"buddy_id": row.pk}, dedupe_key=f"buddy_ended:{row.pk}",
+        )
+    return row
+
+
+def end_without_approval(actor, note=None):
+    """End a partnership whose other person can no longer sign in. No agreement is needed.
+
+    Refused while the partner can still sign in. Stores `ended_by` = actor and `final_note`.
+    Nobody is notified: the partner cannot sign in to read it.
+    """
+    text = _clean_end_note(note)
+    with transaction.atomic():
+        if _find_row(actor, live=False) is None and live_partnership(actor) is not None:
+            raise ServiceError("Your buddy can still sign in, so ending needs their agreement.")
+        row, me, _partner = _lock_row(actor, live=False, missing="You have no partnership to end.")
+        row.ended_at = timezone.now()
+        row.ended_by = me
+        row.final_note = text
+        row.save(update_fields=["ended_at", "ended_by", "final_note"])
+        log_action(
+            "buddy.end", actor=me, entity_type="user_buddy", entity_id=row.pk,
+            after={"mode": "inactive_partner", "ended_by_id": me.pk},
+        )
+    return row
+
+
+def partnership_state(user):
+    """What the End controls on the Buddy tab need, or None when `user` has no un-ended partnership.
+
+    `mode` is "live" (nothing pending), "waiting" (you asked), "asked" (your buddy asked, so
+    `request_note` is theirs for you to read) or "inactive" (your buddy can no longer sign in).
+    """
+    row = live_partnership(user) or active_partnership(user)
+    if row is None:
+        return None
+    partner = partner_of(row, user)
+    if not is_live(row):
+        mode = "inactive"
+    elif row.end_requested_at is None:
+        mode = "live"
+    elif row.end_requested_by_id == user.pk:
+        mode = "waiting"
+    else:
+        mode = "asked"
+    return {
+        "mode": mode,
+        "partner_name": partner.full_name,
+        "requested_at": row.end_requested_at,
+        "request_note": row.end_request_note if mode == "asked" else None,
+        "auto_close_days": end_request_days(),
+    }
+
+
+def end_request_days():
+    """Days an end request may wait before it closes by itself (site setting, default 7).
+
+    A missing, non-numeric or out-of-range (1 to 365) value falls back to the default.
+    """
+    # (verify) If `core` already has a `site_setting(key, default)` helper, call it here instead.
+    from apps.core.models import SiteSetting
+
+    row = SiteSetting.objects.filter(key=END_REQUEST_DAYS_KEY).first()
+    raw = getattr(row, "value", None)
+    if isinstance(raw, dict):
+        raw = raw.get("value")
+    try:
+        days = int(raw)
+    except (TypeError, ValueError):
+        return DEFAULT_END_REQUEST_DAYS
+    return days if 1 <= days <= 365 else DEFAULT_END_REQUEST_DAYS
+
+
+def stale_end_request_ids(now=None, days=None):
+    """Ids of un-ended partnerships whose end request is older than `days` (the job and its dry run)."""
+    now = now or timezone.now()
+    days = end_request_days() if days is None else days
+    return list(
+        UserBuddy.objects.filter(
+            ended_at__isnull=True, end_requested_at__isnull=False,
+            end_requested_at__lt=now - timedelta(days=days),
+        ).order_by("pk").values_list("pk", flat=True)
+    )
+
+
+def close_stale_end_requests(now=None, days=None):
+    """End every partnership whose end request went unanswered for too long. Returns the count.
+
+    The requester's wish is honoured: `ended_by` = the requester, `final_note` = their note, no
+    `partner_final_note`. Each row is re-checked under its lock, so the job is safe to run twice
+    and safe next to a person who agrees at the same moment. Logged as a system job.
+    """
+    now = now or timezone.now()
+    days = end_request_days() if days is None else days
+    closed = 0
+    for pk in stale_end_request_ids(now, days):
+        with transaction.atomic():
+            found = UserBuddy.objects.filter(pk=pk).first()
+            if found is None:
+                continue
+            _lock_users([found.user_a_id, found.user_b_id])
+            row = UserBuddy.objects.select_for_update().filter(
+                pk=pk, ended_at__isnull=True, end_requested_at__isnull=False,
+                end_requested_at__lt=now - timedelta(days=days),
+            ).first()
+            if row is None:
+                continue
+            row.ended_at = now
+            row.ended_by_id = row.end_requested_by_id
+            row.final_note = row.end_request_note
+            row.save(update_fields=["ended_at", "ended_by", "final_note"])
+            log_action(
+                "buddy.end", entity_type="user_buddy", entity_id=row.pk,
+                after={"mode": "end_request_expired", "ended_by_id": row.end_requested_by_id},
+                source=AuditLog.Source.SYSTEM_JOB,
+            )
+            closed += 1
+    return closed
