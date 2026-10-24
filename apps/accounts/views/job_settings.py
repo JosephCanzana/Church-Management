@@ -21,7 +21,7 @@ from apps.core.models import RetentionPolicy
 from apps.core.services import ServiceError
 
 # verify: the url name of the Site settings page in the superadmin namespace.
-SITE_SETTINGS_URL_NAME = "superadmin:site_settings"
+SITE_SETTINGS_URL_NAME = "bible_superadmin:site_settings"
 
 # Friendly names for the retention screen; unknown rows fall back to a title-cased table name.
 RETENTION_LABELS = {
