@@ -1,4 +1,6 @@
 """Transactional business rules for managing church resources."""
+import os
+import re
 from datetime import date, datetime
 
 from django.core.exceptions import ValidationError
@@ -87,25 +89,32 @@ def _create_record(actor, record, action, request, *, after=None, conflict_messa
     return record
 
 
-def create_monthly_theme(actor, *, month, title, description="", request=None):
-    """Create one monthly theme; the database enforces one record per month."""
+def create_monthly_theme(actor, *, month, title, description="", cover=None, request=None):
+    """Create one monthly theme, with an optional cover picture; one record per month."""
     require_resource_manager(actor)
     month = _clean_date(month, "month", first_of_month=True)
     record = MonthlyTheme(month=month, title=_clean_title(title), description=description or "", created_by=actor)
+    if cover is not None:
+        record.cover_image = cover
     return _create_record(
         actor,
         record,
         "resource.monthly_theme_created",
         request,
-        after={"month": month, "is_published": False},
+        after={"month": month, "is_published": False, "has_cover": cover is not None},
         conflict_message="A theme already exists for that month.",
     )
 
 
 def update_monthly_theme(
-    actor, theme_id, *, month=_UNSET, title=_UNSET, description=_UNSET, request=None,
+    actor, theme_id, *, month=_UNSET, title=_UNSET, description=_UNSET,
+    cover=_UNSET, remove_cover=False, request=None,
 ):
-    """Update a draft or published monthly theme and audit changed field names only."""
+    """Update a draft or published monthly theme and audit changed field names only.
+
+    A new `cover` replaces the cover picture; `remove_cover` clears it (a new
+    `cover` wins when both are given).
+    """
     require_resource_manager(actor)
     with transaction.atomic():
         theme = _get_locked(MonthlyTheme, theme_id, "monthly theme")
@@ -116,6 +125,11 @@ def update_monthly_theme(
             "title": _clean_title(title) if title is not _UNSET else _UNSET,
             "description": (description or "") if description is not _UNSET else _UNSET,
         }
+        if cover is not _UNSET and cover is not None:
+            changes["cover_image"] = cover
+        elif remove_cover:
+            changes["cover_image"] = ""
+            changes["cover_original_filename"] = ""
         changed = _apply_changes(theme, changes)
         if not changed:
             return False
@@ -232,6 +246,35 @@ def create_monthly_resource(
             after={"monthly_theme_id": theme.pk, "kind": resource.kind},
         )
     return resource
+
+
+def _title_from_filename(name):
+    """Turn an uploaded file name into a readable default title."""
+    stem = os.path.splitext(os.path.basename(name or ""))[0]
+    title = re.sub(r"[_\-]+", " ", stem).strip()
+    return (title or "Untitled")[:255]
+
+
+def create_monthly_resources(actor, theme_id, *, kind, files, request=None):
+    """Add several pictures to one month; return (created, failed).
+
+    Each file is saved in its own transaction, so one bad file never blocks
+    the rest. `failed` holds (file name, reason) pairs. A month that cannot
+    take files at all raises ServiceError.
+    """
+    require_resource_manager(actor)
+    if not MonthlyTheme.objects.filter(pk=theme_id, archived_at__isnull=True).exists():
+        raise ServiceError("Choose an active monthly theme.")
+    created, failed = [], []
+    for uploaded in files:
+        try:
+            created.append(create_monthly_resource(
+                actor, theme_id, kind=kind, title=_title_from_filename(uploaded.name),
+                file=uploaded, request=request,
+            ))
+        except ServiceError as error:
+            failed.append((uploaded.name, str(error)))
+    return created, failed
 
 
 def _locked_monthly_resource(resource_id):

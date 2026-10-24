@@ -1,10 +1,10 @@
 <!--
 resources/manage/theme_list.html
-Manager list of monthly themes with search, status filters, sorting, and pagination.
+Manager grid of months with cover pictures, search, status filter, sorting and pagination.
 Extends base_app.html. Blocks filled: title, page_title, content.
-The Website hub tab row (Landing | Give page | Resources) sits on top; the row below switches between the three resource lists.
-Context: form (ResourceFilterForm), page (Page of MonthlyTheme), total, status,
-querystring, and active_filters.
+The Website hub tab row (Landing | Give page | Resources) sits on top; the row below switches between months and general resources.
+Context: form (ResourceFilterForm), page (Page of MonthlyTheme annotated with picture_count and weekly_count),
+total, status, querystring, active_filters, and unassigned_weekly.
 -->
 {% extends "base_app.html" %}
 
@@ -15,11 +15,10 @@ querystring, and active_filters.
 <div class="flex flex-wrap items-center justify-between gap-3">
   <nav class="flex flex-wrap gap-2" aria-label="Resource management">
     <a href="{% url 'resources:theme_list' %}" class="btn btn-secondary" aria-current="page">Monthly themes</a>
-    <a href="{% url 'resources:weekly_list' %}" class="btn btn-ghost">Weekly presentations</a>
     <a href="{% url 'resources:general_list' %}" class="btn btn-ghost">General resources</a>
   </nav>
   <a href="{% url 'resources:theme_create' %}" class="btn btn-primary">
-    {% include 'includes/icon.html' with name='plus' class='size-4' %} New theme
+    {% include 'includes/icon.html' with name='plus' class='size-4' %} New month
   </a>
 </div>
 
@@ -40,37 +39,39 @@ querystring, and active_filters.
   {% if active_filters %}<a href="{% url 'resources:theme_list' %}" class="btn btn-ghost">Clear</a>{% endif %}
 </form>
 
-<div class="mt-5 flex items-center justify-between gap-3">
-  <p class="text-sm text-txt-secondary">{{ total }} theme{{ total|pluralize }}{% if status == 'archived' %} in archive{% endif %}</p>
-</div>
+<p class="mt-5 text-sm text-txt-secondary">{{ total }} month{{ total|pluralize }}{% if status == 'archived' %} in archive{% endif %}</p>
 
 {% if page.object_list %}
-<div class="mt-2 overflow-x-auto rounded-lg border border-border bg-surface">
-  <table class="w-full min-w-[38rem] text-left text-sm">
-    <thead class="border-b border-border bg-surface-alt text-xs uppercase text-txt-secondary">
-      <tr><th class="px-4 py-3 font-medium">Month</th><th class="px-4 py-3 font-medium">Theme</th><th class="px-4 py-3 font-medium">Status</th><th class="px-4 py-3 text-right font-medium">Action</th></tr>
-    </thead>
-    <tbody class="divide-y divide-border">
-      {% for theme in page.object_list %}
-      <tr class="hover:bg-surface-alt">
-        <td class="whitespace-nowrap px-4 py-3">{{ theme.month|date:"F Y" }}</td>
-        <td class="px-4 py-3"><a class="font-medium text-txt-primary hover:underline" href="{% url 'resources:theme_detail' theme.pk %}">{{ theme.title }}</a></td>
-        <td class="px-4 py-3">
-          {% if theme.archived_at %}<span class="text-txt-secondary">Archived</span>
-          {% elif theme.is_published %}<span class="text-success">Published</span>
-          {% else %}<span class="text-txt-secondary">Draft</span>{% endif %}
-        </td>
-        <td class="px-4 py-3 text-right"><a href="{% url 'resources:theme_detail' theme.pk %}" class="btn btn-ghost px-3 py-1.5">Open</a></td>
-      </tr>
-      {% endfor %}
-    </tbody>
-  </table>
-</div>
+<ul class="mt-2 grid gap-4 sm:grid-cols-2 xl:grid-cols-3">
+  {% for theme in page.object_list %}
+  <li class="relative overflow-hidden rounded-lg border border-border bg-surface">
+    {% include 'resources/_cover.html' with theme=theme ratio_class='aspect-video' %}
+    <div class="p-4">
+      <div class="flex items-center justify-between gap-2 text-sm">
+        <span class="text-txt-secondary">{{ theme.month|date:"F Y" }}</span>
+        {% if theme.archived_at %}<span class="text-txt-secondary">Archived</span>
+        {% elif theme.is_published %}<span class="text-success">Published</span>
+        {% else %}<span class="text-txt-secondary">Draft</span>{% endif %}
+      </div>
+      <h3 class="mt-1 font-semibold"><a href="{% url 'resources:theme_detail' theme.pk %}" class="after:absolute after:inset-0">{{ theme.title }}</a></h3>
+      <p class="mt-2 text-sm text-txt-secondary">
+        {{ theme.picture_count }} picture{{ theme.picture_count|pluralize }},
+        {{ theme.weekly_count }} weekly presentation{{ theme.weekly_count|pluralize }}
+      </p>
+    </div>
+  </li>
+  {% endfor %}
+</ul>
 {% include 'includes/pagination.html' with page=page querystring=querystring %}
 {% else %}
 <div class="mt-5 rounded-lg border border-border bg-surface px-5 py-10 text-center">
-  <p class="font-medium">No monthly themes found</p>
-  <p class="mt-1 text-sm text-txt-secondary">Adjust the search or filters, or create a theme.</p>
+  <p class="font-medium">No months found</p>
+  <p class="mt-1 text-sm text-txt-secondary">Adjust the search or filters, or add a month.</p>
 </div>
 {% endif %}
+
+<p class="mt-8 text-sm text-txt-secondary">
+  <a href="{% url 'resources:weekly_list' %}" class="underline">All weekly presentations</a>
+  {% if unassigned_weekly %}<span class="ml-2 text-txt-primary">{{ unassigned_weekly }} not assigned to a month yet</span>{% endif %}
+</p>
 {% endblock %}

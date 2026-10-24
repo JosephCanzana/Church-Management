@@ -2,7 +2,7 @@
 resources/manage/general_list.html
 Manager list of general resources with search, status, sorting, and pagination.
 Extends base_app.html. Blocks filled: title, page_title, content.
-The Website hub tab row (Landing | Give page | Resources) sits on top; the row below switches between the three resource lists.
+The Website hub tab row (Landing | Give page | Resources) sits on top; the row below switches between months and general resources.
 Context: form (ResourceFilterForm), page (Page of GeneralResource), total, status,
 querystring, and active_filters.
 -->
@@ -16,7 +16,6 @@ querystring, and active_filters.
 <div class="flex flex-wrap items-center justify-between gap-3">
   <nav class="flex flex-wrap gap-2" aria-label="Resource management">
     <a href="{% url 'resources:theme_list' %}" class="btn btn-ghost">Monthly themes</a>
-    <a href="{% url 'resources:weekly_list' %}" class="btn btn-ghost">Weekly presentations</a>
     <a href="{% url 'resources:general_list' %}" class="btn btn-secondary" aria-current="page">General resources</a>
   </nav>
   <a href="{% url 'resources:general_create' %}" class="btn btn-primary">{% include 'includes/icon.html' with name='plus' class='size-4' %} New resource</a>

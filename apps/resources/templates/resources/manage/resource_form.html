@@ -1,21 +1,26 @@
 <!--
 resources/manage/resource_form.html
-Create or edit a monthly attachment, weekly presentation, or general resource.
+Create or edit a monthly picture, weekly presentation, or general resource.
 Extends base_app.html. Blocks filled: title, page_title, content.
-Context: form, resource_type (monthly, weekly, or general), resource, and theme for monthly files.
+Context: form, resource_type (monthly, weekly, or general), resource, theme (monthly pictures, and weekly when it belongs to a month), resource_limit_mb.
 -->
 {% extends "base_app.html" %}
 
 {% block title %}{% if resource %}Edit{% else %}New{% endif %} resource{% endblock %}
-{% block page_title %}{% if resource %}Edit{% else %}New{% endif %} {% if resource_type == 'monthly' %}theme file{% elif resource_type == 'weekly' %}weekly presentation{% else %}general resource{% endif %}{% endblock %}
+{% block page_title %}{% if resource %}Edit{% else %}New{% endif %} {% if resource_type == 'monthly' %}picture{% elif resource_type == 'weekly' %}weekly presentation{% else %}general resource{% endif %}{% endblock %}
 
 {% block content %}
 {% if resource_type == 'monthly' %}
   {% url 'resources:theme_detail' theme.pk as back_url %}
-  {% include 'includes/breadcrumb.html' with parent_label=theme.title parent_url=back_url current='Theme file' %}
+  {% include 'includes/breadcrumb.html' with parent_label=theme.title parent_url=back_url current='Picture' %}
 {% elif resource_type == 'weekly' %}
-  {% url 'resources:weekly_list' as back_url %}
-  {% include 'includes/breadcrumb.html' with parent_label='Weekly presentations' parent_url=back_url current='Presentation' %}
+  {% if theme %}
+    {% url 'resources:theme_detail' theme.pk as back_url %}
+    {% include 'includes/breadcrumb.html' with parent_label=theme.title parent_url=back_url current='Presentation' %}
+  {% else %}
+    {% url 'resources:weekly_list' as back_url %}
+    {% include 'includes/breadcrumb.html' with parent_label='Weekly presentations' parent_url=back_url current='Presentation' %}
+  {% endif %}
 {% else %}
   {% url 'resources:general_list' as back_url %}
   {% include 'includes/breadcrumb.html' with parent_label='General resources' parent_url=back_url current='Resource' %}
@@ -27,13 +32,13 @@ Context: form, resource_type (monthly, weekly, or general), resource, and theme 
   {% csrf_token %}
   {% if form.non_field_errors %}<div class="rounded-md border border-error p-3 text-sm text-error" role="alert">{% for error in form.non_field_errors %}<p>{{ error }}</p>{% endfor %}</div>{% endif %}
   {% if resource_type == 'monthly' %}
-    <div><label class="label" for="{{ form.kind.id_for_label }}">File type</label>{{ form.kind }}{% for error in form.kind.errors %}<p class="field-error">{{ error }}</p>{% endfor %}</div>
+    <div><label class="label" for="{{ form.kind.id_for_label }}">Picture type</label>{{ form.kind }}{% for error in form.kind.errors %}<p class="field-error">{{ error }}</p>{% endfor %}</div>
     <div><label class="label" for="{{ form.title.id_for_label }}">Title</label>{{ form.title }}{% for error in form.title.errors %}<p class="field-error">{{ error }}</p>{% endfor %}</div>
     <div><label class="label" for="{{ form.description.id_for_label }}">Description</label>{{ form.description }}{% for error in form.description.errors %}<p class="field-error">{{ error }}</p>{% endfor %}</div>
   {% elif resource_type == 'weekly' %}
     <div><label class="label" for="{{ form.title.id_for_label }}">Title</label>{{ form.title }}{% for error in form.title.errors %}<p class="field-error">{{ error }}</p>{% endfor %}</div>
     <div><label class="label" for="{{ form.week_start.id_for_label }}">Week start</label>{{ form.week_start }}{% for error in form.week_start.errors %}<p class="field-error">{{ error }}</p>{% endfor %}</div>
-    <div><label class="label" for="{{ form.monthly_theme.id_for_label }}">Monthly theme</label>{{ form.monthly_theme }}{% for error in form.monthly_theme.errors %}<p class="field-error">{{ error }}</p>{% endfor %}</div>
+    <div><label class="label" for="{{ form.monthly_theme.id_for_label }}">Month</label>{{ form.monthly_theme }}{% for error in form.monthly_theme.errors %}<p class="field-error">{{ error }}</p>{% endfor %}</div>
     <div><label class="label" for="{{ form.description.id_for_label }}">Description</label>{{ form.description }}{% for error in form.description.errors %}<p class="field-error">{{ error }}</p>{% endfor %}</div>
   {% else %}
     <div><label class="label" for="{{ form.title.id_for_label }}">Title</label>{{ form.title }}{% for error in form.title.errors %}<p class="field-error">{{ error }}</p>{% endfor %}</div>
@@ -41,10 +46,17 @@ Context: form, resource_type (monthly, weekly, or general), resource, and theme 
     <div><label class="label" for="{{ form.description.id_for_label }}">Description</label>{{ form.description }}{% for error in form.description.errors %}<p class="field-error">{{ error }}</p>{% endfor %}</div>
   {% endif %}
   <div>
+    {% if resource_type == 'monthly' and resource and resource.is_image %}
+      <img src="{% url 'resources:monthly_resource_image' resource.pk %}?v={{ resource.updated_at|date:'U' }}" alt="Current picture: {{ resource.title }}" class="mb-3 max-h-64 rounded-lg border border-border">
+    {% endif %}
     {% if resource and resource.original_filename %}<p class="mb-2 text-sm text-txt-secondary">Current file: {{ resource.original_filename }}</p>{% endif %}
-    <label class="label" for="{{ form.file.id_for_label }}">{% if resource %}Replace file{% else %}File{% endif %}</label>
+    <label class="label" for="{{ form.file.id_for_label }}">{% if resource_type == 'monthly' %}{% if resource %}Replace picture{% else %}Picture{% endif %}{% else %}{% if resource %}Replace file{% else %}File{% endif %}{% endif %}</label>
     {{ form.file }}
-    <p class="field-help">PDF, PPTX, DOCX or XLSX. Maximum size: {{ resource_limit_mb }} MB.</p>
+    {% if resource_type == 'monthly' %}
+      <p class="field-help">JPG, PNG or WebP. Older PDF, PPTX, DOCX and XLSX files are still accepted. Maximum size: {{ resource_limit_mb }} MB.</p>
+    {% else %}
+      <p class="field-help">PDF, PPTX, DOCX or XLSX. Maximum size: {{ resource_limit_mb }} MB.</p>
+    {% endif %}
     {% for error in form.file.errors %}<p class="field-error">{{ error }}</p>{% endfor %}
   </div>
   <div class="flex flex-wrap gap-3">

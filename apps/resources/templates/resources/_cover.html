@@ -1,0 +1,14 @@
+<!--
+resources/_cover.html
+A month's cover picture, or a quiet placeholder with the month name when none was uploaded.
+The picture comes from a permission-checked view, so a draft month never leaks its cover.
+Usage: include with theme=theme and ratio_class="aspect-video"
+Context: theme (MonthlyTheme), ratio_class (Tailwind aspect class).
+-->
+<div class="{{ ratio_class }} overflow-hidden bg-surface-alt">
+  {% if theme.has_cover %}
+    <img src="{% url 'resources:theme_cover' theme.pk %}?v={{ theme.updated_at|date:'U' }}" alt="" class="size-full object-cover" loading="lazy">
+  {% else %}
+    <div class="flex size-full items-center justify-center px-4 text-center text-sm text-txt-secondary">{{ theme.month|date:"F Y" }}</div>
+  {% endif %}
+</div>

@@ -7,6 +7,9 @@ app_name = "resources"
 
 urlpatterns = [
     path("", views.library, name="list"),
+    path("months/<int:pk>/", views.library_month, name="month"),
+    path("months/<int:pk>/cover/", views.theme_cover, name="theme_cover"),
+    path("monthly-files/<int:pk>/image/", views.monthly_resource_image, name="monthly_resource_image"),
     path("monthly-files/<int:pk>/download/", views.monthly_resource_download, name="monthly_resource_download"),
     path("weekly/<int:pk>/download/", views.weekly_powerpoint_download, name="weekly_download"),
     path("general/<int:pk>/download/", views.general_resource_download, name="general_download"),
@@ -19,6 +22,7 @@ urlpatterns = [
     path("manage/themes/<int:pk>/restore/", views.theme_restore, name="theme_restore"),
     path("manage/themes/<int:pk>/delete/", views.theme_delete, name="theme_delete"),
     path("manage/themes/<int:theme_pk>/files/new/", views.monthly_resource_create, name="monthly_resource_create"),
+    path("manage/themes/<int:theme_pk>/files/upload/", views.monthly_resource_bulk_create, name="monthly_resource_bulk_create"),
     path("manage/monthly-files/<int:pk>/edit/", views.monthly_resource_edit, name="monthly_resource_edit"),
     path("manage/monthly-files/<int:pk>/delete/", views.monthly_resource_delete, name="monthly_resource_delete"),
     path("manage/weekly/", views.weekly_list, name="weekly_list"),

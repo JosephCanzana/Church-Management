@@ -1,22 +1,22 @@
 <!--
 resources/manage/theme_form.html
-Create or edit one monthly theme.
+Create or edit one month, including its cover picture.
 Extends base_app.html. Blocks filled: title, page_title, content.
-Context: form (MonthlyThemeForm), theme (existing MonthlyTheme or None).
+Context: form (MonthlyThemeForm), theme (existing MonthlyTheme or None), picture_limit_mb.
 -->
 {% extends "base_app.html" %}
 
-{% block title %}{% if theme %}Edit theme{% else %}New theme{% endif %}{% endblock %}
-{% block page_title %}{% if theme %}Edit monthly theme{% else %}New monthly theme{% endif %}{% endblock %}
+{% block title %}{% if theme %}Edit month{% else %}New month{% endif %}{% endblock %}
+{% block page_title %}{% if theme %}Edit month{% else %}New month{% endif %}{% endblock %}
 
 {% block content %}
 {% url 'resources:theme_list' as list_url %}
-{% if theme %}{% include 'includes/breadcrumb.html' with parent_label='Monthly themes' parent_url=list_url current='Edit theme' %}
-{% else %}{% include 'includes/breadcrumb.html' with parent_label='Monthly themes' parent_url=list_url current='New theme' %}{% endif %}
+{% if theme %}{% include 'includes/breadcrumb.html' with parent_label='Monthly themes' parent_url=list_url current='Edit month' %}
+{% else %}{% include 'includes/breadcrumb.html' with parent_label='Monthly themes' parent_url=list_url current='New month' %}{% endif %}
 
-<form method="post" class="card mt-5 max-w-2xl space-y-5"
-      {% if theme %}data-confirm="Save changes to this monthly theme?" data-confirm-title="Save theme changes?" data-confirm-text="Save changes"
-      {% else %}data-confirm="Create this monthly theme as a draft?" data-confirm-title="Create monthly theme?" data-confirm-text="Create theme"{% endif %}>
+<form method="post" enctype="multipart/form-data" class="card mt-5 max-w-2xl space-y-5"
+      {% if theme %}data-confirm="Save changes to this month?" data-confirm-title="Save month changes?" data-confirm-text="Save changes"
+      {% else %}data-confirm="Create this month as a draft?" data-confirm-title="Create month?" data-confirm-text="Create month"{% endif %}>
   {% csrf_token %}
   {% if form.non_field_errors %}<div class="rounded-md border border-error p-3 text-sm text-error" role="alert">{% for error in form.non_field_errors %}<p>{{ error }}</p>{% endfor %}</div>{% endif %}
   <div>
@@ -33,6 +33,24 @@ Context: form (MonthlyThemeForm), theme (existing MonthlyTheme or None).
     <label class="label" for="{{ form.description.id_for_label }}">Description</label>
     {{ form.description }}
     {% for error in form.description.errors %}<p class="field-error">{{ error }}</p>{% endfor %}
+  </div>
+  <div x-data="{ preview: null }"
+       @change="preview = ($event.target.files && $event.target.files[0]) ? URL.createObjectURL($event.target.files[0]) : null">
+    <label class="label" for="{{ form.cover.id_for_label }}">{% if theme and theme.has_cover %}Replace cover picture{% else %}Cover picture{% endif %}</label>
+    {% if theme and theme.has_cover %}
+      <div class="mb-3 max-w-md overflow-hidden rounded-lg border border-border">
+        {% include 'resources/_cover.html' with theme=theme ratio_class='aspect-video' %}
+      </div>
+    {% endif %}
+    <template x-if="preview">
+      <img :src="preview" alt="Preview of the new cover picture" class="mb-3 aspect-video w-full max-w-md rounded-lg border border-border object-cover">
+    </template>
+    {{ form.cover }}
+    <p class="field-help">JPG, PNG or WebP. Maximum size: {{ picture_limit_mb }} MB. It shows on the month card and at the top of the month.</p>
+    {% for error in form.cover.errors %}<p class="field-error">{{ error }}</p>{% endfor %}
+    {% if theme and theme.has_cover %}
+      <label class="mt-2 flex min-h-11 items-center gap-2 text-sm">{{ form.remove_cover }} {{ form.remove_cover.label }}</label>
+    {% endif %}
   </div>
   <div class="flex flex-wrap gap-3">
     <button type="submit" class="btn btn-primary">{% if theme %}Save changes{% else %}Create draft{% endif %}</button>

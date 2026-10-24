@@ -136,7 +136,7 @@ moving or reorganizing app code.
 | `bible` | `bible_verse`, `bible_esv_cache`, `daily_verse`, `bible_chapter_read`, `bible_bookmark` | Reader (KJV, Ang Dating Biblia, ESV), `import_bible`, ESV client with limits, locks and cache, version picker, daily verse (`daily_verse.py`, `seed_daily_verses`), `record_chapter_read()`, `finish_chapter()`, bookmark |
 | `faith` | `goal`, `goal_checkin`, `user_daily_activity`, `user_streak` | Goals, check-ins, schedule rules (`schedule.py`), streak engine (`streaks.py`), stats, read-only overview pictures (`overview.py`), partner view (`partner.py`), daily-open middleware, chapter-read listener, `complete_ended_goals`, `send_goal_reminders` |
 | `events` | `event` | Event CRUD, change/cancel notices, `send_event_reminders` |
-| `resources` | `monthly_theme`, `monthly_resource`, `weekly_powerpoint`, `general_resource` | Resource permissions (`permissions.py`) and transactional create/edit/publish/archive/restore/delete services (`services.py`); monthly themes + files, weekly PPT, general resources |
+| `resources` | `monthly_theme`, `monthly_resource`, `weekly_powerpoint`, `general_resource` | Resource permissions (`permissions.py`) and transactional create/edit/publish/archive/restore/delete services (`services.py`); a month with its cover picture, resource pictures and weekly presentations, plus standalone general resources |
 | `attendance` | `attendance`, `attendance_member`, `attendance_first_timer` | Sheets, draft services (ticks, first timers, search), summary, upload (freeze counts, update `last_attended_at`), reopen (admin) |
 | `tithes` | `tithes_offering`, `tithe_entry`, `tithe_entry_giver`, `tithe_household`, `tithe_household_member`, `tithes_bypass_request` | Entries and co-givers, live totals, denomination count, finalize and bypass flow, reopen, households, print page, "My tithes" (see Tithes) |
 | `buddy` | `user_buddy`, `buddy_request`, `buddy_note` | Request/accept (transactional one-partner check), messages, nudges and "prayed" notes (`messaging.py`), end partnership, view partner goals, `close_stale_end_requests` |
@@ -147,31 +147,45 @@ Before adding a model, put it in the app whose data it shares a lifecycle
 with. Only create a new app if the answer is "none".
 
 ### Resources
-- Management is admin and super-admin only, shown as the "Resources" tab of the Website hub (monthly, weekly and
-  general lists keep their own switcher under it). Every mutating function in
-  `apps/resources/services.py` calls `require_resource_manager`, runs inside
-  `transaction.atomic()`, and logs the change through `audit.log_action()`.
-- A monthly theme is dated on the first of a month and unique for that month.
-  Only active, published themes and their files are visible to coordinators
-  and members; managers can inspect drafts and archived records. Coordinators
-  can also view active weekly presentations and general resources; members
-  cannot.
-- Monthly files are `MonthlyResource` rows. Weekly presentations and general
-  resources each have one required file. Audit entries contain record ids and
-  changed field names, never file names or contents.
-- The management screens are under `/resources/manage/` in the `resources`
-  namespace. Admin and super-admin share the screens; only the super-admin can
-  permanently delete archived records. Mutations are POST-only, use the global
+- **Shape:** a month (`MonthlyTheme`) holds everything for that month: an optional cover picture, its resource
+  pictures (`MonthlyResource`) and its weekly presentations (`WeeklyPowerpoint.monthly_theme`). General resources
+  stay standalone (no month). Management is admin and super-admin only, shown as the "Resources" tab of the Website
+  hub; its switcher has two entries, Monthly themes and General resources. Weekly presentations have no switcher
+  entry: they are added, edited and archived on the month page (`/resources/manage/weekly/` stays as the full index,
+  for archived and not-yet-assigned rows). Every mutating function in `apps/resources/services.py` calls
+  `require_resource_manager`, runs inside `transaction.atomic()`, and logs the change through `audit.log_action()`.
+- A monthly theme is dated on the first of a month and unique for that month. Only active, published themes and their
+  pictures are visible to coordinators and members; managers can inspect drafts and archived records
+  (`can_view_monthly_theme` in `views.py`). Coordinators can also see a month's active weekly presentations and the
+  general resources; members cannot.
+- **Cover picture:** `cover_image` + `cover_original_filename` on `monthly_theme` (JPG, PNG, WebP, `PHOTO_UPLOAD_MAX_MB`).
+  It is stored in PRIVATE storage like every resource file and served inline by `theme_cover`
+  (`/resources/months/<id>/cover/`), so a draft month never leaks its cover. Create/edit forms can set, replace
+  (`cover`) or clear it (`remove_cover`); a new upload wins over remove. `MonthlyTheme.has_cover` tells the templates.
+  Showing the cover on the public landing page is NOT built (it would need a public copy).
+- **Resource pictures:** `MonthlyResource` rows are now mainly pictures (`kind`: background, logo, wallpaper, other).
+  `validate_monthly_file` accepts a picture OR a document, so rows from before pictures stay valid.
+  `MonthlyResource.is_image` drives thumbnails; pictures are served inline by `monthly_resource_image`
+  (`/resources/monthly-files/<id>/image/`, 404 for documents) and any row can be downloaded through
+  `monthly_resource_download`. Adding: `create_monthly_resources` / `monthly_resource_bulk_create`
+  (`manage/themes/<id>/files/upload/`, POST, up to 20 pictures per upload, one transaction per file, the title comes
+  from the file name, bad files are reported and never block the rest). Edit and delete one picture keep the existing
+  screens; delete removes the row and its file (there is no archive for pictures).
+- **Weekly presentations:** each has one required file and, from the forms, a REQUIRED month (the column stays
+  nullable for old rows). `weekly_create` accepts `?theme=<id>` to start inside a month; saving returns to that month.
+  The archive button on a month page posts `from_theme=1` so it returns there.
+- Audit entries contain record ids and changed field names, never file names or contents.
+- The management screens are under `/resources/manage/` in the `resources` namespace. Admin and super-admin share the
+  screens; only the super-admin can permanently delete archived records. Mutations are POST-only, use the global
   confirmation dialog, and report results through Django messages/toasts.
-- Templates live in `apps/resources/templates/resources/manage/`; list screens
-  filter by title/status and paginate. The library route remains separate and
-  is at `/resources/`: coordinators see published monthly themes, active weekly
-  presentations and active general resources; members see published monthly
-  themes only. Every document download uses a permission-checked view and the
-  original filename; resource storage has no public URL.
-- Run `apps.resources.tests.test_permissions`,
-  `apps.resources.tests.test_services`, `apps.resources.tests.test_views`, and
-  `apps.resources.tests.test_downloads` when changing these rules or screens.
+- Templates live in `apps/resources/templates/resources/manage/` (month grid `theme_list.html`, month page
+  `theme_detail.html`, `theme_form.html`, `resource_form.html`, the two lists). `resources/_cover.html` is the shared
+  cover-or-placeholder include. The library is at `/resources/`: published months as cover cards for every role, plus
+  general resources for coordinators and above; `/resources/months/<id>/` (`resources:month`, `month.html`) shows one
+  month's pictures and, for coordinators and above, its weekly presentations. Every document download uses a
+  permission-checked view and the original filename; resource storage has no public URL.
+- Run `apps.resources.tests.test_permissions`, `apps.resources.tests.test_services`, `apps.resources.tests.test_views`,
+  and `apps.resources.tests.test_downloads` when changing these rules or screens.
 
 ### Landing management
 - Admin and super-admin manage landing text under `/manage/landing/` (the "Landing" tab of the Website hub).

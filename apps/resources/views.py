@@ -1,11 +1,13 @@
-"""Manager-only views for creating and maintaining church resources."""
+"""Views for the resources library and for managing months, pictures and presentations."""
+import mimetypes
+
 from django.conf import settings
 from django.contrib import messages
 from django.core.paginator import Paginator
-from django.db.models import Q
+from django.db.models import Count, Q
 from django.http import FileResponse, Http404
 from django.shortcuts import get_object_or_404, redirect, render
-from django.views.decorators.cache import never_cache
+from django.views.decorators.cache import cache_control, never_cache
 from django.views.decorators.http import require_http_methods, require_POST
 
 from apps.accounts.decorators import role_required
@@ -15,6 +17,7 @@ from apps.core.services import ServiceError
 from . import services
 from .forms import (
 	GeneralResourceForm,
+	MonthlyPictureUploadForm,
 	MonthlyResourceForm,
 	MonthlyThemeForm,
 	ResourceFilterForm,
@@ -35,31 +38,92 @@ THEME_SORTS = (("-month", "Newest month"), ("month", "Oldest month"), ("title", 
 WEEKLY_SORTS = (("-week_start", "Newest week"), ("week_start", "Oldest week"), ("title", "Title, A to Z"))
 GENERAL_SORTS = (("title", "Title, A to Z"), ("-title", "Title, Z to A"), ("-created_at", "Newest first"))
 APP_ROLES = (Role.SUPER_ADMIN, Role.ADMIN, Role.COORDINATOR, Role.MEMBER)
+MANAGER_ROLES = (Role.SUPER_ADMIN, Role.ADMIN)
+SHARED_ROLES = (Role.SUPER_ADMIN, Role.ADMIN, Role.COORDINATOR)  # weekly presentations + general resources
 
 
 @role_required(*APP_ROLES)
 @never_cache
 @require_http_methods(["GET"])
 def library(request):
-	"""Show published monthly themes and the active resources available to this role."""
+	"""Show published months as picture cards, plus general resources for leaders."""
 	themes = MonthlyTheme.objects.filter(
 		archived_at__isnull=True,
 		is_published=True,
-	).prefetch_related("resources")
-	can_view_shared_resources = request.user.role in (
-		Role.SUPER_ADMIN, Role.ADMIN, Role.COORDINATOR,
-	)
-	weekly = WeeklyPowerpoint.objects.none()
+	).annotate(picture_count=Count("resources", distinct=True)).order_by("-month")
+	can_view_shared_resources = request.user.role in SHARED_ROLES
 	general = GeneralResource.objects.none()
 	if can_view_shared_resources:
-		weekly = WeeklyPowerpoint.objects.filter(archived_at__isnull=True).select_related("monthly_theme")
-		general = GeneralResource.objects.filter(archived_at__isnull=True)
+		general = GeneralResource.objects.filter(archived_at__isnull=True).order_by("title")
 	return render(request, "resources/library.html", {
 		"themes": themes,
-		"weekly_presentations": weekly,
 		"general_resources": general,
 		"can_view_shared_resources": can_view_shared_resources,
 	})
+
+
+def can_view_monthly_theme(user, theme):
+	"""Managers see every month; everyone else only active, published ones."""
+	if user.role in MANAGER_ROLES:
+		return True
+	return theme.is_published and not theme.is_archived
+
+
+@role_required(*APP_ROLES)
+@never_cache
+@require_http_methods(["GET"])
+def library_month(request, pk):
+	"""Show one month: its cover, pictures and (for leaders) weekly presentations."""
+	theme = get_object_or_404(MonthlyTheme, pk=pk)
+	if not can_view_monthly_theme(request.user, theme):
+		raise Http404
+	can_view_weekly = request.user.role in SHARED_ROLES
+	weekly = WeeklyPowerpoint.objects.none()
+	if can_view_weekly:
+		weekly = theme.weekly_powerpoints.filter(archived_at__isnull=True).order_by("week_start", "pk")
+	return render(request, "resources/month.html", {
+		"theme": theme,
+		"resources": theme.resources.order_by("kind", "title", "pk"),
+		"weekly_presentations": weekly,
+		"can_view_weekly": can_view_weekly,
+	})
+
+
+def _inline_private_file(stored_file, can_view):
+	"""Stream an authorized private picture inline so an img tag can show it."""
+	if not can_view or not stored_file or not stored_file.name:
+		raise Http404
+	try:
+		if not stored_file.storage.exists(stored_file.name):
+			raise Http404
+		handle = stored_file.open("rb")
+	except (FileNotFoundError, OSError, ValueError) as error:
+		raise Http404 from error
+	content_type = mimetypes.guess_type(stored_file.name)[0] or "application/octet-stream"
+	response = FileResponse(handle, content_type=content_type)
+	response["Content-Disposition"] = "inline"
+	response["X-Content-Type-Options"] = "nosniff"
+	return response
+
+
+@role_required(*APP_ROLES)
+@cache_control(private=True, max_age=300)
+@require_http_methods(["GET"])
+def theme_cover(request, pk):
+	"""Serve a month's cover picture to anyone allowed to see that month."""
+	theme = get_object_or_404(MonthlyTheme, pk=pk)
+	return _inline_private_file(theme.cover_image, can_view_monthly_theme(request.user, theme))
+
+
+@role_required(*APP_ROLES)
+@cache_control(private=True, max_age=300)
+@require_http_methods(["GET"])
+def monthly_resource_image(request, pk):
+	"""Serve one monthly picture inline; documents are download-only."""
+	resource = get_object_or_404(MonthlyResource.objects.select_related("monthly_theme"), pk=pk)
+	if not resource.is_image:
+		raise Http404
+	return _inline_private_file(resource.file, can_view_monthly_resource(request.user, resource))
 
 
 def _download_private_file(request, record, can_view):
@@ -158,12 +222,19 @@ def _run_action(request, pk, service, *, done, unchanged, target, to_list=False)
 @never_cache
 @require_http_methods(["GET"])
 def theme_list(request):
-	"""Search, filter, sort, and page through monthly themes."""
+	"""Search, filter, sort, and page through months shown as cover cards."""
 	form = ResourceFilterForm(request.GET, sort_choices=THEME_SORTS)
 	form.is_valid()
 	data = form.cleaned_data
 	status = data.get("status") or "active"
-	queryset = MonthlyTheme.objects.all()
+	queryset = MonthlyTheme.objects.annotate(
+		picture_count=Count("resources", distinct=True),
+		weekly_count=Count(
+			"weekly_powerpoints",
+			filter=Q(weekly_powerpoints__archived_at__isnull=True),
+			distinct=True,
+		),
+	)
 	if status == "active":
 		queryset = queryset.filter(archived_at__isnull=True)
 	elif status == "archived":
@@ -172,56 +243,79 @@ def theme_list(request):
 		queryset = queryset.filter(Q(title__icontains=data["q"]) | Q(description__icontains=data["q"]))
 	sort = data.get("sort") or THEME_SORTS[0][0]
 	queryset = queryset.order_by(sort, "pk")
-	return render(request, "resources/manage/theme_list.html", _list_context(request, form, queryset, status))
+	context = _list_context(request, form, queryset, status)
+	context["unassigned_weekly"] = WeeklyPowerpoint.objects.filter(
+		archived_at__isnull=True, monthly_theme__isnull=True,
+	).count()
+	return render(request, "resources/manage/theme_list.html", context)
 
 
 @manager_required
 @never_cache
 @require_http_methods(["GET", "POST"])
 def theme_create(request):
-	"""Show and process a new monthly theme form."""
-	form = MonthlyThemeForm(request.POST or None)
+	"""Show and process a new month form, including its optional cover picture."""
+	form = MonthlyThemeForm(request.POST or None, request.FILES or None)
 	if request.method == "POST" and form.is_valid():
+		data = form.cleaned_data
 		try:
-			theme = services.create_monthly_theme(request.user, **form.cleaned_data, request=request)
+			theme = services.create_monthly_theme(
+				request.user, month=data["month"], title=data["title"],
+				description=data["description"], cover=data.get("cover") or None, request=request,
+			)
 		except ServiceError as error:
 			form.add_error(None, str(error))
 		else:
 			messages.success(request, "Monthly theme created as a draft.")
 			return redirect("resources:theme_detail", pk=theme.pk)
-	return render(request, "resources/manage/theme_form.html", {"form": form, "theme": None})
+	return render(request, "resources/manage/theme_form.html", {
+		"form": form, "theme": None, "picture_limit_mb": settings.PHOTO_UPLOAD_MAX_MB,
+	})
 
 
 @manager_required
 @never_cache
 @require_http_methods(["GET", "POST"])
 def theme_edit(request, pk):
-	"""Show and process edits for an active monthly theme."""
+	"""Show and process edits for an active month, including its cover picture."""
 	theme = get_object_or_404(MonthlyTheme, pk=pk)
 	if theme.is_archived:
 		messages.error(request, "Restore this monthly theme before editing it.")
 		return redirect("resources:theme_detail", pk=theme.pk)
-	form = MonthlyThemeForm(request.POST or None, instance=theme)
+	form = MonthlyThemeForm(request.POST or None, request.FILES or None, instance=theme)
 	if request.method == "POST" and form.is_valid():
+		data = form.cleaned_data
+		extra = {"cover": data["cover"]} if data.get("cover") else {}
 		try:
-			updated = services.update_monthly_theme(request.user, theme.pk, **form.cleaned_data, request=request)
+			updated = services.update_monthly_theme(
+				request.user, theme.pk, month=data["month"], title=data["title"],
+				description=data["description"], remove_cover=data.get("remove_cover", False),
+				request=request, **extra,
+			)
 		except ServiceError as error:
 			form.add_error(None, str(error))
 		else:
 			messages.success(request, "Monthly theme updated.") if updated else messages.info(request, "No changes to save.")
 			return redirect("resources:theme_detail", pk=theme.pk)
-	return render(request, "resources/manage/theme_form.html", {"form": form, "theme": theme})
+	return render(request, "resources/manage/theme_form.html", {
+		"form": form, "theme": theme, "picture_limit_mb": settings.PHOTO_UPLOAD_MAX_MB,
+	})
 
 
 @manager_required
 @never_cache
 @require_http_methods(["GET"])
 def theme_detail(request, pk):
-	"""Show theme state, attached files, and permitted management actions."""
+	"""Show one month: cover, resource pictures, weekly presentations and actions."""
 	theme = get_object_or_404(MonthlyTheme, pk=pk)
+	weekly = theme.weekly_powerpoints.filter(archived_at__isnull=True).order_by("week_start", "pk")
 	return render(request, "resources/manage/theme_detail.html", {
 		"theme": theme,
 		"resources": theme.resources.order_by("kind", "title", "pk"),
+		"weekly_presentations": weekly,
+		"archived_weekly_count": theme.weekly_powerpoints.filter(archived_at__isnull=False).count(),
+		"upload_form": MonthlyPictureUploadForm(),
+		"picture_limit_mb": settings.PHOTO_UPLOAD_MAX_MB,
 		"can_force_delete": request.user.role == Role.SUPER_ADMIN,
 	})
 
@@ -316,6 +410,36 @@ def monthly_resource_create(request, theme_pk):
 
 @manager_required
 @never_cache
+@require_POST
+def monthly_resource_bulk_create(request, theme_pk):
+	"""Add several pictures to a month at once; report what was and was not saved."""
+	theme = get_object_or_404(MonthlyTheme, pk=theme_pk)
+	form = MonthlyPictureUploadForm(request.POST, request.FILES)
+	if not form.is_valid():
+		for errors in form.errors.values():
+			for error in errors:
+				messages.error(request, error)
+		return redirect("resources:theme_detail", pk=theme.pk)
+	try:
+		created, failed = services.create_monthly_resources(
+			request.user, theme.pk, kind=form.cleaned_data["kind"],
+			files=form.cleaned_data["files"], request=request,
+		)
+	except ServiceError as error:
+		messages.error(request, str(error))
+		return redirect("resources:theme_detail", pk=theme.pk)
+	if created:
+		count = len(created)
+		messages.success(request, f"{count} picture{'s' if count != 1 else ''} added.")
+	for name, reason in failed[:3]:
+		messages.error(request, f"{name} was not added: {reason}")
+	if len(failed) > 3:
+		messages.error(request, f"{len(failed) - 3} more pictures were not added.")
+	return redirect("resources:theme_detail", pk=theme.pk)
+
+
+@manager_required
+@never_cache
 @require_http_methods(["GET", "POST"])
 def monthly_resource_edit(request, pk):
 	"""Edit the details or replace a file attached to a monthly theme."""
@@ -374,28 +498,38 @@ def weekly_list(request):
 	return render(request, "resources/manage/weekly_list.html", _list_context(request, form, queryset, status))
 
 
+def _weekly_return(theme_id):
+	"""Send the manager back to the month page, or to the full list when unassigned."""
+	if theme_id:
+		return redirect("resources:theme_detail", pk=theme_id)
+	return redirect("resources:weekly_list")
+
+
 @manager_required
 @never_cache
 @require_http_methods(["GET", "POST"])
 def weekly_create(request):
-	"""Create a weekly presentation."""
-	form = WeeklyPowerpointForm(request.POST or None, request.FILES or None)
+	"""Create a weekly presentation; ?theme=<id> starts it inside that month."""
+	theme_param = request.GET.get("theme", "")
+	theme = MonthlyTheme.objects.filter(pk=theme_param).first() if theme_param.isdigit() else None
+	initial = {"monthly_theme": theme.pk} if theme else {}
+	form = WeeklyPowerpointForm(request.POST or None, request.FILES or None, initial=initial)
 	if request.method == "POST" and form.is_valid():
 		data = form.cleaned_data
-		theme = data["monthly_theme"]
+		chosen = data["monthly_theme"]
 		try:
-			item = services.create_weekly_powerpoint(
+			services.create_weekly_powerpoint(
 				request.user, title=data["title"], description=data["description"],
-				week_start=data["week_start"], monthly_theme_id=theme.pk if theme else None,
+				week_start=data["week_start"], monthly_theme_id=chosen.pk,
 				file=data["file"], request=request,
 			)
 		except ServiceError as error:
 			form.add_error(None, str(error))
 		else:
 			messages.success(request, "Weekly presentation created.")
-			return redirect("resources:weekly_list")
+			return _weekly_return(chosen.pk)
 	return render(request, "resources/manage/resource_form.html", {
-		"form": form, "resource_type": "weekly", "resource": None,
+		"form": form, "resource_type": "weekly", "resource": None, "theme": theme,
 		"resource_limit_mb": settings.RESOURCE_UPLOAD_MAX_MB,
 	})
 
@@ -404,17 +538,17 @@ def weekly_create(request):
 @never_cache
 @require_http_methods(["GET", "POST"])
 def weekly_edit(request, pk):
-	"""Edit a weekly presentation and optionally replace its file."""
-	item = get_object_or_404(WeeklyPowerpoint, pk=pk)
+	"""Edit a weekly presentation and optionally replace its file or move it to another month."""
+	item = get_object_or_404(WeeklyPowerpoint.objects.select_related("monthly_theme"), pk=pk)
 	if item.is_archived:
 		messages.error(request, "Restore this weekly presentation before editing it.")
-		return redirect("resources:weekly_list")
+		return _weekly_return(item.monthly_theme_id)
 	form = WeeklyPowerpointForm(request.POST or None, request.FILES or None, instance=item)
 	if request.method == "POST" and form.is_valid():
 		data = form.cleaned_data
 		changes = {key: data[key] for key in ("title", "description", "week_start")}
-		theme = data["monthly_theme"]
-		changes["monthly_theme_id"] = theme.pk if theme else None
+		chosen = data["monthly_theme"]
+		changes["monthly_theme_id"] = chosen.pk
 		if data.get("file"):
 			changes["file"] = data["file"]
 		try:
@@ -423,9 +557,9 @@ def weekly_edit(request, pk):
 			form.add_error(None, str(error))
 		else:
 			messages.success(request, "Weekly presentation updated.")
-			return redirect("resources:weekly_list")
+			return _weekly_return(chosen.pk)
 	return render(request, "resources/manage/resource_form.html", {
-		"form": form, "resource_type": "weekly", "resource": item,
+		"form": form, "resource_type": "weekly", "resource": item, "theme": item.monthly_theme,
 		"resource_limit_mb": settings.RESOURCE_UPLOAD_MAX_MB,
 	})
 
@@ -495,7 +629,7 @@ def general_edit(request, pk):
 	})
 
 
-def _resource_action(request, pk, service, entity, *, done, unchanged):
+def _resource_action(request, pk, service, entity, *, done, unchanged, theme_id=None):
 	"""Run a resource archive/restore/delete action and choose its return page."""
 	try:
 		changed = service(request.user, pk, request=request)
@@ -503,6 +637,8 @@ def _resource_action(request, pk, service, entity, *, done, unchanged):
 		messages.error(request, str(error))
 	else:
 		messages.success(request, done) if changed else messages.info(request, unchanged)
+	if theme_id:
+		return redirect("resources:theme_detail", pk=theme_id)
 	return redirect(f"resources:{entity}_list")
 
 
@@ -510,9 +646,13 @@ def _resource_action(request, pk, service, entity, *, done, unchanged):
 @never_cache
 @require_POST
 def weekly_archive(request, pk):
-	"""Archive a weekly presentation."""
+	"""Archive a weekly presentation; from a month page, return to that month."""
+	theme_id = None
+	if request.POST.get("from_theme") == "1":
+		theme_id = WeeklyPowerpoint.objects.filter(pk=pk).values_list("monthly_theme_id", flat=True).first()
 	return _resource_action(request, pk, services.archive_weekly_powerpoint, "weekly",
-							done="Weekly presentation archived.", unchanged="Weekly presentation is already archived.")
+							done="Weekly presentation archived.", unchanged="Weekly presentation is already archived.",
+							theme_id=theme_id)
 
 
 @manager_required

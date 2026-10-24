@@ -3,11 +3,41 @@ from datetime import date, datetime
 
 from django import forms
 
-from apps.core.uploads import validate_resource_upload
+from apps.core.uploads import validate_photo_upload, validate_resource_upload
 
-from .models import GeneralResource, MonthlyResource, MonthlyTheme, WeeklyPowerpoint
+from .models import (
+    GeneralResource,
+    MonthlyResource,
+    MonthlyTheme,
+    WeeklyPowerpoint,
+    validate_monthly_file,
+)
 
 ALLOWED_ACCEPT = ".pdf,.pptx,.docx,.xlsx,.png,.jpg,.jpeg,.webp"
+PICTURE_ACCEPT = "image/jpeg,image/png,image/webp"
+MAX_PICTURES_PER_UPLOAD = 20
+
+
+class MultipleFileInput(forms.ClearableFileInput):
+    """File input that lets the browser pick several files at once."""
+    allow_multiple_selected = True
+
+
+class MultipleFileField(forms.FileField):
+    """FileField that validates every selected file and returns a list."""
+
+    def __init__(self, *args, **kwargs):
+        kwargs.setdefault("widget", MultipleFileInput())
+        super().__init__(*args, **kwargs)
+
+    def clean(self, data, initial=None):
+        single_clean = super().clean
+        if isinstance(data, (list, tuple)):
+            if not data:
+                single_clean(None, initial)  # raises the "required" error when the field is required
+                return []
+            return [single_clean(item, initial) for item in data]
+        return [single_clean(data, initial)]
 
 class ResourceFilterForm(forms.Form):
     """Search, status, and sort controls shared by resource management lists."""
@@ -52,6 +82,13 @@ class MonthlyThemeForm(forms.Form):
         required=False,
         widget=forms.Textarea(attrs={"class": "input", "rows": 6}),
     )
+    cover = forms.FileField(
+        required=False,
+        label="Cover picture",
+        validators=[validate_photo_upload],
+        widget=forms.FileInput(attrs={"class": "input", "accept": PICTURE_ACCEPT}),
+    )
+    remove_cover = forms.BooleanField(required=False, label="Remove the current cover picture")
 
     def __init__(self, *args, instance=None, **kwargs):
         if instance is not None and "initial" not in kwargs:
@@ -81,11 +118,33 @@ class _ResourceModelForm(forms.ModelForm):
             existing = field.widget.attrs.get("class", "")
             field.widget.attrs["class"] = f"{existing} input".strip()
 
+class MonthlyPictureUploadForm(forms.Form):
+    """Add several pictures to a month in one go; each becomes its own resource."""
+    kind = forms.ChoiceField(
+        choices=MonthlyResource.Kind.choices,
+        initial=MonthlyResource.Kind.OTHER,
+        label="Picture type",
+        widget=forms.Select(attrs={"class": "input"}),
+    )
+    files = MultipleFileField(
+        label="Pictures",
+        error_messages={"required": "Choose at least one picture."},
+        widget=MultipleFileInput(attrs={"class": "input", "accept": PICTURE_ACCEPT}),
+    )
+
+    def clean_files(self):
+        """Cap how many pictures one upload may carry."""
+        files = self.cleaned_data["files"]
+        if len(files) > MAX_PICTURES_PER_UPLOAD:
+            raise forms.ValidationError(f"Choose up to {MAX_PICTURES_PER_UPLOAD} pictures at a time.")
+        return files
+
+
 class MonthlyResourceForm(_ResourceModelForm):
-    """Edit one optional file attached to a monthly theme."""
+    """Edit one picture (or older document) attached to a monthly theme."""
     file = forms.FileField(
         required=False,
-        validators=[validate_resource_upload],
+        validators=[validate_monthly_file],
         widget=forms.FileInput(attrs={
             "class": "input",
             "accept": ALLOWED_ACCEPT,
@@ -110,9 +169,9 @@ class WeeklyPowerpointForm(_ResourceModelForm):
     )
     monthly_theme = forms.ModelChoiceField(
         queryset=MonthlyTheme.objects.none(),
-        required=False,
-        empty_label="No theme",
-        label="Monthly theme",
+        required=True,
+        empty_label="Choose a month",
+        label="Month",
     )
 
     class Meta:
@@ -125,7 +184,10 @@ class WeeklyPowerpointForm(_ResourceModelForm):
 
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
-        self.fields["monthly_theme"].queryset = MonthlyTheme.objects.filter(archived_at__isnull=True)
+        self.fields["monthly_theme"].queryset = MonthlyTheme.objects.filter(
+            archived_at__isnull=True,
+        ).order_by("-month")
+        self.fields["monthly_theme"].label_from_instance = lambda theme: f"{theme.month:%B %Y}: {theme.title}"
         self.fields["file"].required = self.instance.pk is None
 
 

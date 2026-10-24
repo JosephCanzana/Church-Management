@@ -1,8 +1,8 @@
 <!--
 resources/manage/weekly_list.html
-Manager list of weekly presentations with search, status, sorting, and pagination.
+Manager list of every weekly presentation (the full index; each one also shows inside its month).
 Extends base_app.html. Blocks filled: title, page_title, content.
-The Website hub tab row (Landing | Give page | Resources) sits on top; the row below switches between the three resource lists.
+The Website hub tab row (Landing | Give page | Resources) sits on top. Reached from the months page.
 Context: form (ResourceFilterForm), page (Page of WeeklyPowerpoint), total, status,
 querystring, and active_filters.
 -->
@@ -13,12 +13,10 @@ querystring, and active_filters.
 {% block page_title %}Weekly presentations{% endblock %}
 
 {% block content %}
-<div class="flex flex-wrap items-center justify-between gap-3">
-  <nav class="flex flex-wrap gap-2" aria-label="Resource management">
-    <a href="{% url 'resources:theme_list' %}" class="btn btn-ghost">Monthly themes</a>
-    <a href="{% url 'resources:weekly_list' %}" class="btn btn-secondary" aria-current="page">Weekly presentations</a>
-    <a href="{% url 'resources:general_list' %}" class="btn btn-ghost">General resources</a>
-  </nav>
+{% url 'resources:theme_list' as list_url %}
+{% include 'includes/breadcrumb.html' with parent_label='Monthly themes' parent_url=list_url current='All weekly presentations' %}
+<div class="mt-5 flex flex-wrap items-center justify-between gap-3">
+  <p class="max-w-2xl text-sm text-txt-secondary">Weekly presentations live inside their month. Use this list to find, restore or move any of them.</p>
   <a href="{% url 'resources:weekly_create' %}" class="btn btn-primary">{% include 'includes/icon.html' with name='plus' class='size-4' %} New presentation</a>
 </div>
 <form method="get" action="{% url 'resources:weekly_list' %}" class="mt-5 grid gap-3 rounded-lg border border-border bg-surface p-4 sm:grid-cols-[minmax(12rem,1fr)_10rem_12rem_auto_auto] sm:items-end">
@@ -37,7 +35,7 @@ querystring, and active_filters.
       {% for item in page.object_list %}
       <tr class="hover:bg-surface-alt">
         <td class="whitespace-nowrap px-4 py-3">{{ item.week_start|date:"M j, Y" }}</td>
-        <td class="px-4 py-3"><span class="font-medium">{{ item.title }}</span>{% if item.monthly_theme %}<span class="mt-0.5 block text-xs text-txt-secondary">{{ item.monthly_theme.title }}</span>{% endif %}</td>
+        <td class="px-4 py-3"><span class="font-medium">{{ item.title }}</span>{% if item.monthly_theme %}<a href="{% url 'resources:theme_detail' item.monthly_theme_id %}" class="mt-0.5 block text-xs text-txt-secondary underline">{{ item.monthly_theme.month|date:"F Y" }}: {{ item.monthly_theme.title }}</a>{% else %}<span class="mt-0.5 block text-xs text-txt-primary">Not assigned to a month</span>{% endif %}</td>
         <td class="max-w-56 truncate px-4 py-3 text-txt-secondary">{{ item.original_filename }}</td>
         <td class="px-4 py-3">{% if item.archived_at %}Archived{% else %}Active{% endif %}</td>
         <td class="px-4 py-3"><div class="flex justify-end gap-2">
