@@ -1,69 +1,103 @@
 <!--
-pages/manage/images.html
-Manage the separate Hero carousel and Come as you are gallery photo pools.
-Extends base_app.html. Blocks filled: title, page_title, content.
-Context: hero_images, gallery_images, placement active counts, and active_image_limit.
+  pages/manage/images.html
+  Admin screen for the landing photos (admin and super-admin only), the "Photos" part of the Landing tab.
+  Extends base_app.html. Blocks filled: title, page_title, content.
+  Context variables: photo_groups (tuples of placement, images, live_count, label for the hero carousel
+  and the "Come as you are" gallery), active_image_limit (the most live photos per placement; the public
+  page never shows more).
+  Up and down apply immediately; hide, show and delete ask first (data-confirm). Results come back as
+  toasts through Django messages. An upload into a full placement is saved hidden. Colors use tokens only.
 -->
 {% extends "base_app.html" %}
-{% load ui_tags %}
 
 {% block title %}Landing photos{% endblock %}
-{% block page_title %}Landing page photos{% endblock %}
+{% block page_title %}Landing photos{% endblock %}
 
 {% block content %}
-<div class="mb-5 flex flex-wrap items-center justify-between gap-3">
-  <nav class="flex flex-wrap gap-2" aria-label="Landing page management">
-    <a href="{% url 'pages:pages_manage:content_list' %}" class="btn btn-ghost">Text blocks</a>
-    <a href="{% url 'pages:pages_manage:image_list' %}" class="btn btn-secondary" aria-current="page">Photos</a>
-    <a href="{% url 'pages:pages_manage:donation_accounts' %}" class="btn btn-ghost">Donation accounts</a>
-    <a href="{% url 'pages:pages_manage:footer_links' %}" class="btn btn-ghost">Footer links</a>
-  </nav>
-  <a href="{% url 'pages:pages_manage:image_create' %}" class="btn btn-primary">
-    {% include 'includes/icon.html' with name='plus' class='size-4' %} Upload photo
-  </a>
-</div>
-<p class="mb-6 text-sm text-txt-secondary">Each placement uses its own photos and defaults. Up/down ordering applies immediately.</p>
+{% include "pages/manage/_landing_nav.html" with active="photos" %}
+<p class="max-w-2xl text-base text-txt-secondary">
+  Each place shows at most {{ active_image_limit }} live photos, in the order below. Extra photos can wait hidden.
+  If a place has no live photo, visitors see the default photos.
+</p>
 
-{% for placement, images, active_count, heading in photo_groups %}
-<section class="mb-10" aria-labelledby="{{ placement }}-photos-heading">
-  <div class="flex flex-wrap items-end justify-between gap-3 border-b border-border pb-3">
-    <div>
-      <h2 id="{{ placement }}-photos-heading" class="text-lg font-semibold">{{ heading }}</h2>
-      <p class="mt-1 text-sm text-txt-secondary">{{ active_count }} of {{ active_image_limit }} active photos</p>
+{% for placement, images, live_count, label in photo_groups %}
+<section class="card mt-6 p-4 sm:p-6" aria-labelledby="photos-{{ placement }}">
+  <div class="flex flex-wrap items-center justify-between gap-3">
+    <div class="flex flex-wrap items-center gap-3">
+      <h2 id="photos-{{ placement }}" class="text-lg font-bold text-txt-primary">{{ label }}</h2>
+      <span class="inline-flex rounded-full border border-border px-2.5 py-0.5 text-sm font-medium {% if live_count >= active_image_limit %}bg-highlight text-on-highlight{% else %}bg-accent/10 text-txt-primary{% endif %}">
+        {{ live_count }} of {{ active_image_limit }} live
+      </span>
     </div>
-    <a href="{% url 'pages:pages_manage:image_create' %}?placement={{ placement }}" class="btn btn-secondary">Add to {{ heading }}</a>
+    <a href="{% url 'pages:pages_manage:image_create' %}?placement={{ placement }}" class="btn btn-primary min-h-11">Add photo</a>
   </div>
+
+  {% if live_count > active_image_limit %}
+  <p class="mt-3 rounded-lg border border-border bg-bg p-3 text-sm text-txt-primary" role="alert">
+    {{ live_count }} photos are live here, but visitors only see the first {{ active_image_limit }} in this order.
+    Hide the extra ones to match what visitors see.
+  </p>
+  {% elif live_count == active_image_limit %}
+  <p class="mt-3 text-sm text-txt-secondary">This place is full. Hide a photo to make another one live; new uploads start hidden.</p>
+  {% elif live_count == 0 %}
+  <p class="mt-3 text-sm text-txt-secondary">No live photo yet, so visitors see the default photos.</p>
+  {% endif %}
+
   {% if images %}
-  <ol class="mt-3 divide-y divide-border border-y border-border">
+  <ol class="mt-4 grid gap-4 sm:grid-cols-2 xl:grid-cols-3">
     {% for image in images %}
-    <li class="flex flex-wrap items-center gap-4 py-4 {% if not image.is_active %}opacity-70{% endif %}">
-      <img src="{{ image.image.url }}" alt="{{ image.caption|default:'Landing photo preview' }}" class="size-20 shrink-0 rounded-md border border-border object-cover" loading="lazy">
-      <div class="min-w-0 flex-1">
-        <p class="font-medium">{{ image.caption|default:'Untitled photo' }}</p>
-        <p class="mt-1 text-sm text-txt-secondary">{{ image.original_filename }} · {% if image.is_active %}Active{% else %}Inactive{% endif %}</p>
+    <li class="flex flex-col overflow-hidden rounded-xl border border-border bg-surface {% if not image.is_active %}opacity-75{% endif %}">
+      <div class="relative aspect-[4/3] bg-bg">
+        <img src="{{ image.image.url }}" alt="{{ image.caption|default:'Landing photo' }}" class="size-full object-cover {% if not image.is_active %}grayscale{% endif %}" loading="lazy" decoding="async">
+        <span class="absolute left-2 top-2 flex size-7 items-center justify-center rounded-full bg-txt-primary text-xs font-bold text-surface" aria-label="Position {{ forloop.counter }}">{{ forloop.counter }}</span>
+        {% if image.is_active %}
+        <span class="absolute right-2 top-2 rounded-full bg-highlight px-2.5 py-0.5 text-xs font-bold text-on-highlight">Live</span>
+        {% else %}
+        <span class="absolute right-2 top-2 rounded-full bg-txt-primary px-2.5 py-0.5 text-xs font-bold text-surface">Hidden</span>
+        {% endif %}
       </div>
-      <div class="flex flex-wrap items-center gap-1">
-        <form method="post" action="{% url 'pages:pages_manage:image_move' image.pk 'up' %}">{% csrf_token %}<button type="submit" class="btn btn-ghost px-3 py-1.5" aria-label="Move {{ image.caption|default:'photo' }} up" {% if forloop.first %}disabled{% endif %}>{% include 'includes/icon.html' with name='arrow-up' class='size-4' %}</button></form>
-        <form method="post" action="{% url 'pages:pages_manage:image_move' image.pk 'down' %}">{% csrf_token %}<button type="submit" class="btn btn-ghost px-3 py-1.5" aria-label="Move {{ image.caption|default:'photo' }} down" {% if forloop.last %}disabled{% endif %}>{% include 'includes/icon.html' with name='arrow-down' class='size-4' %}</button></form>
-        <a href="{% url 'pages:pages_manage:image_edit' image.pk %}" class="btn btn-ghost px-3 py-1.5">Edit</a>
-        <form method="post" action="{% url 'pages:pages_manage:image_toggle' image.pk %}"
-              data-confirm="{% if image.is_active %}Hide this photo from the landing page?{% else %}Show this photo on the landing page?{% endif %}"
-              data-confirm-title="{% if image.is_active %}Deactivate photo?{% else %}Activate photo?{% endif %}"
-              data-confirm-text="{% if image.is_active %}Deactivate{% else %}Activate{% endif %}">
-          {% csrf_token %}<input type="hidden" name="active" value="{% if image.is_active %}0{% else %}1{% endif %}">
-          <button type="submit" class="btn btn-secondary px-3 py-1.5">{% if image.is_active %}Deactivate{% else %}Activate{% endif %}</button>
-        </form>
-        <form method="post" action="{% url 'pages:pages_manage:image_delete' image.pk %}"
-              data-confirm="Delete this photo and its file? This cannot be undone."
-              data-confirm-title="Delete landing photo?" data-confirm-text="Delete" data-confirm-danger>
-          {% csrf_token %}<button type="submit" class="btn btn-ghost px-3 py-1.5 text-error" aria-label="Delete {{ image.caption|default:'photo' }}">{% include 'includes/icon.html' with name='trash' class='size-4' %}</button>
-        </form>
+
+      <div class="flex flex-1 flex-col gap-3 p-3">
+        <p class="min-h-6 break-words text-sm text-txt-secondary">{{ image.caption|default:"No caption" }}</p>
+
+        <div class="mt-auto flex flex-wrap items-center gap-2">
+          <form method="post" action="{% url 'pages:pages_manage:image_move' image.pk 'up' %}">
+            {% csrf_token %}
+            <button type="submit" class="btn btn-secondary min-h-11 min-w-11 !px-0" aria-label="Move photo {{ forloop.counter }} earlier" {% if forloop.first %}disabled{% endif %}><span aria-hidden="true">↑</span></button>
+          </form>
+          <form method="post" action="{% url 'pages:pages_manage:image_move' image.pk 'down' %}">
+            {% csrf_token %}
+            <button type="submit" class="btn btn-secondary min-h-11 min-w-11 !px-0" aria-label="Move photo {{ forloop.counter }} later" {% if forloop.last %}disabled{% endif %}><span aria-hidden="true">↓</span></button>
+          </form>
+
+          <a href="{% url 'pages:pages_manage:image_edit' image.pk %}" class="btn btn-secondary min-h-11">Edit</a>
+
+          <form method="post" action="{% url 'pages:pages_manage:image_toggle' image.pk %}"
+                {% if image.is_active %}
+                data-confirm="Hide this photo from the public page?" data-confirm-title="Hide this photo?" data-confirm-text="Hide"
+                {% else %}
+                data-confirm="Make this photo live on the public page? Everyone will see it." data-confirm-title="Make this photo live?" data-confirm-text="Make live"
+                {% endif %}>
+            {% csrf_token %}
+            <input type="hidden" name="active" value="{% if image.is_active %}0{% else %}1{% endif %}">
+            <button type="submit" class="btn btn-secondary min-h-11">{% if image.is_active %}Hide{% else %}Make live{% endif %}</button>
+          </form>
+
+          <form method="post" action="{% url 'pages:pages_manage:image_delete' image.pk %}" class="ml-auto"
+                data-confirm="Delete this photo and its file? This cannot be undone." data-confirm-title="Delete this photo?" data-confirm-text="Delete" data-confirm-danger>
+            {% csrf_token %}
+            <button type="submit" class="btn btn-danger min-h-11" aria-label="Delete photo {{ forloop.counter }}">Delete</button>
+          </form>
+        </div>
       </div>
     </li>
     {% endfor %}
   </ol>
   {% else %}
-  <p class="mt-4 text-sm text-txt-secondary">No uploaded photos. This placement is using its default images.</p>
+  <div class="mt-4 rounded-xl border border-dashed border-border p-6 text-center">
+    <p class="text-base text-txt-secondary">No photos uploaded here yet.</p>
+    <a href="{% url 'pages:pages_manage:image_create' %}?placement={{ placement }}" class="btn btn-primary mt-3 min-h-11">Add the first photo</a>
+  </div>
   {% endif %}
 </section>
 {% endfor %}

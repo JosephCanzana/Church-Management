@@ -8,7 +8,7 @@ from apps.core.services import ServiceError
 from .models import ChurchContent, DonationAccount, LandingImage
 from .permissions import require_landing_manager
 from .site_settings import get_footer_links, replace_footer_links, reset_footer_links
-from .services import DEFAULT_ABOUT, DEFAULT_HERO
+from .services import DEFAULT_ABOUT, DEFAULT_HERO, LANDING_ACTIVE_CAP
 
 
 CONTENT_BLOCKS = {
@@ -17,17 +17,22 @@ CONTENT_BLOCKS = {
         "title": "Jesus Is Lord Church",
         "default": DEFAULT_HERO["intro"],
     },
+    # Every block carries its built-in text under "default": the list and edit screens read that key,
+    # so a block without it looked empty (and could not show or restore its default) until it was edited.
     ChurchContent.Key.MISSION: {
         "label": "Mission",
         **DEFAULT_ABOUT["mission"],
+        "default": DEFAULT_ABOUT["mission"]["body"],
     },
     ChurchContent.Key.VISION: {
         "label": "Vision",
         **DEFAULT_ABOUT["vision"],
+        "default": DEFAULT_ABOUT["vision"]["body"],
     },
     ChurchContent.Key.CORE_VALUES: {
         "label": "Core values",
         **DEFAULT_ABOUT["values"],
+        "default": DEFAULT_ABOUT["values"]["body"],
     },
     ChurchContent.Key.DONATION_INSTRUCTIONS: {
         "label": "Donation instructions",
@@ -35,7 +40,8 @@ CONTENT_BLOCKS = {
         "default": "",
     },
 }
-ACTIVE_IMAGE_LIMIT = 12
+# One number for the public page and this screen: the public loader never shows more.
+ACTIVE_IMAGE_LIMIT = LANDING_ACTIVE_CAP
 
 
 def landing_content_blocks(actor):
@@ -117,6 +123,22 @@ def save_landing_content(actor, key, body, *, request=None):
     return True
 
 
+def reset_all_landing_content(actor, *, request=None):
+    """Put every landing text block back to its built-in text and return how many changed.
+
+    The giving instructions are left alone: they belong to the Give page and have no built-in text,
+    so resetting them would only erase what was written there.
+    """
+    require_landing_manager(actor)
+    changed = 0
+    for key in CONTENT_BLOCKS:
+        if key == ChurchContent.Key.DONATION_INSTRUCTIONS:
+            continue
+        if save_landing_content(actor, key, "", request=request):
+            changed += 1
+    return changed
+
+
 def _lock_image_placement(placement):
     """Serialize placement mutations, including concurrent inserts into an empty pool."""
     with connection.cursor() as cursor:
@@ -129,7 +151,7 @@ def _image_order(placement):
 
 
 def _check_active_capacity(placement, *, excluding_id=None):
-    """Refuse a placement change or activation when its pool already has 12 active photos."""
+    """Refuse a placement change or activation when its pool already has the most live photos."""
     active = LandingImage.objects.filter(placement=placement, is_active=True)
     if excluding_id is not None:
         active = active.exclude(pk=excluding_id)
@@ -138,20 +160,25 @@ def _check_active_capacity(placement, *, excluding_id=None):
 
 
 def create_landing_image(actor, *, image, caption="", placement=LandingImage.Placement.HERO, request=None):
-    """Upload one active public landing photo into the requested placement."""
+    """Upload one public landing photo into the requested placement.
+
+    It goes live when the placement has room; when the placement already has the most live
+    photos it is saved hidden instead of being refused, so the upload is never lost.
+    """
     require_landing_manager(actor)
     if placement not in LandingImage.Placement.values:
         raise ServiceError("Choose a valid photo placement.")
     with transaction.atomic():
         _lock_image_placement(placement)
-        _check_active_capacity(placement)
+        live_now = LandingImage.objects.filter(placement=placement, is_active=True).count()
+        go_live = live_now < ACTIVE_IMAGE_LIMIT
         images = _image_order(placement)
         record = LandingImage(
             image=image,
             caption=(caption or "").strip(),
             placement=placement,
             sort_order=(images[-1].sort_order + 1) if images else 0,
-            is_active=True,
+            is_active=go_live,
             uploaded_by=actor,
         )
         record.full_clean()
@@ -162,7 +189,7 @@ def create_landing_image(actor, *, image, caption="", placement=LandingImage.Pla
             request=request,
             entity_type="landing_image",
             entity_id=record.pk,
-            after={"placement": placement, "is_active": True, "sort_order": record.sort_order},
+            after={"placement": placement, "is_active": go_live, "sort_order": record.sort_order},
         )
     return record
 
@@ -444,6 +471,41 @@ def delete_donation_account(actor, account_id, *, request=None):
             before=_donation_snapshot(account),
         )
         account.delete()
+    return True
+
+
+def move_donation_account(actor, account_id, direction, *, request=None):
+    """Move one donation account up or down in the public order; this action is immediate.
+
+    Every account is renumbered 0..n-1 in the same transaction, so accounts that shared a
+    `sort_order` (or were typed in by hand) still end up in one clear order.
+    """
+    require_landing_manager(actor)
+    if direction not in ("up", "down"):
+        raise ServiceError("Choose up or down to reorder accounts.")
+    with transaction.atomic():
+        accounts = list(DonationAccount.objects.select_for_update().order_by("sort_order", "pk"))
+        index = next((i for i, item in enumerate(accounts) if item.pk == account_id), None)
+        if index is None:
+            raise ServiceError("That donation account no longer exists.")
+        neighbor = index - 1 if direction == "up" else index + 1
+        if neighbor < 0 or neighbor >= len(accounts):
+            return False
+        accounts[index], accounts[neighbor] = accounts[neighbor], accounts[index]
+        for position, item in enumerate(accounts):
+            if item.sort_order != position:
+                item.sort_order = position
+                item.save(update_fields=["sort_order", "updated_at"])
+        moved = accounts[neighbor]
+        log_action(
+            "pages.donation_account_reordered",
+            actor=actor,
+            request=request,
+            entity_type="donation_account",
+            entity_id=moved.pk,
+            entity_label=moved.payment_app,
+            after={"direction": direction},
+        )
     return True
 
 

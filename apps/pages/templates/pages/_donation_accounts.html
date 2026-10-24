@@ -1,22 +1,72 @@
-<!--
+{% comment %}
   pages/_donation_accounts.html
   The list of public giving accounts, included by give.html.
   Context variables: give_accounts (active DonationAccount rows in display order).
-  Public and read-only: no form, no amount field. Colors use design tokens only.
--->
-<ul class="grid gap-4 sm:grid-cols-2">
+  Public and read-only: no form, no amount field, nothing is sent or saved. Colors use design tokens only.
+  Copy buttons copy the account number without spaces; the number is shown exactly as the admin typed it.
+{% endcomment %}
+<ul class="grid gap-5 {% if give_accounts|length == 1 %}mx-auto max-w-md{% else %}sm:grid-cols-2{% endif %}">
   {% for acct in give_accounts %}
-  <li class="card flex flex-col gap-3 p-5">
-    <h2 class="text-lg font-bold text-txt-primary">{{ acct.payment_app }}</h2>
-    {% if acct.qr_image %}
-    <img src="{{ acct.qr_image.url }}" alt="QR code for {{ acct.payment_app }}" class="size-44 self-start rounded-lg border border-border bg-surface object-contain p-1" loading="lazy">
-    {% endif %}
-    <div class="space-y-1 text-base">
-      {% if acct.account_name %}<p class="text-txt-secondary">{{ acct.account_name }}</p>{% endif %}
-      {% if acct.account_number %}<p class="font-mono text-txt-primary">{{ acct.account_number }}</p>{% endif %}
-      {% if acct.swift_code %}<p class="text-txt-secondary">SWIFT: <span class="font-mono">{{ acct.swift_code }}</span></p>{% endif %}
-      {% if acct.instructions %}<p class="text-txt-secondary">{{ acct.instructions|linebreaksbr }}</p>{% endif %}
+  <li class="card flex flex-col gap-4 overflow-hidden border-t-4 border-t-highlight p-5 sm:p-6">
+
+    <div class="flex items-center gap-3">
+      <span class="flex size-10 shrink-0 items-center justify-center rounded-full bg-highlight text-on-highlight">
+        {% include "includes/icon.html" with name="banknotes" class="size-5" %}
+      </span>
+      <h2 class="min-w-0 break-words text-lg font-bold text-txt-primary">{{ acct.payment_app }}</h2>
     </div>
+
+    {% if acct.qr_image %}
+    <div x-data="{ zoom: false }" @keydown.escape.window="zoom = false" class="self-center">
+      <button type="button" @click="zoom = true" class="group block rounded-xl border border-border bg-white p-2 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-accent" aria-label="Enlarge QR code for {{ acct.payment_app }}">
+        <img src="{{ acct.qr_image.url }}" alt="QR code for {{ acct.payment_app }}" class="size-44 object-contain sm:size-48" loading="lazy" decoding="async">
+      </button>
+      <p class="mt-1.5 text-center text-xs text-txt-muted">Tap to enlarge</p>
+      <div x-show="zoom" x-cloak x-transition.opacity @click="zoom = false"
+           class="fixed inset-0 z-50 flex items-center justify-center bg-txt-primary/85 p-4" role="dialog" aria-modal="true" aria-label="QR code for {{ acct.payment_app }}">
+        <img src="{{ acct.qr_image.url }}" alt="" class="max-h-[85dvh] max-w-full rounded-xl bg-white p-3 object-contain">
+      </div>
+    </div>
+    {% endif %}
+
+    <dl class="space-y-3">
+      {% if acct.account_name %}
+      <div x-data="{ copied: false, copy(v) { v = v.replace(/\s+/g, ' ').trim(); (navigator.clipboard ? navigator.clipboard.writeText(v) : Promise.reject()).then(() => { this.copied = true; setTimeout(() => this.copied = false, 1800); }).catch(() => {}); } }"
+           class="flex items-end justify-between gap-3">
+        <div class="min-w-0">
+          <dt class="text-xs font-semibold uppercase tracking-wider text-txt-muted">Account name</dt>
+          <dd class="break-words text-base text-txt-primary">{{ acct.account_name }}</dd>
+        </div>
+        <button type="button" class="btn btn-secondary min-h-9 shrink-0 !px-3 text-xs" data-copy="{{ acct.account_name }}" @click="copy($el.dataset.copy)">
+          <span x-show="!copied">Copy</span><span x-show="copied" x-cloak aria-live="polite">Copied</span>
+        </button>
+      </div>
+      {% endif %}
+
+      {% if acct.account_number %}
+      <div x-data="{ copied: false, copy(v) { v = v.replace(/\s+/g, ''); (navigator.clipboard ? navigator.clipboard.writeText(v) : Promise.reject()).then(() => { this.copied = true; setTimeout(() => this.copied = false, 1800); }).catch(() => {}); } }"
+           class="flex items-end justify-between gap-3">
+        <div class="min-w-0">
+          <dt class="text-xs font-semibold uppercase tracking-wider text-txt-muted">Account number</dt>
+          <dd class="break-all font-mono text-xl font-semibold text-txt-primary">{{ acct.account_number }}</dd>
+        </div>
+        <button type="button" class="btn btn-secondary min-h-9 shrink-0 !px-3 text-xs" data-copy="{{ acct.account_number }}" @click="copy($el.dataset.copy)">
+          <span x-show="!copied">Copy</span><span x-show="copied" x-cloak aria-live="polite">Copied</span>
+        </button>
+      </div>
+      {% endif %}
+
+      {% if acct.swift_code %}
+      <div>
+        <dt class="text-xs font-semibold uppercase tracking-wider text-txt-muted">SWIFT code</dt>
+        <dd class="break-all font-mono text-base text-txt-primary">{{ acct.swift_code }}</dd>
+      </div>
+      {% endif %}
+    </dl>
+
+    {% if acct.instructions %}
+    <p class="rounded-lg bg-bg p-3 text-sm leading-relaxed text-txt-secondary">{{ acct.instructions|linebreaksbr }}</p>
+    {% endif %}
   </li>
   {% endfor %}
 </ul>

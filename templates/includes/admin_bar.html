@@ -1,0 +1,22 @@
+{% comment %}
+  includes/admin_bar.html
+  Slim strip under the public navbar, shown ONLY to super-admin and admin (base_public.html
+  includes it when `site_manager` is true, set by pages/views.py). It lets them check the
+  public pages as a visitor sees them and jump to the matching manage screen, with no logout.
+  `{% url ... as var %}` never raises, so a renamed route hides its link instead of breaking the page.
+{% endcomment %}
+{% url 'pages:pages_manage:content_list' as manage_text_url %}
+{% url 'pages:pages_manage:image_list' as manage_photos_url %}
+{% url 'pages:pages_manage:donation_accounts' as manage_give_url %}
+<div class="border-b border-border bg-txt-primary text-surface" role="region" aria-label="Admin shortcuts">
+  <div class="mx-auto flex max-w-7xl flex-wrap items-center gap-x-4 gap-y-1 px-3 py-1.5 text-xs">
+    <span class="font-semibold">Viewing the public page</span>
+    <span class="hidden text-surface/70 sm:inline">Visitors see this without the bar.</span>
+    <nav class="ml-auto flex flex-wrap items-center gap-x-1" aria-label="Edit shortcuts">
+      {% if manage_text_url %}<a href="{{ manage_text_url }}" class="rounded px-2 py-1 font-medium hover:bg-surface hover:text-txt-primary">Edit text</a>{% endif %}
+      {% if manage_photos_url %}<a href="{{ manage_photos_url }}" class="rounded px-2 py-1 font-medium hover:bg-surface hover:text-txt-primary">Edit photos</a>{% endif %}
+      {% if manage_give_url %}<a href="{{ manage_give_url }}" class="rounded px-2 py-1 font-medium hover:bg-surface hover:text-txt-primary">Edit Give page</a>{% endif %}
+      <a href="{{ app_home_url|default:'/' }}" class="rounded bg-highlight px-2.5 py-1 font-bold text-on-highlight hover:bg-highlight-soft">Back to dashboard</a>
+    </nav>
+  </div>
+</div>

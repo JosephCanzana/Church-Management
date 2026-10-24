@@ -4,6 +4,7 @@
 {% block body %}
 <div class="flex min-h-dvh flex-col">
   {% include "includes/public_navbar.html" %}
+  {% if site_manager %}{% include "includes/admin_bar.html" %}{% endif %}
   
   <main id="main" class="flex flex-1 {% block main_align %}items-center{% endblock %} justify-center">
     {% block content %}{% endblock %}

@@ -1,0 +1,16 @@
+{% comment %}
+  pages/manage/_landing_nav.html
+  Shared sub-navigation of the Landing tab: Text blocks, Photos, Footer links, plus a button that
+  opens the public landing page in a new tab. Include it at the top of every Landing management page
+  so the other sections never disappear:
+    {% include "pages/manage/_landing_nav.html" with active="text" %}
+  `active` is one of: text, photos, footer. Colors use design tokens only.
+{% endcomment %}
+<div class="mb-5 flex flex-wrap items-center justify-between gap-3">
+  <nav class="flex flex-wrap gap-2" aria-label="Landing page management">
+    <a href="{% url 'pages:pages_manage:content_list' %}" class="btn {% if active == 'text' %}btn-secondary{% else %}btn-ghost{% endif %}"{% if active == 'text' %} aria-current="page"{% endif %}>Text blocks</a>
+    <a href="{% url 'pages:pages_manage:image_list' %}" class="btn {% if active == 'photos' %}btn-secondary{% else %}btn-ghost{% endif %}"{% if active == 'photos' %} aria-current="page"{% endif %}>Photos</a>
+    <a href="{% url 'pages:pages_manage:footer_links' %}" class="btn {% if active == 'footer' %}btn-secondary{% else %}btn-ghost{% endif %}"{% if active == 'footer' %} aria-current="page"{% endif %}>Footer links</a>
+  </nav>
+  <a href="{% url 'pages:landing' %}" class="btn btn-secondary" target="_blank" rel="noopener">View public page</a>
+</div>

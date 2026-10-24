@@ -17,14 +17,23 @@ from .models import DonationAccount, LandingImage
 
 landing_manager_required = role_required(Role.ADMIN, Role.SUPER_ADMIN)
 
+# The giving instructions are a text block, but they belong to the Give page tab,
+# so they are left out of the Landing text list and send you back to the Give page.
+GIVE_BLOCK_KEY = "donation_instructions"
+
 
 @landing_manager_required
 @never_cache
 @require_http_methods(["GET"])
 def content_list(request):
-    """Show each editable landing block with its current body and source status."""
+    """Show each editable landing block (not the giving instructions) with its body and source status."""
+    blocks = [
+        block for block in manage_services.landing_content_blocks(request.user)
+        if block["key"] != GIVE_BLOCK_KEY
+    ]
     return render(request, "pages/manage/index.html", {
-        "blocks": manage_services.landing_content_blocks(request.user),
+        "blocks": blocks,
+        "any_custom": any(block["is_custom"] for block in blocks),
     })
 
 
@@ -54,11 +63,54 @@ def content_edit(request, key):
                                  else f"{block['label']} was reset to its default.")
             else:
                 messages.info(request, "No changes to save.")
+            if key == GIVE_BLOCK_KEY:
+                return redirect("pages:pages_manage:donation_accounts")
             return redirect("pages:pages_manage:content_edit", key=key)
     return render(request, "pages/manage/content_form.html", {
         "form": form,
         "block": block,
+        "is_give_block": key == GIVE_BLOCK_KEY,
+        "default_text": definition.get("default", ""),
     })
+
+
+@landing_manager_required
+@never_cache
+@require_POST
+def content_reset(request, key):
+    """Put one text block back to its built-in default text."""
+    definition = CONTENT_BLOCKS.get(key)
+    if definition is None:
+        raise Http404
+    try:
+        changed = manage_services.save_landing_content(request.user, key, "", request=request)
+    except ServiceError as error:
+        messages.error(request, str(error))
+    else:
+        if changed:
+            messages.success(request, f"{definition['label']} was reset to its default.")
+        else:
+            messages.info(request, f"{definition['label']} already uses its default.")
+    if key == GIVE_BLOCK_KEY:
+        return redirect("pages:pages_manage:donation_accounts")
+    return redirect("pages:pages_manage:content_list")
+
+
+@landing_manager_required
+@never_cache
+@require_POST
+def content_reset_all(request):
+    """Put every landing text block (not the giving instructions) back to its default."""
+    try:
+        count = manage_services.reset_all_landing_content(request.user, request=request)
+    except ServiceError as error:
+        messages.error(request, str(error))
+    else:
+        if count:
+            messages.success(request, f"{count} text block{'s' if count != 1 else ''} reset to the default.")
+        else:
+            messages.info(request, "Every text block already uses its default.")
+    return redirect("pages:pages_manage:content_list")
 
 
 @landing_manager_required
@@ -86,7 +138,7 @@ def image_list(request):
 @never_cache
 @require_http_methods(["GET", "POST"])
 def image_create(request):
-    """Upload a photo and assign it to the hero or gallery pool."""
+    """Upload a photo and assign it to the hero or gallery pool (hidden when that pool is full)."""
     initial = {}
     placement = request.GET.get("placement")
     if placement in LandingImage.Placement.values:
@@ -104,7 +156,14 @@ def image_create(request):
         except ServiceError as error:
             form.add_error(None, str(error))
         else:
-            messages.success(request, "Landing photo uploaded.")
+            if image.is_active:
+                messages.success(request, "Photo uploaded and live on the public page.")
+            else:
+                messages.warning(
+                    request,
+                    f"Photo uploaded but hidden: {manage_services.ACTIVE_IMAGE_LIMIT} photos are already live there. "
+                    "Hide one to make this one live.",
+                )
             return redirect("pages:pages_manage:image_list")
     return render(request, "pages/manage/image_form.html", {
         "form": form,
@@ -197,7 +256,14 @@ def image_delete(request, pk):
 def donation_account_list(request):
     """Show active and hidden public donation accounts in display order."""
     accounts = DonationAccount.objects.all().order_by("sort_order", "pk")
-    return render(request, "pages/manage/donation_accounts.html", {"accounts": accounts})
+    instructions = next(
+        block for block in manage_services.landing_content_blocks(request.user)
+        if block["key"] == GIVE_BLOCK_KEY
+    )
+    return render(request, "pages/manage/donation_accounts.html", {
+        "accounts": accounts,
+        "instructions": instructions,
+    })
 
 
 @landing_manager_required
@@ -266,6 +332,21 @@ def donation_account_toggle(request, pk):
         messages.error(request, str(error))
     else:
         messages.success(request, "Donation account is now public." if value == "1" else "Donation account is hidden.") if changed else messages.info(request, "Donation account already has that status.")
+    return redirect("pages:pages_manage:donation_accounts")
+
+
+@landing_manager_required
+@never_cache
+@require_POST
+def donation_account_move(request, pk, direction):
+    """Move one donation account up or down in the public order immediately."""
+    try:
+        changed = manage_services.move_donation_account(request.user, pk, direction, request=request)
+    except ServiceError as error:
+        messages.error(request, str(error))
+    else:
+        if changed:
+            messages.success(request, "Account order updated.")
     return redirect("pages:pages_manage:donation_accounts")
 
 

@@ -20,8 +20,11 @@ The default texts (hero intro, mission, vision, values, October 2026 theme, foot
 contacts and links) were taken from the church's own landing page draft. Confirm
 they are official before launch.
 """
+import xml.etree.ElementTree as ET
 from datetime import date
+from urllib.request import urlopen
 
+from django.core.cache import cache
 from django.utils import timezone
 from django.utils.translation import get_language
 from django.templatetags.static import static
@@ -74,6 +77,10 @@ DEFAULT_THEME = {
     "url": "#",
 }
 
+# Most photos the public page shows per placement (hero carousel, "Come as you are").
+# Keep the manage screen's "live" limit equal to this number.
+LANDING_ACTIVE_CAP = 6
+
 DEFAULT_HERO_IMAGES = [
     {"path": f"pages/images/landing/church-{n}.jpg", "caption": "Jesus Is Lord Church"}
     for n in range(1, 6)
@@ -104,8 +111,14 @@ CHURCH_POINTS = [
      "text": "Set goals, build habits, and serve in ways that carry your worship into everyday life."},
 ]
 
-# Fallback video when no JilVideo has been fetched yet.
+# Fallback video when no JilVideo has been fetched and the live feed is unreachable.
 DEFAULT_VIDEO_ID = "g-XZyLZRDPY"
+
+# Official channel: https://www.youtube.com/@JILWorldwide
+YOUTUBE_CHANNEL_ID = "UCVppYdcDfve_kDEnNXXKhaQ"
+YOUTUBE_FEED_URL = f"https://www.youtube.com/feeds/videos.xml?channel_id={YOUTUBE_CHANNEL_ID}"
+YOUTUBE_FEED_CACHE_SECONDS = 60 * 60
+_ATOM_NS = {"a": "http://www.w3.org/2005/Atom", "yt": "http://www.youtube.com/xml/schemas/2015"}
 
 # Product copy. `icon` must exist in static/icons/sprite.svg.
 MEMBER_FEATURES = [
@@ -150,16 +163,16 @@ FOOTER = {
         {"label": "Join Us", "url": "#"},
         {"label": "Privacy Policy", "url": "#"},  # placeholder until the page exists
     ],
-    "affiliates": [
-        {"label": "", "url": "#"},
-        {"label": "", "url": "#"},
-        {"label": "", "url": "#"},
-    ],
+    # "affiliates": [
+    #     {"label": "", "url": "#"},
+    #     {"label": "", "url": "#"},
+    #     {"label": "", "url": "#"},
+    # ],
     "offices": [
         {"address": "Santa Rosa - Tarlac Rd, Santa Rosa, Nueva Ecija",
          "phone": "(044) 3113475", "email": "jesusislordchurchne@gmail.com"},
-        {"address": "841 EDSA South Triangle, Quezon City, Metro Manila 1103 Philippines",
-         "phone": "+63 2 8661 2858", "email": "info@jilworldwide.org"},
+        # {"address": "841 EDSA South Triangle, Quezon City, Metro Manila 1103 Philippines",
+        #  "phone": "+63 2 8661 2858", "email": "info@jilworldwide.org"},
     ],
     "social": {
         "facebook": "https://www.facebook.com/people/Jesus-Is-Lord-Church-Santa-Rosa-Nueva-Ecija/",
@@ -210,7 +223,7 @@ def _landing_images(placement, defaults):
     rows = (
         LandingImage.objects.filter(is_active=True, placement=placement)
         .exclude(image="")
-        .order_by("sort_order", "id")
+        .order_by("sort_order", "id")[:LANDING_ACTIVE_CAP]
     )
     images = [{"url": r.image.url, "caption": r.caption} for r in rows]
     return images or [{"url": static(i["path"]), "caption": i["caption"]} for i in defaults]
@@ -260,15 +273,33 @@ def _video_dict(video_id, title, thumbnail_url=""):
         "thumbnail_url": thumbnail_url or f"https://i.ytimg.com/vi/{video_id}/hqdefault.jpg",
     }
 
+def _feed_video():
+    """Newest upload from the channel's public RSS feed, cached. None on any failure."""
+    cached = cache.get("landing:latest_video")
+    if cached:
+        return cached
+    try:
+        with urlopen(YOUTUBE_FEED_URL, timeout=5) as resp:
+            root = ET.fromstring(resp.read())
+        entry = root.find("a:entry", _ATOM_NS)
+        video_id = entry.findtext("yt:videoId", namespaces=_ATOM_NS)
+        title = entry.findtext("a:title", namespaces=_ATOM_NS)
+    except Exception:  # network, XML, or empty feed: the page must still render
+        return None
+    if not video_id:
+        return None
+    video = _video_dict(video_id, title or "Latest message")
+    cache.set("landing:latest_video", video, YOUTUBE_FEED_CACHE_SECONDS)
+    return video
 
 def _latest_video():
     """The newest video fetched by `fetch_jil_videos`, else the default video."""
     from apps.pages.models import JilVideo
 
     row = JilVideo.objects.order_by("-published_at").first()
-    if row is None:
-        return _video_dict(DEFAULT_VIDEO_ID, "Latest message")
-    return _video_dict(row.youtube_video_id, row.title, row.thumbnail_url)
+    if row is not None:
+        return _video_dict(row.youtube_video_id, row.title, row.thumbnail_url)
+    return _feed_video() or _video_dict(DEFAULT_VIDEO_ID, "Latest message")
 
 
 def _give_accounts():

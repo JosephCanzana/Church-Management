@@ -1,8 +1,12 @@
 <!--
 pages/manage/index.html
-Index of editable English landing-page text blocks and whether each uses managed text or defaults.
+Index of the editable English landing-page text blocks (the giving instructions are not here: they
+belong to the Give page tab) and whether each uses managed text or its default.
 Extends base_app.html. Blocks filled: title, page_title, content.
-Context: blocks (list of key, label, title, body, is_custom, and version dictionaries).
+Context: blocks (list of key, label, title, body, is_custom, and version dictionaries),
+any_custom (true when at least one block has been edited, so "Reset all" is worth showing).
+The sub-navigation (with the "View public page" button) is the shared _landing_nav.html include.
+One card per block; a long text is clipped here and shown in full on its edit page.
 -->
 {% extends "base_app.html" %}
 
@@ -10,33 +14,65 @@ Context: blocks (list of key, label, title, body, is_custom, and version diction
 {% block page_title %}Landing page content{% endblock %}
 
 {% block content %}
-<p class="mb-5 max-w-3xl text-sm text-txt-secondary">Text is shown on the public landing page. Leave a block empty to return it to its default.</p>
-<nav class="mb-5 flex flex-wrap gap-2" aria-label="Landing page management">
-  <a href="{% url 'pages:pages_manage:content_list' %}" class="btn btn-secondary" aria-current="page">Text blocks</a>
-  <a href="{% url 'pages:pages_manage:image_list' %}" class="btn btn-ghost">Photos</a>
-  <a href="{% url 'pages:pages_manage:footer_links' %}" class="btn btn-ghost">Footer links</a>
-</nav>
-<div class="divide-y divide-border border-y border-border">
-  {% for block in blocks %}
-  <article class="py-5">
-    <div class="flex flex-wrap items-start justify-between gap-4">
-      <div class="min-w-0 flex-1">
-        <div class="flex flex-wrap items-center gap-2">
-          <h2 class="font-semibold">{{ block.label }}</h2>
-          {% if block.is_custom %}
-            <span class="rounded border border-accent px-2 py-0.5 text-xs text-accent">Custom</span>
-          {% else %}
-            <span class="rounded border border-border px-2 py-0.5 text-xs text-txt-secondary">Default</span>
-          {% endif %}
-          {% if block.key == 'core_values' %}<span class="text-xs text-txt-secondary">One value per line</span>{% endif %}
-        </div>
-        <div class="mt-2 max-w-4xl whitespace-pre-line text-sm text-txt-secondary">
-          {% if block.body %}{{ block.body|linebreaksbr }}{% else %}<span class="italic">No instructions are currently published.</span>{% endif %}
-        </div>
-      </div>
-      <a href="{% url 'pages:pages_manage:content_edit' block.key %}" class="btn btn-secondary shrink-0">Edit</a>
-    </div>
-  </article>
-  {% endfor %}
+{% include "pages/manage/_landing_nav.html" with active="text" %}
+
+<div class="mb-5 flex flex-wrap items-start justify-between gap-4">
+  <p class="max-w-3xl text-base text-txt-secondary">
+    These texts appear on the public landing page. Edit one, or reset it to go back to its built-in default.
+  </p>
+  {% if any_custom %}
+  <form method="post" action="{% url 'pages:pages_manage:content_reset_all' %}"
+        data-confirm="Put every text block back to its default? Your edited texts will be removed." data-confirm-title="Reset all texts?" data-confirm-text="Reset all" data-confirm-danger>
+    {% csrf_token %}
+    <button type="submit" class="btn btn-secondary min-h-11">Reset all to default</button>
+  </form>
+  {% endif %}
 </div>
+
+<ul class="grid gap-4 lg:grid-cols-2">
+  {% for block in blocks %}
+  <li class="card flex flex-col gap-3 p-5">
+    <div class="flex flex-wrap items-start justify-between gap-3">
+      <div class="min-w-0">
+        <h2 class="text-lg font-bold text-txt-primary">{{ block.label }}</h2>
+        <p class="text-sm text-txt-secondary">
+          {% if block.key == 'landing_description' %}Top of the page, under the church name
+          {% else %}About section{% endif %}
+        </p>
+      </div>
+      {% if block.is_custom %}
+      <span class="rounded-full border border-border bg-accent/10 px-2.5 py-0.5 text-xs font-medium text-txt-primary">Custom</span>
+      {% else %}
+      <span class="rounded-full border border-border px-2.5 py-0.5 text-xs font-medium text-txt-secondary">Default</span>
+      {% endif %}
+    </div>
+
+    {% if block.key == 'core_values' %}
+    <ul class="flex flex-wrap gap-2">
+      {% for line in block.body.splitlines %}{% if line.strip %}
+      <li class="rounded-full bg-bg px-3 py-1 text-sm text-txt-primary">{{ line }}</li>
+      {% endif %}{% endfor %}
+    </ul>
+    {% else %}
+    <p class="line-clamp-4 text-sm leading-relaxed text-txt-secondary">{{ block.body|default:"Nothing here yet." }}</p>
+    {% endif %}
+
+    <div class="mt-auto flex flex-wrap gap-2 pt-1">
+      <a href="{% url 'pages:pages_manage:content_edit' block.key %}" class="btn btn-secondary min-h-11" aria-label="Edit {{ block.label }}">Edit</a>
+      {% if block.is_custom %}
+      <form method="post" action="{% url 'pages:pages_manage:content_reset' block.key %}"
+            data-confirm="Put {{ block.label }} back to its default text? Your edited text will be removed." data-confirm-title="Reset to default?" data-confirm-text="Reset" data-confirm-danger>
+        {% csrf_token %}
+        <button type="submit" class="btn btn-ghost min-h-11" aria-label="Reset {{ block.label }} to default">Reset to default</button>
+      </form>
+      {% endif %}
+    </div>
+  </li>
+  {% endfor %}
+</ul>
+
+<p class="mt-6 text-sm text-txt-secondary">
+  Giving instructions and accounts are on the
+  <a href="{% url 'pages:pages_manage:donation_accounts' %}" class="font-medium text-txt-primary underline underline-offset-2">Give page</a> tab.
+</p>
 {% endblock %}

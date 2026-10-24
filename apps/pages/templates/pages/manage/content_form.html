@@ -1,8 +1,13 @@
 <!--
-pages/manage/content_form.html
-Edit one English landing text block; an empty body resets to the default.
-Extends base_app.html. Blocks filled: title, page_title, content.
-Context: block (content metadata and current body) and form (LandingContentForm).
+  pages/manage/content_form.html
+  Edit one English text block (admin and super-admin only).
+  Extends base_app.html. Blocks filled: title, page_title, content.
+  Context variables: form (LandingContentForm, field body), block (key, label, title, body, is_custom,
+  version), is_give_block (true for the giving instructions, which belong to the Give page tab),
+  default_text (the built-in text, empty for the giving instructions).
+  Landing blocks show the Landing sub-navigation and go back to the Text blocks list. The giving
+  instructions show a breadcrumb to the Give page and go back there, not to the landing text list.
+  Saving asks for confirmation first (the text is public). Colors use design tokens only.
 -->
 {% extends "base_app.html" %}
 
@@ -10,52 +15,67 @@ Context: block (content metadata and current body) and form (LandingContentForm)
 {% block page_title %}Edit {{ block.label }}{% endblock %}
 
 {% block content %}
-{% url 'pages:pages_manage:content_list' as list_url %}
-{% include 'includes/breadcrumb.html' with parent_label='Landing page content' parent_url=list_url current=block.label %}
+{% if is_give_block %}
+{% url 'pages:pages_manage:donation_accounts' as back_url %}
+{% include "includes/breadcrumb.html" with parent_label="Give page" parent_url=back_url current=block.label %}
+{% else %}
+{% url 'pages:pages_manage:content_list' as back_url %}
+{% include "pages/manage/_landing_nav.html" with active="text" %}
+{% endif %}
 
-<div class="mt-5 max-w-3xl">
-  <p class="text-sm text-txt-secondary">English only. Text is escaped before it appears on the public page.</p>
-  {% if block.is_custom %}
-  <p class="mt-2 text-xs text-txt-secondary">Custom version {{ block.version }}</p>
-  {% else %}
-  <p class="mt-2 text-xs text-txt-secondary">Currently using the default text.</p>
-  {% endif %}
+<form method="post" class="card mt-4 max-w-3xl space-y-4 p-5 sm:p-6"
+      data-confirm="Save this text? Visitors will see it right away." data-confirm-title="Save changes?" data-confirm-text="Save">
+  {% csrf_token %}
 
-  <form method="post" class="card mt-4 space-y-4"
-        data-confirm="Save changes to {{ block.label }}?"
-        data-confirm-title="Save changes?"
-        data-confirm-text="Save changes">
-    {% csrf_token %}
-    {% if form.non_field_errors %}
-    <div class="rounded-md border border-error p-3 text-sm text-error" role="alert">
-      {% for error in form.non_field_errors %}<p>{{ error }}</p>{% endfor %}
-    </div>
+  <div class="flex flex-wrap items-center gap-2">
+    <h2 class="text-lg font-bold text-txt-primary">{{ block.label }}</h2>
+    {% if block.is_custom %}
+    <span class="rounded-full border border-border bg-accent/10 px-2.5 py-0.5 text-xs font-medium text-txt-primary">Custom</span>
+    {% else %}
+    <span class="rounded-full border border-border px-2.5 py-0.5 text-xs font-medium text-txt-secondary">Default</span>
     {% endif %}
-    <div>
-      <label for="{{ form.body.id_for_label }}" class="label">{{ block.label }}</label>
-      {{ form.body }}
-      {% for error in form.body.errors %}<p class="field-error">{{ error }}</p>{% endfor %}
-      {% if block.key == 'core_values' %}
-      <p class="field-help">Enter one core value per line. Line breaks are preserved.</p>
-      {% else %}
-      <p class="field-help">Line breaks are preserved. Leave empty to reset this block to its default.</p>
-      {% endif %}
-    </div>
-    <div class="flex flex-wrap gap-3">
-      <button type="submit" class="btn btn-primary">Save changes</button>
-      <a href="{{ list_url }}" class="btn btn-ghost">Cancel</a>
-    </div>
-  </form>
-  {% if block.is_custom %}
-  <form method="post" class="mt-3"
-        data-confirm="Reset {{ block.label }} to its default text?"
-        data-confirm-title="Reset to default?"
-        data-confirm-text="Reset"
-        data-confirm-danger>
-    {% csrf_token %}
-    <input type="hidden" name="body" value="">
-    <button type="submit" class="btn btn-ghost text-error">Reset to default</button>
-  </form>
+  </div>
+
+  {% if form.non_field_errors %}
+  <div role="alert">{% for e in form.non_field_errors %}<p class="field-error">{{ e }}</p>{% endfor %}</div>
   {% endif %}
-</div>
+
+  <div>
+    <label for="{{ form.body.id_for_label }}" class="label">Text</label>
+    {{ form.body }}
+    <p class="field-help">
+      {% if block.key == 'core_values' %}One value per line.
+      {% elif is_give_block %}Shown above the accounts on the Give page. Line breaks are kept. Leave empty to show only the accounts.
+      {% else %}Line breaks are kept. Leave empty and save to go back to the default text.{% endif %}
+    </p>
+    {% for e in form.body.errors %}<p class="field-error">{{ e }}</p>{% endfor %}
+  </div>
+
+  <div class="flex flex-wrap gap-3 pt-1">
+    <button type="submit" class="btn btn-primary min-h-11">Save</button>
+    <a href="{{ back_url }}" class="btn btn-secondary min-h-11">Cancel</a>
+    {% if block.is_custom %}
+    <button type="submit" form="reset-form" class="btn btn-ghost min-h-11">{% if is_give_block %}Clear text{% else %}Reset to default{% endif %}</button>
+    {% endif %}
+    {% if is_give_block %}
+    <a href="{% url 'pages:give' %}" class="btn btn-ghost min-h-11" target="_blank" rel="noopener">View public page</a>
+    {% endif %}
+  </div>
+</form>
+
+{% if default_text %}
+<details class="card mt-4 max-w-3xl p-5 sm:p-6">
+  <summary class="cursor-pointer text-base font-bold text-txt-primary">Built-in default text</summary>
+  <p class="mt-3 whitespace-pre-line text-sm leading-relaxed text-txt-secondary">{{ default_text }}</p>
+</details>
+{% endif %}
+
+{% if block.is_custom %}
+{# Separate form so the Reset button in the row above can submit it (forms cannot be nested). #}
+<form id="reset-form" method="post" action="{% url 'pages:pages_manage:content_reset' block.key %}"
+      data-confirm="{% if is_give_block %}Remove the giving instructions? The Give page will show only the accounts.{% else %}Put this text back to its default? Your edited text will be removed.{% endif %}"
+      data-confirm-title="{% if is_give_block %}Clear the text?{% else %}Reset to default?{% endif %}" data-confirm-text="{% if is_give_block %}Clear{% else %}Reset{% endif %}" data-confirm-danger>
+  {% csrf_token %}
+</form>
+{% endif %}
 {% endblock %}

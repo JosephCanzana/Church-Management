@@ -41,27 +41,35 @@
         <p class="mt-5 text-lg leading-relaxed text-surface/80">{{ hero.intro }}</p>
         <div class="mt-8 flex flex-wrap gap-3">
           <a href="#buddy" class="btn min-h-11 bg-highlight px-6 font-bold uppercase tracking-wider text-on-highlight hover:bg-highlight-soft">Learn more</a>
+          {% if user.is_authenticated %}
+          <a href="{{ app_home_url|default:'/' }}" class="btn min-h-11 border border-surface px-6 font-bold uppercase tracking-wider text-surface hover:bg-surface hover:text-txt-primary">Open app</a>
+          {% else %}
           <a href="{% url 'accounts:login' %}" class="btn min-h-11 border border-surface px-6 font-bold uppercase tracking-wider text-surface hover:bg-surface hover:text-txt-primary">Log in</a>
+          {% endif %}
         </div>
       </div>
       {% if hero_images %}
       <div
-        class="w-full max-w-2xl justify-self-center md:justify-self-end"
+        class="w-full min-w-0 max-w-2xl touch-pan-y justify-self-center md:justify-self-end"
         x-data="{
           c: 0,
+          x0: 0,
           n: {{ hero_images|length }},
           t: null,
           reduce: window.matchMedia('(prefers-reduced-motion: reduce)').matches,
           start() { if (this.reduce || this.n < 2) return; this.stop(); this.t = setInterval(() => this.next(), 4500); },
           stop() { if (this.t) { clearInterval(this.t); this.t = null; } },
           next() { this.c = (this.c + 1) % this.n; },
-          prev() { this.c = (this.c - 1 + this.n) % this.n; }
+          prev() { this.c = (this.c - 1 + this.n) % this.n; },
+          swipe(x1) { const d = x1 - this.x0; if (Math.abs(d) > 40) { d < 0 ? this.next() : this.prev(); } }
         }"
         x-init="start()"
-        @mouseenter="stop()"
-        @mouseleave="start()"
-        @focusin="stop()"
+        @pointerenter="if ($event.pointerType === 'mouse') stop()"
+        @pointerleave="if ($event.pointerType === 'mouse') start()"
+        @focusin="if ($event.target.matches(':focus-visible')) stop()"
         @focusout="start()"
+        @touchstart.passive="x0 = $event.touches[0].clientX"
+        @touchend.passive="swipe($event.changedTouches[0].clientX)"
         role="region"
         aria-roledescription="carousel"
         aria-label="Church photos"
@@ -70,7 +78,7 @@
           <div class="relative aspect-[4/3] overflow-hidden rounded-2xl rounded-br-md border-4 border-surface/80 bg-txt-primary">
             {% for img in hero_images %}
             <figure class="absolute inset-0 m-0" x-show="c === {{ forloop.counter0 }}" {% if not forloop.first %}x-cloak{% endif %} x-transition.opacity.duration.600ms>
-              <img src="{{ img.url }}" alt="{{ img.caption|default:'Jesus Is Lord Church' }}" class="size-full object-cover" {% if not forloop.first %}loading="lazy"{% endif %}>
+              <img src="{{ img.url }}" alt="{{ img.caption|default:'Jesus Is Lord Church' }}" class="size-full object-cover" decoding="async" {% if forloop.first %}fetchpriority="high"{% else %}fetchpriority="low"{% endif %}>
             </figure>
             {% endfor %}
             {% if hero_images|length > 1 %}
@@ -80,7 +88,7 @@
           </div>
         </div>
         {% if hero_images|length > 1 %}
-        <div class="mt-2 flex justify-center">
+        <div class="mt-2 flex flex-wrap justify-center">
           {% for img in hero_images %}
           <button type="button" class="flex size-11 items-center justify-center" @click="c = {{ forloop.counter0 }}" aria-label="Show photo {{ forloop.counter }}" :aria-current="c === {{ forloop.counter0 }}">
             <span class="h-2 rounded-full transition-all" :class="c === {{ forloop.counter0 }} ? 'w-6 bg-highlight' : 'w-2 bg-surface/40'"></span>
@@ -169,11 +177,13 @@
       </div>
 
       <div class="grid grid-cols-2 gap-3" role="list" aria-label="Photos from our church">
-        {% for img in gallery_images|slice:":5" %}
-        <figure role="listitem" class="m-0 overflow-hidden rounded-xl border border-border bg-surface {% if forloop.first %}col-span-2 aspect-video{% else %}aspect-square{% endif %}">
-          <img src="{{ img.url }}" alt="{{ img.caption|default:'Jesus Is Lord Church' }}" class="size-full object-cover" loading="lazy">
+        {% with n=gallery_images|length %}
+        {% for img in gallery_images|slice:":6" %}
+        <figure role="listitem" class="m-0 overflow-hidden rounded-xl border border-border bg-surface {% if forloop.first and not n|divisibleby:"2" %}col-span-2 aspect-video{% else %}aspect-[4/3]{% endif %}">
+          <img src="{{ img.url }}" alt="{{ img.caption|default:'Jesus Is Lord Church' }}" class="size-full object-cover" loading="lazy" decoding="async">
         </figure>
         {% endfor %}
+        {% endwith %}
       </div>
     </div>
   </section>
@@ -323,7 +333,7 @@
         <a href="#about" class="btn btn-secondary min-h-11 font-bold uppercase tracking-wider">Our church</a>
         <a href="#watch" class="btn btn-secondary min-h-11 font-bold uppercase tracking-wider">Watch</a>
         <a href="{% url 'pages:give' %}" class="btn btn-secondary min-h-11 font-bold uppercase tracking-wider">Give</a>
-        <a href="{% url 'accounts:login' %}" class="btn btn-primary min-h-11 font-bold uppercase tracking-wider">Log in</a>
+        {% if user.is_authenticated %}<a href="{{ app_home_url|default:'/' }}" class="btn btn-primary min-h-11 font-bold uppercase tracking-wider">Open app</a>{% else %}<a href="{% url 'accounts:login' %}" class="btn btn-primary min-h-11 font-bold uppercase tracking-wider">Log in</a>{% endif %}
       </div>
 
       <div class="grid gap-8 border-t border-border py-10 text-left md:grid-cols-[1.4fr_.7fr_.7fr_2fr]">
@@ -332,8 +342,8 @@
           <p class="mt-2 text-base text-txt-secondary">{{ footer.blurb }}</p>
           <ul class="mt-4 flex gap-2">
             <li><a href="{{ footer.social.facebook }}" target="_blank" rel="noopener" aria-label="Facebook" class="flex size-11 items-center justify-center rounded-full bg-txt-primary text-surface transition-transform hover:-translate-y-0.5"><svg viewBox="0 0 24 24" class="size-5 fill-current" aria-hidden="true"><path d="M14 8h2.6V4.8H14c-2.3 0-3.7 1.6-3.7 3.9v2H7.8V14h2.5v6.2H14V14h2.5l.4-3.3H14V9c0-.6.3-1 .9-1H14z"/></svg></a></li>
-            <li><a href="{{ footer.social.x }}" target="_blank" rel="noopener" aria-label="X" class="flex size-11 items-center justify-center rounded-full bg-txt-primary text-surface transition-transform hover:-translate-y-0.5"><svg viewBox="0 0 24 24" class="size-5 fill-current" aria-hidden="true"><path d="M17.5 4h2.7l-5.9 6.7L21 20h-5.4l-4.2-5.5L6.5 20H3.8l6.3-7.2L3.5 4H9l3.8 5L17.5 4z"/></svg></a></li>
-            <li><a href="{{ footer.social.instagram }}" target="_blank" rel="noopener" aria-label="Instagram" class="flex size-11 items-center justify-center rounded-full bg-txt-primary text-surface transition-transform hover:-translate-y-0.5"><svg viewBox="0 0 24 24" class="size-5 fill-current" aria-hidden="true"><path d="M12 7.3a4.7 4.7 0 100 9.4 4.7 4.7 0 000-9.4zm0 7.7a3 3 0 110-6 3 3 0 010 6zM17.2 6a1.1 1.1 0 100 2.2 1.1 1.1 0 000-2.2zM8 3h8a5 5 0 015 5v8a5 5 0 01-5 5H8a5 5 0 01-5-5V8a5 5 0 015-5zm0 1.8A3.2 3.2 0 004.8 8v8A3.2 3.2 0 008 19.2h8a3.2 3.2 0 003.2-3.2V8A3.2 3.2 0 0016 4.8H8z"/></svg></a></li>
+            <!-- <li><a href="{{ footer.social.x }}" target="_blank" rel="noopener" aria-label="X" class="flex size-11 items-center justify-center rounded-full bg-txt-primary text-surface transition-transform hover:-translate-y-0.5"><svg viewBox="0 0 24 24" class="size-5 fill-current" aria-hidden="true"><path d="M17.5 4h2.7l-5.9 6.7L21 20h-5.4l-4.2-5.5L6.5 20H3.8l6.3-7.2L3.5 4H9l3.8 5L17.5 4z"/></svg></a></li>
+            <li><a href="{{ footer.social.instagram }}" target="_blank" rel="noopener" aria-label="Instagram" class="flex size-11 items-center justify-center rounded-full bg-txt-primary text-surface transition-transform hover:-translate-y-0.5"><svg viewBox="0 0 24 24" class="size-5 fill-current" aria-hidden="true"><path d="M12 7.3a4.7 4.7 0 100 9.4 4.7 4.7 0 000-9.4zm0 7.7a3 3 0 110-6 3 3 0 010 6zM17.2 6a1.1 1.1 0 100 2.2 1.1 1.1 0 000-2.2zM8 3h8a5 5 0 015 5v8a5 5 0 01-5 5H8a5 5 0 01-5-5V8a5 5 0 015-5zm0 1.8A3.2 3.2 0 004.8 8v8A3.2 3.2 0 008 19.2h8a3.2 3.2 0 003.2-3.2V8A3.2 3.2 0 0016 4.8H8z"/></svg></a></li> -->
             <li><a href="{{ footer.social.youtube }}" target="_blank" rel="noopener" aria-label="YouTube" class="flex size-11 items-center justify-center rounded-full bg-txt-primary text-surface transition-transform hover:-translate-y-0.5"><svg viewBox="0 0 24 24" class="size-5 fill-current" aria-hidden="true"><path fill-rule="evenodd" d="M10 9l5.2 3L10 15V9zM3 12c0-2.2.1-3.6.4-4.4.3-.8.9-1.4 1.7-1.6C6 5.7 12 5.7 12 5.7s6 0 6.9.3c.8.2 1.4.8 1.7 1.6.3.8.4 2.2.4 4.4s-.1 3.6-.4 4.4c-.3.8-.9 1.4-1.7 1.6-.9.3-6.9.3-6.9.3s-6 0-6.9-.3c-.8-.2-1.4-.8-1.7-1.6C3.1 15.6 3 14.2 3 12z"/></svg></a></li>
           </ul>
         </div>
@@ -346,10 +356,7 @@
         </div>
 
         <div>
-          <h3 class="font-bold text-txt-primary">Affiliates</h3>
-          <ul class="mt-2 space-y-1">
-            {% for l in footer.affiliates %}<li><a href="{{ l.url }}" target="_blank" rel="noopener" class="inline-block py-1 text-base text-txt-secondary hover:text-txt-primary hover:underline">{{ l.label }}</a></li>{% endfor %}
-          </ul>
+
         </div>
 
         <div>

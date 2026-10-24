@@ -17,6 +17,7 @@ urlpatterns = [
     path("donation-accounts/new/", manage_views.donation_account_create, name="donation_account_create"),
     path("donation-accounts/<int:pk>/edit/", manage_views.donation_account_edit, name="donation_account_edit"),
     path("donation-accounts/<int:pk>/active/", manage_views.donation_account_toggle, name="donation_account_toggle"),
+    path("donation-accounts/<int:pk>/move/<str:direction>/", manage_views.donation_account_move, name="donation_account_move"),
     path("donation-accounts/<int:pk>/delete/", manage_views.donation_account_delete, name="donation_account_delete"),
     path("footer-links/", manage_views.footer_link_list, name="footer_links"),
     path("footer-links/new/", manage_views.footer_link_create, name="footer_link_create"),
@@ -24,5 +25,7 @@ urlpatterns = [
     path("footer-links/<str:link_id>/edit/", manage_views.footer_link_edit, name="footer_link_edit"),
     path("footer-links/<str:link_id>/move/<str:direction>/", manage_views.footer_link_move, name="footer_link_move"),
     path("footer-links/<str:link_id>/delete/", manage_views.footer_link_delete, name="footer_link_delete"),
+    path("reset-all/", manage_views.content_reset_all, name="content_reset_all"),
+    path("<str:key>/reset/", manage_views.content_reset, name="content_reset"),
     path("<str:key>/", manage_views.content_edit, name="content_edit"),
 ]

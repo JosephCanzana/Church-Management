@@ -47,7 +47,7 @@
       {% endif %}
 
       {% if user.is_authenticated %}
-      <a href="/" class="btn btn-primary !px-3 !py-1.5 text-sm">Open app</a>
+      <a href="{{ app_home_url|default:'/' }}" class="btn btn-primary !px-3 !py-1.5 text-sm">Open app</a>
       {% else %}
       <a href="{% url 'accounts:register' %}" class="btn btn-ghost !px-3 !py-1.5 text-sm">Register</a>
       <a href="{% url 'accounts:login' %}" class="btn btn-primary !px-3 !py-1.5 text-sm">Login</a>

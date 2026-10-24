@@ -3,9 +3,10 @@
   Create or edit one public donation account (admin and super-admin only).
   Extends base_app.html. Blocks filled: title, page_title, content.
   Context variables: form (DonationAccountForm), account (the DonationAccount being edited, or None when creating).
-  The form is multipart because of the optional QR image. Saving asks for confirmation first
-  (data-confirm), because an active account is public the moment it is saved. Validation errors
-  stay inline next to the fields. Colors use design tokens only.
+  Laid out in short sections (where to send, QR code, note, optional extras) beside a preview card that shows
+  the public card as it is typed (text and QR; nothing is sent until Save). The form is multipart because of
+  the optional QR image. Saving asks for confirmation first (data-confirm), because an active account is
+  public the moment it is saved. Validation errors stay inline next to the fields. Colors use design tokens only.
 -->
 {% extends "base_app.html" %}
 
@@ -13,74 +14,128 @@
 {% block page_title %}{% if account %}Edit donation account{% else %}Add donation account{% endif %}{% endblock %}
 
 {% block content %}
-{% url 'pages:pages_manage:content_list' as landing_url %}
 {% url 'pages:pages_manage:donation_accounts' as list_url %}
-{% include "includes/breadcrumb.html" with parent_label="Donation accounts" parent_url=list_url current=form.instance.pk|yesno:"Edit,Add" %}
+{% include "includes/breadcrumb.html" with parent_label="Give page" parent_url=list_url current=form.instance.pk|yesno:"Edit,Add" %}
 
-<form method="post" enctype="multipart/form-data" class="card mt-4 max-w-2xl space-y-5 p-6"
-      {% if account %}
-      data-confirm="Save your changes to {{ account.payment_app }}? Visitors will see them right away if the account is public." data-confirm-title="Save changes?" data-confirm-text="Save"
-      {% else %}
-      data-confirm="Add this donation account? It becomes public right away." data-confirm-title="Add this account?" data-confirm-text="Add account"
-      {% endif %}>
-  {% csrf_token %}
+<div class="mt-4 grid items-start gap-6 lg:grid-cols-[minmax(0,40rem)_20rem]"
+     x-data="{
+       app: '{{ form.payment_app.value|default:""|escapejs }}',
+       name: '{{ form.account_name.value|default:""|escapejs }}',
+       number: '{{ form.account_number.value|default:""|escapejs }}',
+       swift: '{{ form.swift_code.value|default:""|escapejs }}',
+       note: '{{ form.instructions.value|default:""|escapejs }}',
+       qr: '{% if account and account.qr_image %}{{ account.qr_image.url|escapejs }}{% endif %}',
+       sync(e) {
+         const t = e.target;
+         if (t.name === 'payment_app') this.app = t.value;
+         else if (t.name === 'account_name') this.name = t.value;
+         else if (t.name === 'account_number') this.number = t.value;
+         else if (t.name === 'swift_code') this.swift = t.value;
+         else if (t.name === 'instructions') this.note = t.value;
+         else if (t.name === 'qr_image' && t.files && t.files[0]) this.qr = URL.createObjectURL(t.files[0]);
+       }
+     }">
 
-  {% if form.non_field_errors %}
-  <div role="alert">
-    {% for e in form.non_field_errors %}<p class="field-error">{{ e }}</p>{% endfor %}
-  </div>
-  {% endif %}
+  <form method="post" enctype="multipart/form-data" class="space-y-4" @input="sync($event)" @change="sync($event)"
+        {% if account %}
+        data-confirm="Save your changes to {{ account.payment_app }}? Visitors will see them right away if the account is public." data-confirm-title="Save changes?" data-confirm-text="Save"
+        {% else %}
+        data-confirm="Add this donation account? It becomes public right away." data-confirm-title="Add this account?" data-confirm-text="Add account"
+        {% endif %}>
+    {% csrf_token %}
 
-  <div>
-    <label for="{{ form.payment_app.id_for_label }}" class="label">{{ form.payment_app.label }}</label>
-    {{ form.payment_app }}
-    <p class="field-help">For example GCash, Maya, or the name of the bank.</p>
-    {% for e in form.payment_app.errors %}<p class="field-error">{{ e }}</p>{% endfor %}
-  </div>
+    {% if form.non_field_errors %}
+    <div class="card p-4" role="alert">
+      {% for e in form.non_field_errors %}<p class="field-error">{{ e }}</p>{% endfor %}
+    </div>
+    {% endif %}
 
-  <div>
-    <label for="{{ form.account_name.id_for_label }}" class="label">{{ form.account_name.label }}</label>
-    {{ form.account_name }}
-    {% for e in form.account_name.errors %}<p class="field-error">{{ e }}</p>{% endfor %}
-  </div>
+    <section class="card space-y-4 p-5 sm:p-6" aria-labelledby="sec-details">
+      <div>
+        <h2 id="sec-details" class="text-base font-bold text-txt-primary">Where to send</h2>
+        <p class="text-sm text-txt-secondary">Only what a giver needs. Never a PIN, password or card number.</p>
+      </div>
+      <div>
+        <label for="{{ form.payment_app.id_for_label }}" class="label">Payment app or bank</label>
+        {{ form.payment_app }}
+        <p class="field-help">For example GCash, Maya, or the name of the bank.</p>
+        {% for e in form.payment_app.errors %}<p class="field-error">{{ e }}</p>{% endfor %}
+      </div>
+      <div class="grid gap-4 sm:grid-cols-2">
+        <div>
+          <label for="{{ form.account_name.id_for_label }}" class="label">{{ form.account_name.label }}</label>
+          {{ form.account_name }}
+          {% for e in form.account_name.errors %}<p class="field-error">{{ e }}</p>{% endfor %}
+        </div>
+        <div>
+          <label for="{{ form.account_number.id_for_label }}" class="label">{{ form.account_number.label }}</label>
+          {{ form.account_number }}
+          <p class="field-help">Shown exactly as you type it.</p>
+          {% for e in form.account_number.errors %}<p class="field-error">{{ e }}</p>{% endfor %}
+        </div>
+      </div>
+    </section>
 
-  <div>
-    <label for="{{ form.account_number.id_for_label }}" class="label">{{ form.account_number.label }}</label>
-    {{ form.account_number }}
-    {% for e in form.account_number.errors %}<p class="field-error">{{ e }}</p>{% endfor %}
-  </div>
+    <section class="card space-y-3 p-5 sm:p-6" aria-labelledby="sec-qr">
+      <div>
+        <h2 id="sec-qr" class="text-base font-bold text-txt-primary">QR code <span class="text-sm font-normal text-txt-secondary">(optional)</span></h2>
+        <p class="text-sm text-txt-secondary">JPG, PNG or WebP. This image is public. Givers can tap it to enlarge.</p>
+      </div>
+      <div class="rounded-xl border border-dashed border-border bg-bg p-4">
+        {{ form.qr_image }}
+      </div>
+      {% for e in form.qr_image.errors %}<p class="field-error">{{ e }}</p>{% endfor %}
+    </section>
 
-  <div>
-    <label for="{{ form.swift_code.id_for_label }}" class="label">{{ form.swift_code.label }}</label>
-    {{ form.swift_code }}
-    <p class="field-help">Only needed for gifts sent from another country.</p>
-    {% for e in form.swift_code.errors %}<p class="field-error">{{ e }}</p>{% endfor %}
-  </div>
+    <section class="card space-y-3 p-5 sm:p-6" aria-labelledby="sec-note">
+      <div>
+        <h2 id="sec-note" class="text-base font-bold text-txt-primary">Note for givers <span class="text-sm font-normal text-txt-secondary">(optional)</span></h2>
+        <p class="text-sm text-txt-secondary">Shown under this account. Line breaks are kept.</p>
+      </div>
+      {{ form.instructions }}
+      {% for e in form.instructions.errors %}<p class="field-error">{{ e }}</p>{% endfor %}
+    </section>
 
-  <div>
-    <label for="{{ form.instructions.id_for_label }}" class="label">Note for givers</label>
-    {{ form.instructions }}
-    <p class="field-help">Optional. Shown under this account. Line breaks are kept.</p>
-    {% for e in form.instructions.errors %}<p class="field-error">{{ e }}</p>{% endfor %}
-  </div>
+    <details class="card p-5 sm:p-6" {% if form.swift_code.errors or form.sort_order.errors %}open{% endif %}>
+      <summary class="cursor-pointer text-base font-bold text-txt-primary">More options</summary>
+      <div class="mt-4 space-y-4">
+        <div>
+          <label for="{{ form.swift_code.id_for_label }}" class="label">{{ form.swift_code.label }}</label>
+          {{ form.swift_code }}
+          <p class="field-help">Only needed for gifts sent from another country.</p>
+          {% for e in form.swift_code.errors %}<p class="field-error">{{ e }}</p>{% endfor %}
+        </div>
+        <!-- <div>
+          <label for="{{ form.sort_order.id_for_label }}" class="label">Order</label>
+          {{ form.sort_order }}
+          <p class="field-help">Lower numbers come first. You can also move accounts up or down from the list.</p>
+          {% for e in form.sort_order.errors %}<p class="field-error">{{ e }}</p>{% endfor %}
+        </div> -->
+      </div>
+    </details>
 
-  <div>
-    <label for="{{ form.qr_image.id_for_label }}" class="label">QR image</label>
-    {{ form.qr_image }}
-    <p class="field-help">Optional. JPG, PNG or WebP. This image is public.</p>
-    {% for e in form.qr_image.errors %}<p class="field-error">{{ e }}</p>{% endfor %}
-  </div>
+    <div class="flex flex-wrap gap-3 pt-1">
+      <button type="submit" class="btn btn-primary min-h-11">{% if account %}Save changes{% else %}Add account{% endif %}</button>
+      <a href="{{ list_url }}" class="btn btn-secondary min-h-11">Cancel</a>
+    </div>
+  </form>
 
-  <div>
-    <label for="{{ form.sort_order.id_for_label }}" class="label">Order</label>
-    {{ form.sort_order }}
-    <p class="field-help">Lower numbers come first. Leave empty to put it first among equals.</p>
-    {% for e in form.sort_order.errors %}<p class="field-error">{{ e }}</p>{% endfor %}
-  </div>
-
-  <div class="flex flex-wrap gap-3 pt-2">
-    <button type="submit" class="btn btn-primary min-h-11">{% if account %}Save changes{% else %}Add account{% endif %}</button>
-    <a href="{{ list_url }}" class="btn btn-secondary min-h-11">Cancel</a>
-  </div>
-</form>
+  <aside class="lg:sticky lg:top-24" aria-label="Preview of the public card">
+    <p class="mb-2 text-xs font-semibold uppercase tracking-wider text-txt-muted">Preview: what visitors will see</p>
+    <div class="card flex flex-col gap-3 overflow-hidden border-t-4 border-t-highlight p-5">
+      <h2 class="break-words text-lg font-bold" x-text="app || 'Payment app'" :class="app ? 'text-txt-primary' : 'text-txt-muted'"></h2>
+      <template x-if="qr">
+        <img :src="qr" alt="" class="size-40 self-center rounded-xl border border-border bg-white object-contain p-2">
+      </template>
+      <div class="space-y-2">
+        <p x-show="name" x-text="name" class="break-words text-base text-txt-primary"></p>
+        <p x-show="number" x-text="number" class="break-all font-mono text-xl font-semibold text-txt-primary"></p>
+        <p x-show="swift" class="text-sm text-txt-secondary">SWIFT: <span class="font-mono" x-text="swift"></span></p>
+        <p x-show="note" x-text="note" class="whitespace-pre-line rounded-lg bg-bg p-3 text-sm text-txt-secondary"></p>
+        <p x-show="!name && !number && !swift && !note" class="text-sm text-txt-muted">Fill in the form to see the card.</p>
+      </div>
+    </div>
+    <p class="mt-2 text-xs text-txt-muted">The Give page also adds copy buttons. Nothing is saved until you press Save.</p>
+  </aside>
+</div>
 {% endblock %}

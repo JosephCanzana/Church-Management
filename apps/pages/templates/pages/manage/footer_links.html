@@ -4,6 +4,8 @@
   Extends base_app.html. Blocks filled: title, page_title, content.
   Context variables: links (list of dicts with id, label, url, in display order),
   is_custom (true when a saved list is in use, false while the built-in links are shown).
+  The shared Landing sub-navigation (_landing_nav.html) replaces the old breadcrumb, so the
+  other Landing sections and the "View public page" button stay one tap away.
   Up and down apply at once (no confirmation); delete and reset ask first through data-confirm.
   Colors use design tokens only.
 -->
@@ -13,10 +15,9 @@
 {% block page_title %}Footer links{% endblock %}
 
 {% block content %}
-{% url 'pages:pages_manage:content_list' as landing_url %}
-{% include "includes/breadcrumb.html" with parent_label="Landing page" parent_url=landing_url current="Footer links" %}
+{% include "pages/manage/_landing_nav.html" with active="footer" %}
 
-<div class="mt-4 flex flex-wrap items-start justify-between gap-4">
+<div class="flex flex-wrap items-start justify-between gap-4">
   <div class="max-w-2xl">
     <p class="text-base text-txt-secondary">
       These are the links under "More" in the landing page footer. Addresses can start with https://, mailto:
@@ -40,21 +41,22 @@
 </div>
 
 {% if links %}
-<ul class="card mt-6 divide-y divide-border">
+<ol class="card mt-6 divide-y divide-border">
   {% for l in links %}
-  <li class="flex flex-wrap items-center justify-between gap-3 px-4 py-3">
-    <div class="min-w-0">
-      <p class="font-medium text-txt-primary">{{ l.label }}</p>
+  <li class="flex flex-wrap items-center gap-3 px-4 py-3">
+    <span class="flex size-8 shrink-0 items-center justify-center rounded-full bg-txt-primary text-sm font-bold text-surface" aria-label="Position {{ forloop.counter }}">{{ forloop.counter }}</span>
+    <div class="min-w-0 flex-1 basis-48">
+      <p class="break-words font-medium text-txt-primary">{{ l.label }}</p>
       <p class="break-all font-mono text-sm text-txt-secondary">{{ l.url }}</p>
     </div>
     <div class="flex flex-wrap items-center gap-2">
       <form method="post" action="{% url 'pages:pages_manage:footer_link_move' l.id 'up' %}">
         {% csrf_token %}
-        <button type="submit" class="btn btn-secondary min-h-11" aria-label="Move {{ l.label }} up" {% if forloop.first %}disabled{% endif %}>Up</button>
+        <button type="submit" class="btn btn-secondary min-h-11 min-w-11 !px-0" aria-label="Move {{ l.label }} up" {% if forloop.first %}disabled{% endif %}><span aria-hidden="true">↑</span></button>
       </form>
       <form method="post" action="{% url 'pages:pages_manage:footer_link_move' l.id 'down' %}">
         {% csrf_token %}
-        <button type="submit" class="btn btn-secondary min-h-11" aria-label="Move {{ l.label }} down" {% if forloop.last %}disabled{% endif %}>Down</button>
+        <button type="submit" class="btn btn-secondary min-h-11 min-w-11 !px-0" aria-label="Move {{ l.label }} down" {% if forloop.last %}disabled{% endif %}><span aria-hidden="true">↓</span></button>
       </form>
       <a href="{% url 'pages:pages_manage:footer_link_edit' l.id %}" class="btn btn-secondary min-h-11" aria-label="Edit {{ l.label }}">Edit</a>
       <form method="post" action="{% url 'pages:pages_manage:footer_link_delete' l.id %}"
@@ -65,11 +67,12 @@
     </div>
   </li>
   {% endfor %}
-</ul>
+</ol>
 {% else %}
 <div class="card mt-6 p-6 text-center">
   <h2 class="text-lg font-semibold text-txt-primary">No footer links</h2>
   <p class="mx-auto mt-2 max-w-xl text-base text-txt-secondary">The footer currently shows no links under "More". Add one, or reset to bring the built-in links back.</p>
+  <a href="{% url 'pages:pages_manage:footer_link_create' %}" class="btn btn-primary mt-4 min-h-11">Add a link</a>
 </div>
 {% endif %}
 {% endblock %}
