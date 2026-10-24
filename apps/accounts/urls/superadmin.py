@@ -11,7 +11,6 @@ from ..views import special_roles as special
 from ..views import superadmin as views
 from ..views import users as people
 from ..views import registration
-from .. import registration_site_section  # noqa: F401 (registers site setting section)
 from ..views.site_settings import registration_auto_approve_toggle
 
 app_name = "superadmin"

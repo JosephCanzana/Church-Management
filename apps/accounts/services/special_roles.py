@@ -36,7 +36,17 @@ from ..permissions import (
 
 #: Short labels shown as tags on the people screens. A role not listed here falls back to "<name> member".
 TAG_LABELS = {"tithes_offering": "Tithes member", "attendance": "Attendance member"}
+#: Every extension starts with this many seats per special role, and no limit can go below it.
+DEFAULT_SPECIAL_ROLE_LIMIT = 2
+MIN_SPECIAL_ROLE_LIMIT = 2
 
+
+def limit_cap(members):
+    """The most a limit may be: the members who can sign in, but never less than the minimum.
+
+    The floor keeps a tiny extension from being unable to hold the default of 2.
+    """
+    return max(members, MIN_SPECIAL_ROLE_LIMIT)
 
 # ------------------------------------------------------------------ reading
 def member_counts(extension_ids=None):
@@ -69,7 +79,7 @@ def special_role_rows(person):
     return [
         {
             "code": role.code, "name": role.name, "held": role.code in held,
-            "limit": limits.get(role.code), "used": used.get(role.code, 0),
+            "limit": limits.get(role.code, DEFAULT_SPECIAL_ROLE_LIMIT), "used": used.get(role.code, 0),
         }
         for role in SpecialRole.objects.order_by("name")
     ]
@@ -106,8 +116,10 @@ def limit_rows(extensions, roles):
         {
             "extension": extension,
             "members": members.get(extension.pk, 0),
+            "cap": limit_cap(members.get(extension.pk, 0)),
             "cells": [
-                {"role": role, "limit": limits.get((extension.pk, role.code)),
+                {"role": role,
+                 "limit": limits.get((extension.pk, role.code), DEFAULT_SPECIAL_ROLE_LIMIT),
                  "used": used.get((extension.pk, role.code), 0)}
                 for role in roles
             ],
@@ -175,10 +187,12 @@ def assign_special_role(actor, request, person, role_code):
         if UserSpecialRole.objects.filter(user=locked, role=role).exists():
             return False
         limit = ExtensionSpecialRoleLimit.objects.filter(extension=extension, role=role).first()
-        if limit is None:
+        max_count = limit.max_count if limit else DEFAULT_SPECIAL_ROLE_LIMIT   # no row = the default
+        used = UserSpecialRole.objects.filter(extension=extension, role=role).count()
+        if used >= max_count:
             raise ServiceError(
-                f"No limit is set for {role.name} in {title_case(extension.name)} yet, "
-                "so it cannot be given. Ask an admin to set one."
+                f"{title_case(extension.name)} already has {used} of {max_count} for {role.name}. "
+                "Remove someone first, or ask an admin to raise the limit."
             )
         used = UserSpecialRole.objects.filter(extension=extension, role=role).count()
         if used >= limit.max_count:
@@ -227,47 +241,38 @@ def set_special_role_limits(actor, request, extension_pk, values):
         if extension is None:
             raise ServiceError("That extension no longer exists.")
         members = member_counts([extension.pk]).get(extension.pk, 0)
+        members = member_counts([extension.pk]).get(extension.pk, 0)
+        cap = limit_cap(members)
         for code, value in values.items():
             role = SpecialRole.objects.filter(pk=code).first()
             if role is None:
                 continue
+            if value is None:                      # an empty box means "back to the default"
+                value = DEFAULT_SPECIAL_ROLE_LIMIT
             used = UserSpecialRole.objects.filter(extension=extension, role=role).count()
             existing = ExtensionSpecialRoleLimit.objects.filter(extension=extension, role=role).first()
-            if value is None:
-                if existing is None:
-                    continue
-                if used:
-                    raise ServiceError(
-                        f"{role.name}: {used} {'person holds' if used == 1 else 'people hold'} it, "
-                        "so the limit cannot be cleared. Remove them first."
-                    )
-                existing.delete()
-                changed[code] = None
-                continue
-            if value < 1:
-                raise ServiceError(f"{role.name}: the limit must be at least 1, or leave it empty for none.")
+            current = existing.max_count if existing else DEFAULT_SPECIAL_ROLE_LIMIT
+            if value < MIN_SPECIAL_ROLE_LIMIT:
+                raise ServiceError(f"{role.name}: the limit must be at least {MIN_SPECIAL_ROLE_LIMIT}.")
             if value < used:
                 raise ServiceError(
                     f"{role.name}: {used} {'person already holds' if used == 1 else 'people already hold'} it. "
                     f"Set the limit to at least {used}, or remove some first."
                 )
             # An unchanged value is always fine, even if members left since it was set.
-            if value > members and not (existing and existing.max_count == value):
-                if members == 0:
-                    raise ServiceError(
-                        f"{role.name}: {title_case(extension.name)} has no members who can hold it yet."
-                    )
+            if value > cap and value != current:
                 raise ServiceError(
                     f"{role.name}: {title_case(extension.name)} has only {members} "
-                    f"{'member' if members == 1 else 'members'}, so the limit cannot be higher than {members}."
+                    f"{'member' if members == 1 else 'members'} who can sign in, "
+                    f"so the limit cannot be higher than {cap}."
                 )
+            if value == current:
+                continue                           # nothing to change (and no row needed for the default)
             if existing is None:
                 ExtensionSpecialRoleLimit.objects.create(extension=extension, role=role, max_count=value)
-            elif existing.max_count != value:
+            else:
                 existing.max_count = value
                 existing.save(update_fields=["max_count"])
-            else:
-                continue
             changed[code] = value
         if changed:
             log_action(
@@ -299,8 +304,8 @@ def bulk_set_special_role_limits(actor, request, role_code, value, extension_ids
     role = SpecialRole.objects.filter(pk=role_code).first()
     if role is None:
         raise ServiceError("That special role does not exist.")
-    if value is None or value < 1:
-        raise ServiceError("Enter a limit of at least 1.")
+    if value is None or value < MIN_SPECIAL_ROLE_LIMIT:
+        raise ServiceError(f"Enter a limit of at least {MIN_SPECIAL_ROLE_LIMIT}.")
     targets = Extension.objects.filter(archived_at__isnull=True)
     if extension_ids is not None:
         targets = targets.filter(pk__in=list(extension_ids))

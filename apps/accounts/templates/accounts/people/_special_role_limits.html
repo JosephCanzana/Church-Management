@@ -26,8 +26,9 @@
   </div>
 
   <p class="mt-3 text-sm text-txt-secondary">
-    Leave a box empty for no limit (nobody there can be given that role yet). A limit cannot be
-    higher than the number of members who can sign in, or lower than the people who already hold the role.
+    Every extension starts with 2 for each role, and a limit cannot go below 2. Empty a box to go back to 2.
+    A limit cannot be higher than the number of members who can sign in (an extension with fewer than 2
+    keeps 2), or lower than the people who already hold the role.
   </p>
 
   {% if rows %}
@@ -88,7 +89,8 @@
                type="number" name="limit_{{ cell.role.code }}" class="input w-28" inputmode="numeric" step="1"
                min="{% if cell.used %}{{ cell.used }}{% else %}1{% endif %}" max="{{ row.members }}"
                value="{{ cell.limit|default_if_none:'' }}" placeholder="None"
-               {% if row.members == 0 and cell.limit is None %}disabled{% endif %}
+              min="{% if cell.used > 2 %}{{ cell.used }}{% else %}2{% endif %}" max="{{ row.cap }}"
+               value="{{ cell.limit }}" placeholder="2"
                aria-describedby="used-{{ row.extension.pk }}-{{ cell.role.code }}">
         <p id="used-{{ row.extension.pk }}-{{ cell.role.code }}" class="field-help">{{ cell.used }} in use</p>
       </div>

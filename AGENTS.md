@@ -332,7 +332,7 @@ with. Only create a new app if the answer is "none".
   in `User.save()`. Never reused, never edited. `bulk_create()` skips it, so
   create users one by one.
 - **Special-role limits** are enforced in a transaction with the extension row
-  locked. An extension with no limit row for a role cannot give that role to anyone until an admin sets one.
+  locked. An extension with no limit row uses the default of 2 per role. A limit can never be below 2
 - **Uploaded attendance and finalized tithes reports** are locked; only an admin reopens them
   (logged and alerts admins). Force delete is super admin only, archived rows
   only, logged before deleting; delete files from disk first.
@@ -575,10 +575,10 @@ with. Only create a new app if the answer is "none".
 - **Special roles** (`services/special_roles.py`, `views/special_roles.py`): `tithes_offering` and `attendance`. The
   super-admin and admins (any extension) and a coordinator (their own) give or take them on a member's detail page. Only a
   member who can sign in (not archived, not suspended) can hold one. `assign_special_role` locks the extension row, then
-  the person, and refuses when no `extension_special_role_limit` row exists or the limit is full. Limits are set per
+  the person, and refuses when the limit is full (no `extension_special_role_limit` row means the default of 2). Limits are set per
   extension on `/admin/special-roles/` and `/superadmin/special-roles/` (super-admin and admin only,
-  `set_special_role_limits`, all or nothing; a limit cannot go below the current holders and cannot be cleared while
-  someone holds the role). Archiving or moving a person clears their roles (`_clear_special_roles`). Audit actions:
+  `set_special_role_limits`, all or nothing; a limit is never below 2 or below the current holders, and an empty value
+  resets it to 2). Archiving or moving a person clears their roles (`_clear_special_roles`). Audit actions:
   `special_role.assign`, `special_role.remove`, `special_role.limit`.
 - **Default passwords:** personal to the super-admin and each admin, one per role beneath them (super-admin: admin,
   coordinator, member; admin: coordinator, member); a coordinator keeps none. The password a person gets depends on WHO
@@ -1176,9 +1176,9 @@ templates in `templates/buddy/`, `static/js/buddy_chat.js`, tests in `tests/`). 
   the "Special roles" button on `/admin/users/` (`admin_area:special_role_limits`). Both include
   `accounts/people/_special_role_limits.html` with `views.special_roles.limits_context()`. A super-admin GET of
   `/superadmin/special-roles/` redirects to the section; POSTs still go to `special_role_limits`.
-- **Limit rules (`services/special_roles.py`):** a limit cannot exceed `member_counts()` (members who can sign in: role member,
-  in the extension, not archived or suspended), cannot be below the people holding the role, and cannot be cleared while anyone
-  holds it. `bulk_set_special_role_limits(actor, request, role, value, extension_ids=None)` runs `set_special_role_limits`
+- **Limit rules (`services/special_roles.py`):** a limit cannot exceed `limit_cap()` (`member_counts()`, the members who can sign in: role member,
+  in the extension, not archived or suspended, but never less than 2), cannot be below 2 or below the people holding the role,
+  and an empty value resets it to 2. `bulk_set_special_role_limits(actor, request, role, value, extension_ids=None)` runs `set_special_role_limits`
   once per extension (own transaction, ascending id) and returns `LimitBulkResult(done, unchanged, skipped)`; it is idempotent,
   so it needs no one-time token.
 - **Tags on the people screens:** the list and detail views call `attach_special_roles(people)` (one query for the page) and the

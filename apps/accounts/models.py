@@ -346,7 +346,7 @@ class UserSpecialRole(models.Model):
 class ExtensionSpecialRoleLimit(models.Model):
     extension = models.ForeignKey(Extension, on_delete=models.CASCADE, related_name="special_role_limits")
     role = models.ForeignKey(SpecialRole, to_field="code", on_delete=models.PROTECT, related_name="+")
-    max_count = models.PositiveIntegerField()
+    max_count = models.PositiveIntegerField(default=2)   # keep in step with DEFAULT_SPECIAL_ROLE_LIMIT
 
     class Meta:
         db_table = "extension_special_role_limit"
