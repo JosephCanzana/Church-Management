@@ -420,10 +420,10 @@ def unassign_coordinator(actor, request, extension):
 def archive_extension(actor, request, extension):
     """Archive an extension. Returns (extension, changed).
 
-    Blocked while it is the main church (give the tag to another extension first), and while
-    any non-archived person still belongs to it (move or archive them first). An already archived extension is left alone and logs nothing,
-    so a double click is harmless. Any leftover coordinator link (an archived
-    person) is cleared.
+    Blocked while it is the main church (give the tag to another extension first).
+    People may still belong to it: they keep their link, and the headcount is
+    recorded in the audit log. An already archived extension is left alone and logs nothing,
+    so a double click is harmless. Any coordinator link is cleared.
     """
     require_extension_manager(actor)
     with transaction.atomic():
@@ -435,11 +435,7 @@ def archive_extension(actor, request, extension):
                 f"{title_case(ext.name)} is the main church. Choose another main church before archiving it."
             )
         people = User.objects.filter(extension=ext).exclude(status=Status.ARCHIVED).count()
-        if people:
-            noun = "person" if people == 1 else "people"
-            raise ServiceError(
-                f"{title_case(ext.name)} still has {people} {noun}. Move or archive them first."
-            )
+        previous_coordinator_id = ext.coordinator_id
         extra = []
         if ext.coordinator_id:
             ext.coordinator = None
@@ -447,7 +443,12 @@ def archive_extension(actor, request, extension):
         core_services.archive(ext, extra_fields=extra)
         _log_extension(
             "extension.archive", actor, request, ext,
-            before={"archived": False}, after={"archived": True},
+            before={
+                "archived": False,
+                "active_people": people,
+                "coordinator_id": previous_coordinator_id,
+            },
+            after={"archived": True},
         )
     return ext, True
 
@@ -480,6 +481,11 @@ def force_delete_extension(actor, request, extension):
             ext = _lock_extension(extension.pk)
             if not ext.is_archived:
                 raise ServiceError("Only archived extensions can be deleted.")
+            if User.objects.filter(extension=ext).exists():
+                raise ServiceError(
+                    f"{title_case(ext.name)} still has people assigned to it. "
+                    "Move them to another extension before deleting."
+                )
             _log_extension(
                 "extension.delete", actor, request, ext,
                 before=_extension_snapshot(ext),

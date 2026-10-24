@@ -443,7 +443,14 @@ with. Only create a new app if the answer is "none".
   `accounts/views/__init__.py` imports them; never copy them back.
 - **Extension invariants (the database cannot enforce them, the services do):** the coordinator has `role=coordinator`
   and belongs to that extension; one coordinator per extension; replacing a coordinator demotes the old one to member;
-  an extension cannot be archived while non-archived people belong to it; only archived extensions can be deleted.
+  an extension can be archived while people still belong to it (the coordinator seat is cleared, the people keep their link);
+  it cannot be archived while it is the main church; only archived extensions can be deleted, and never while any person
+  (archived ones included) still belongs to it.
+- **Archived extensions with people:** archiving does not need an empty extension. Members keep their `extension` link, the
+  coordinator seat is cleared, and the audit row records `active_people` and the old `coordinator_id`. Permanent deletion
+  (`force_delete_extension`, `bulk_delete_extensions` and the nightly `purge_archived`) is refused or skipped while ANY person
+  row, archived ones included, still points at the extension; they must be moved out first. The detail page shows the
+  "will be permanently deleted on" date only when nobody belongs to the extension.
 - **Extension text is stored lowercase, shown in title case:** `core/text.py` (`clean_text` on input, `title_case` on output;
   templates use `{% load ui_tags %}` and `|title_case`, messages call `title_case(...)`). Old rows may be mixed case and are NOT
   migrated, so every comparison ignores case (`name__iexact`, `clean_text`) and `update_extension` treats a case-only difference
@@ -1281,7 +1288,7 @@ templates in `templates/buddy/`, `static/js/buddy_chat.js`, tests in `tests/`). 
 
 ## Nightly jobs (each is a management command in its own app)
 `purge_archived` (core, children first, files before rows, skips extensions
-still in use), `archive_inactive_users`, `auto_transfer_extension`,
+that any person, archived included, still belongs to), `archive_inactive_users`, `auto_transfer_extension`,
 `cleanup_email_tokens` (accounts), `complete_ended_goals` (faith),
 `close_stale_end_requests` (buddy), `cleanup_notifications`, `cleanup_registration_requests`, `cleanup_audit_log`; every
 15 minutes `send_event_reminders`; every 5 minutes `send_goal_reminders` (faith); hourly `fetch_jil_videos`. Jobs log with
