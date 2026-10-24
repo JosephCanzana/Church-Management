@@ -19,7 +19,7 @@ optional (pass True when the field may stay empty: no asterisk, no `required`; t
 
 <select id="id_{{ key }}_select" name="{{ key }}" class="input disabled:cursor-not-allowed disabled:opacity-60" {% if not optional %}required{% endif %} disabled
         style="display:none" x-show="usePicker" x-cloak
-        :disabled="!usePicker || {{ parent }}"
+        :disabled="!usePicker || {{ parent }}{% if field.field.disabled %} || true{% endif %}"
         @change="{{ on_change }}">
   <option value="" :selected="!{{ key }}"
           x-text="({{ parent }}) ? 'Choose the area above first' : '{{ placeholder }}'">{{ placeholder }}</option>

@@ -74,8 +74,8 @@ class RegistrationForm(forms.Form):
     municipality = forms.CharField(max_length=150)
     barangay = forms.CharField(max_length=150)
     postal_code = forms.CharField(max_length=10)
-    street = forms.CharField(max_length=150, required=False)
-    building_number = forms.CharField(max_length=50, required=False)
+    street = forms.CharField(max_length=150, required=False, label="Street, Purok, or Sitio")
+    building_number = forms.CharField(max_length=50, required=False, label="House / Building No.")
     submission_token = forms.CharField(widget=forms.HiddenInput)
     website = forms.CharField(required=False, widget=forms.HiddenInput)
 
@@ -136,6 +136,8 @@ class ExtensionForm(forms.ModelForm):
     OPTIONAL_FIELDS = {"street", "building_number", "is_main_church"}
     #: Fields shown back in title case when an extension is edited.
     TITLE_FIELDS = ("name", "province", "municipality", "barangay", "street", "building_number")
+    #: Fixed once the extension exists. Shown greyed out; the server ignores any posted value.
+    LOCKED_FIELDS = ("country", "province", "municipality")
 
     # Declared here (not just in Meta) because it is a dropdown, not free text.
     # The initial value is the model default for a new extension.
@@ -160,7 +162,12 @@ class ExtensionForm(forms.ModelForm):
             "street": forms.TextInput(attrs={"class": "input", "autocomplete": "off"}),
             "building_number": forms.TextInput(attrs={"class": "input", "autocomplete": "off"}),
         }
-        labels = {"name": "Extension name", "is_main_church": "Main church"}
+        labels = {
+            "name": "Extension name",
+            "is_main_church": "Main church",
+            "street": "Street, Purok, or Sitio",
+            "building_number": "House / Building No.",
+        }
 
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
@@ -175,10 +182,14 @@ class ExtensionForm(forms.ModelForm):
             choices.append((old, old))
         self.fields["country"].choices = choices
 
-        if self.instance.pk and not self.is_bound:
+        if self.instance.pk:
+            for name in self.LOCKED_FIELDS:
+                self.fields[name].disabled = True
             # Saved values are lowercase (or old mixed case); show them as titles.
+            # Locked fields need this even on a POST: Django reads them from `initial`.
             for name in self.TITLE_FIELDS:
-                self.initial[name] = title_case(getattr(self.instance, name))
+                if not self.is_bound or name in self.LOCKED_FIELDS:
+                    self.initial[name] = title_case(getattr(self.instance, name))
             self.initial["country"] = canonical_country(saved_country) or title_case(saved_country)
 
     @property
@@ -427,11 +438,11 @@ class UserForm(forms.Form):
         }),
     )
     street = forms.CharField(
-        max_length=150, required=False, label="Street",
+        max_length=150, required=False, label="Street, Purok, or Sitio",
         widget=forms.TextInput(attrs={"class": "input", "autocomplete": "off"}),
     )
     building_number = forms.CharField(
-        max_length=50, required=False, label="Building number",
+        max_length=50, required=False, label="House / Building No.",
         widget=forms.TextInput(attrs={"class": "input", "autocomplete": "off"}),
     )
 
@@ -816,11 +827,11 @@ class ProfileDetailsForm(forms.Form):
         }),
     )
     street = forms.CharField(
-        max_length=150, strip=True, required=False, label="Street",
+        max_length=150, strip=True, required=False, label="Street, Purok, or Sitio",
         widget=forms.TextInput(attrs={"class": "input", "autocomplete": "off"}),
     )
     building_number = forms.CharField(
-        max_length=50, strip=True, required=False, label="Building number",
+        max_length=50, strip=True, required=False, label="House / Building No.",
         widget=forms.TextInput(attrs={"class": "input", "autocomplete": "off"}),
     )
     photo = forms.ImageField(required=False)

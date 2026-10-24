@@ -63,6 +63,7 @@ own required-field check runs before that, so the question only appears for a co
   </div>
 
   <h2 class="mt-8 text-base font-semibold">Address</h2>
+  {% if form.country.field.disabled %}<p class="mt-1 text-sm text-txt-secondary">Country, province, and municipality can't be changed after the extension is created.</p>{% endif %}
   <p class="mt-1 text-sm text-txt-secondary" x-show="usePicker" x-cloak style="display:none">
     Choose from the widest area down to the smallest. Each list follows the one above it.
     <span x-show="loading">Loading the Philippine address list…</span>
@@ -74,7 +75,8 @@ own required-field check runs before that, so the question only appears for a co
   <div class="mt-3 grid gap-4 sm:grid-cols-2">
     <div class="sm:col-span-2">
       <label for="id_country" class="label">{{ form.country.label }} <span class="text-error" aria-hidden="true">*</span></label>
-      <select id="id_country" name="country" class="input" required x-model="country" @change="onCountry($event)"
+      <select id="id_country" name="country" class="input disabled:cursor-not-allowed disabled:opacity-60" required x-model="country" @change="onCountry($event)"
+              {% if form.country.field.disabled %}disabled{% endif %}
               {% if form.country.errors %}aria-invalid="true"{% endif %}>
         {% for value, label in form.country.field.choices %}
         <option value="{{ value }}"{% if form.country.value == value %} selected{% endif %}>{{ label }}</option>
