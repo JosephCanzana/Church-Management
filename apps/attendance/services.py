@@ -438,20 +438,9 @@ def add_first_timer(
             # (convert the earlier visit, then tick them) or "a new person" (confirm_new).
             if matches or visits:
                 return AddFirstTimerResult(matches=matches, previous_visits=visits)
-        guest = User.objects.create_user(
-            first_name=data["first_name"], middle_name=data["middle_name"],
-            last_name=data["last_name"], suffix=data["suffix"],
-            birth_date=data["birth_date"], gender=data["gender"], age_network=data["age_network"],
-            phone_number=data["phone_number"], role=Role.MEMBER, person_type=PersonType.GUEST,
-            status=Status.ACTIVE, extension=locked.extension, must_change_password=False,
-            created_by=actor,
-        )
-        UserExtensionHistory.objects.create(
-            user=guest, extension=locked.extension,
-            from_date=min(locked.attendance_date, timezone.localdate()),
-            reason=UserExtensionHistory.Reason.INITIAL,
-        )
-        row = AttendanceFirstTimer.objects.create(attendance=locked, guest=guest, **data)
+        # Only the row is saved. The guest person is created at upload (`upload_sheet`), so a first timer
+        # who is removed, or a draft that is never uploaded, leaves nobody in the member list.
+        row = AttendanceFirstTimer.objects.create(attendance=locked, **data)
         visits = _visits_for(locked, data)
     return AddFirstTimerResult(first_timer=row, previous_visits=visits)
 
@@ -479,16 +468,22 @@ def update_first_timer(actor, sheet, first_timer_id, data):
 def remove_first_timer(actor, sheet, first_timer_id):
     """Take a first timer off the draft sheet. Returns True if removed, False if they were not on it.
 
-    A first timer who has since become a member (a member record or an account) can be removed too. Only this
-    visit is deleted, never the person, and that visit is also the "First visit" entry in the person's
-    history, so a mistaken entry can be undone. An uploaded sheet cannot be changed here (`_lock_draft`
-    refuses it; reopen the sheet first).
+    The visit row is deleted. On a normal draft that is all there is to do: the guest is only created at
+    upload. After a REOPEN (or for an older row) the visit already has a guest; that guest is deleted too
+    when nothing else uses them (`_discard_unused_guest`), so a person who was not really there does not
+    stay in the member list. A guest who has other visits or ticks, or who was promoted, is kept. An
+    uploaded sheet cannot be changed here (`_lock_draft` refuses it; reopen the sheet first).
     """
     with transaction.atomic():
         locked = _lock_draft(actor, sheet)
-        removed, _ = AttendanceFirstTimer.objects.filter(attendance=locked, pk=first_timer_id).delete()
-    return bool(removed)
-
+        row = AttendanceFirstTimer.objects.filter(attendance=locked, pk=first_timer_id).first()
+        if row is None:
+            return False
+        guest_id = row.guest_id
+        row.delete()
+        if guest_id:
+            _discard_unused_guest(guest_id)
+    return True
 
 # -------------------------------------------------- guest first-visit helpers
 def previous_first_timer_visits(
@@ -570,20 +565,10 @@ def convert_first_timer(actor, first_timer_id, *, token, request=None):
 
         person = User.objects.select_for_update().filter(pk=row.guest_id).first() if row.guest_id else None
         if person is None:
-            # Legacy attendance rows predate guest links. Give the visit one guest identity now,
-            # then promote it in place; never create a second member or a sign-in account.
-            person = User.objects.create_user(
-                first_name=row.first_name, middle_name=row.middle_name, last_name=row.last_name,
-                suffix=row.suffix, birth_date=row.birth_date, gender=row.gender,
-                age_network=row.age_network, phone_number=row.phone_number,
-                role=Role.MEMBER, person_type=PersonType.GUEST, status=Status.ACTIVE,
-                extension=sheet.extension, must_change_password=False, created_by=actor,
-            )
-            UserExtensionHistory.objects.create(
-                user=person, extension=sheet.extension,
-                from_date=min(sheet.attendance_date, timezone.localdate()),
-                reason=UserExtensionHistory.Reason.INITIAL,
-            )
+            # A first timer on a draft has no person yet (it is made at upload), and older rows predate guest
+            # links. Give the visit one guest identity now, then promote it in place; never create a second
+            # member or a sign-in account.
+            person = _create_guest_for_row(actor, sheet, row)
             row.guest = person
         if person.person_type == PersonType.GUEST:
             person, _changed = promote_guest(actor, request, person)
@@ -695,6 +680,14 @@ def upload_sheet(actor, sheet_id, *, token, request=None):
             "members_present", "first_timers_count", "total_present", "summary",
             "uploaded_by", "uploaded_at", "status",
         ])
+
+        # First timers become guest people only now, inside the same transaction as the upload, so a failed
+        # upload creates nobody. A visit that already has a person (reopened sheet, promoted first timer)
+        # is left alone, so a second upload never makes a second guest.
+        for visit in AttendanceFirstTimer.objects.select_for_update().filter(
+                attendance=locked, guest__isnull=True).order_by("pk"):
+            visit.guest = _create_guest_for_row(actor, locked, visit)
+            visit.save(update_fields=["guest"])
 
         # Forward only (see accounts.services.presence). Capped at today in Manila so a sheet dated
         # in the future by mistake can never make someone look present in the future.
@@ -947,7 +940,7 @@ def edit_first_timer(actor, sheet, first_timer_id, *, first_name, last_name, gen
     the draft, and `ServiceError` for a missing row or a bad value.
     """
     locked = Attendance.objects.select_for_update().get(pk=sheet.pk)
-    if not permissions.can_edit_draft(actor, locked):
+    if not can_edit_draft(actor, locked):
         raise PermissionDenied
     row = AttendanceFirstTimer.objects.filter(pk=first_timer_id, attendance=locked).first()
     if row is None:
@@ -964,3 +957,50 @@ def edit_first_timer(actor, sheet, first_timer_id, *, first_name, last_name, gen
     row.gender, row.age_network = gender, age_network
     row.save(update_fields=["first_name", "last_name", "gender", "age_network"])
     return row
+
+def _create_guest_for_row(actor, sheet, row):
+    """Create the guest person for one first-timer visit and return it. Call inside `transaction.atomic()`.
+
+    A first timer is only a ROW on a draft. The person record is made when the sheet is uploaded (or when
+    a leader promotes the visit), so a draft that is edited, abandoned or archived never leaves a guest
+    behind in the member list.
+    """
+    guest = User.objects.create_user(
+        first_name=row.first_name, middle_name=row.middle_name, last_name=row.last_name,
+        suffix=row.suffix, birth_date=row.birth_date, gender=row.gender,
+        age_network=row.age_network, phone_number=row.phone_number,
+        role=Role.MEMBER, person_type=PersonType.GUEST, status=Status.ACTIVE,
+        extension=sheet.extension, must_change_password=False, created_by=actor,
+    )
+    UserExtensionHistory.objects.create(
+        user=guest, extension=sheet.extension,
+        from_date=min(sheet.attendance_date, timezone.localdate()),
+        reason=UserExtensionHistory.Reason.INITIAL,
+    )
+    return guest
+
+
+def _discard_unused_guest(guest_id):
+    """Delete a guest that nothing refers to any more. Returns True if deleted. Call inside `transaction.atomic()`.
+
+    Only a still-active GUEST is ever deleted (a promoted person, a suspended or archived one is a leader's
+    decision). Any other first-timer row, tick or conversion that points at them keeps them. A database
+    protection (another table still uses the person) also keeps them: nothing is raised.
+    """
+    guest = User.objects.select_for_update().filter(
+        pk=guest_id, person_type=PersonType.GUEST, status=Status.ACTIVE,
+    ).first()
+    if guest is None:
+        return False
+    in_use = (
+        AttendanceFirstTimer.objects.filter(Q(guest=guest) | Q(converted_user=guest)).exists()
+        or AttendanceMember.objects.filter(user=guest).exists()
+    )
+    if in_use:
+        return False
+    try:
+        with transaction.atomic():      # savepoint: a refused delete must not break the caller's transaction
+            guest.delete()
+    except (ProtectedError, RestrictedError):
+        return False
+    return True

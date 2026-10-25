@@ -92,6 +92,7 @@ docker compose exec web python manage.py seed_superadmin   # dev only: super-adm
 docker compose exec web python manage.py check
 docker compose exec web python manage.py makemigrations --check --dry-run
 docker compose exec web python manage.py test
+docker compose exec web python manage.py cleanup_first_timer_guests          # one-off: dry run; add --apply to delete guests left by never-uploaded drafts
 docker compose exec web python manage.py test apps.core.test_text -v 2
 docker compose exec web python manage.py test apps.bible
 docker compose exec web python manage.py test apps.faith apps.buddy apps.prayer
@@ -664,16 +665,25 @@ The source plan `docs/attendance.md` is not present in this checkout; the defaul
     date), and `set_member_category` also updates the person's stored age network when the taker changes it, so nobody is asked
     every Sunday. A row with a missing category is saved blank and flagged on the screen; the upload refuses blanks.
     A second tick of the same person changes nothing.
-  - `add_first_timer` creates a guest record in the sheet's extension and links it from the first-timer row only after the
-    "same person?" check is answered as new. Its `AddFirstTimerResult` (`first_timer` or `matches`, `needs_confirmation`) works
-    when people with the
+  - `add_first_timer` saves the first-timer ROW only, after the "same person?" check is answered as new. No person record
+    exists while the sheet is a draft, so a first timer never shows in the Guests list, the member list, `search_people` or
+    `roster_people` until the sheet is uploaded (see "When the guest is created"). Its `AddFirstTimerResult` (`first_timer` or
+    `matches`, `needs_confirmation`) works: when people with the
     same name exist and `confirm_new` is false, nothing is saved and the matches come back for the "same person?" prompt. A birth
     date, when given, DECIDES the age network. The same first timer twice on one sheet is refused unless birth dates differ.
     An earlier unconverted first timer of the same extension with the same name counts like an existing person: without
     `confirm_new` nothing is saved and the result carries `previous_visits` (see First timer to member).
   - The "same person?" match for an active guest marks that existing row present instead of making another person. `mark_present`
     refuses a person who is already linked as a first timer on that sheet (they
-    would count twice), and `remove_first_timer` refuses a converted row (it is the member's "First visit").
+    would count twice). `remove_first_timer` can remove a converted row (only that visit is deleted, never the promoted person).
+  - **When the guest is created:** `upload_sheet` creates one guest (`_create_guest_for_row`: `person_type=guest`, the sheet's
+    extension, an `INITIAL` extension history row) for every first-timer row that has none, inside the upload transaction, so a
+    failed upload creates nobody. A row that already has a person (reopened sheet, promoted first timer) is skipped, so a second
+    upload never makes a second guest. `convert_first_timer` does the same for a draft row when a leader promotes it early.
+    `remove_first_timer` deletes the row and, when the visit already had a guest (after a reopen, or an older row), deletes that
+    guest too through `_discard_unused_guest`, but only an ACTIVE guest that no other first-timer row, tick or conversion uses
+    (a promoted, suspended or archived person is kept, and so is a guest a database protection still refers to). Edits to a first
+    timer on a draft reach the guest because it is built from the row at upload; after a reopen the existing guest is not updated.
   - Ticks, first timers and `taken_by` changes are working data and are NOT audited.
 - **Duplicate-name rule** (`accounts.services.users.find_duplicate_people`, one rule for user create and edit and for the
   attendance "same person?" prompt; `find_duplicate_person` returns its first result). Same first name, last name and suffix;
@@ -713,7 +723,7 @@ The source plan `docs/attendance.md` is not present in this checkout; the defaul
   keeps the frozen counts, and the sheet leaves the dashboards and the repeat-visitor count (uploaded sheets only).
   `last_attended_at` is NOT rolled back. Force delete: admin and super-admin on an ARCHIVED sheet only (archive first); this
   is the one place where an admin, not only the super-admin, may force delete. It writes the audit row first, then deletes the
-  tick and first-timer rows and the sheet through the ORM; people (including guests made from first timers) are never deleted.
+  tick and first-timer rows and the sheet through the ORM; people are never deleted (a draft's first timers never had a person record, and the guests of an uploaded sheet stay).
   Both lock the sheet row, re-check permission on the locked row, and are idempotent (a repeat gives a friendly
   `ServiceError`), so they need no one-time token. Audit actions: `attendance.archive` (a draft, no alert),
   `attendance.archive_uploaded` and `attendance.force_delete`; they carry the old status and counts only (no names), and the
@@ -743,7 +753,7 @@ The source plan `docs/attendance.md` is not present in this checkout; the defaul
   choice of the status filter shows them.
 - **Guest promotion** (`convert_first_timer` in `attendance/services.py`): one-time token, lock the sheet and first-timer row,
   promote its linked guest in place through `accounts.services.users.promote_guest`, then set `converted_user` on every first-timer
-  row linked to that same person. A legacy first-timer row without a guest link gets one guest record before promotion. The
+  row linked to that same person. A first-timer row without a guest link (every row on a draft, and older rows) gets one guest record through `_create_guest_for_row` before promotion. The
   Account ID, person row, home extension and attendance history stay; no sign-in account, password, or attendance member row is
   created. The audit event carries ids only. `previous_first_timer_visits` lists earlier unpromoted visits in the same extension;
   `member_attendance_history(user)` reads uploaded sheets newest first, showing those linked first-timer rows as "First visit".
