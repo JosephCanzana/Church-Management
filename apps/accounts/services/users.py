@@ -58,6 +58,9 @@ MIN_PASSWORD_LENGTH = 8
 # No 0/O, 1/l/I: generated passwords get read aloud and typed by hand.
 PASSWORD_ALPHABET = "abcdefghijkmnpqrstuvwxyzABCDEFGHJKLMNPQRSTUVWXYZ23456789"
 
+import logging
+logger = logging.getLogger(__name__)
+
 def _default_plain_for_display(actor, role):
     """The plain default password to show once, or "" when it may not or cannot be shown."""
     if role not in default_password_view_roles(actor):
@@ -956,11 +959,15 @@ class ResetResult:
     password: PasswordInfo = None
     duplicate: bool = False
 
+def _mail_ready():
+    from .registration import _approval_mail_is_configured   # lazy: registration imports this module
+    return _approval_mail_is_configured()
 
 def _reset_password(actor, request, ref, typed=""):
     """Give a person a new password: `typed`, else the actor's default, else generated.
 
-    Returns (person, info).
+    When the person has an email address and mail is configured, the new password is emailed
+    after the transaction commits. Returns (person, info).
     """
     with transaction.atomic():
         locked = _lock_person(ref.pk)
@@ -972,14 +979,42 @@ def _reset_password(actor, request, ref, typed=""):
         if person.person_type != PersonType.MEMBER_ACCOUNT:
             raise ServiceError("This person has no account, so there is no password to reset.")
         info = _set_initial_password(actor, person, typed)
+
+        will_email = bool(person.email) and _mail_ready()
+        if will_email and not info.plain:
+            # An old default row may have no readable copy. Never email an empty password.
+            value = generate_strong_password()
+            person.set_password(value)
+            info = PasswordInfo("generated", value, plain_value=value)
+
         # A reset only sets the flag: the status (active or suspended) is left as it is.
         person.must_change_password = True
         # Changing the hash also signs the person out of every open session.
         person.save(update_fields=["password", "must_change_password", "updated_at"])
         _log_person("account.password_reset", actor, request, person,
-                    after={"needs_change": True, "how_set": info.kind})
-    return person, info
+                    after={"needs_change": True, "how_set": info.kind, "emailed": will_email})
 
+        if will_email:
+            password, actor_id, person_pk = info.plain, actor.pk, person.pk
+
+            def deliver():
+                from apps.notifications.services import notify_many
+                from .registration import send_credentials_email
+                try:
+                    send_credentials_email(
+                        person, password,
+                        subject="Your password was reset",
+                        intro="A church leader reset your password.",
+                    )
+                except Exception:
+                    logger.exception("Reset email failed for user %s", person_pk)   # id only, no personal data
+                    notify_many(
+                        {actor_id}, "registration_email_failed", entity_type="app_user",
+                        entity_id=person_pk, data={},
+                    )
+
+            transaction.on_commit(deliver)
+    return person, info
 
 def reset_password(actor, request, ref, *, token, typed=""):
     """Reset one person's password. A replayed token returns duplicate=True.
