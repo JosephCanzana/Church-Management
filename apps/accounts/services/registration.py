@@ -14,7 +14,9 @@ from django.utils import timezone
 from apps.accounts.address import ADDRESS_FIELDS, check_address
 from apps.accounts.contact import clean_phone, is_valid_phone, PHONE_MESSAGE
 from apps.accounts.models import Extension, Gender, PersonType, RegistrationRequest, Role, Status, User
-from apps.accounts.services.users import create_user, grant_account, promote_guest, update_user, default_password_row
+from apps.accounts.services.users import (
+    create_user, default_password_row, grant_account, link_existing_person, promote_guest, update_user,
+)
 from apps.accounts.validators import generate_strong_password
 from apps.audit.services import log_action
 from apps.core.models import SiteSetting
@@ -250,8 +252,14 @@ def submit_registration(data, *, token):
     return SubmissionResult(request=req)
 
 
-def approve_registration(actor, request, request_id, *, token):
-    """Approve a scoped request; create or grant its account and close same-identity requests."""
+def approve_registration(actor, request, request_id, *, token, link_user=None, sync=False):
+    """Approve a scoped request; create or grant its account and close same-identity requests.
+
+    link_user -- None: old behaviour (use `matched_user`, if any, as before). "new": create a new
+                 person. A person id: link that existing guest or no-account member, who keeps their
+                 Account ID and history (`link_existing_person` re-checks the match under lock).
+    sync      -- with a linked person, copy request details into their BLANK fields only.
+    """
     with transaction.atomic():
         req = registration_requests_for(actor).select_for_update().filter(pk=request_id).first()
         if req is None:
@@ -263,13 +271,39 @@ def approve_registration(actor, request, request_id, *, token):
             validate_email(approved_email)
         except ValidationError:
             raise ServiceError("This request has an invalid email address and cannot be approved.")
-        email_owner = User.objects.filter(email__iexact=approved_email).exclude(pk=req.matched_user_id).first()
+        if link_user in (None, ""):
+            chosen_id, linking = req.matched_user_id, False
+        elif link_user == "new":
+            chosen_id, linking = None, False
+        else:
+            try:
+                chosen_id, linking = int(link_user), True
+            except (TypeError, ValueError):
+                raise ServiceError("Choose who this request is.")
+        email_owner = User.objects.filter(email__iexact=approved_email).exclude(pk=chosen_id).first()
         if email_owner:
             raise ServiceError("That email address is already used by another account.")
 
-        user = req.matched_user
+        user = User.objects.filter(pk=chosen_id).first() if chosen_id else None
         password_info = None
-        if user and user.person_type in (PersonType.MEMBER_RECORD, PersonType.GUEST):
+        if linking:
+            if actor.role not in (Role.SUPER_ADMIN, Role.ADMIN):
+                raise ServiceError("Only an admin can link a request to an existing person.")
+            if not consume_submission_token(token):
+                return None
+            user, password_info, _filled = link_existing_person(
+                actor, request, chosen_id,
+                {
+                    "first_name": req.first_name, "middle_name": req.middle_name,
+                    "last_name": req.last_name, "suffix": req.suffix, "birth_date": req.birth_date,
+                    "gender": req.gender, "phone_number": req.phone_number,
+                    **{field: getattr(req, field) for field in ADDRESS_FIELDS},
+                },
+                sync=sync,
+            )
+            user.email, user.email_verified_at = req.email, timezone.now()
+            user.save(update_fields=["email", "email_verified_at", "updated_at"])
+        elif user and user.person_type in (PersonType.MEMBER_RECORD, PersonType.GUEST):
             if user.person_type == PersonType.GUEST:
                 promote_guest(actor, request, user)
             update_user(actor, request, user, {

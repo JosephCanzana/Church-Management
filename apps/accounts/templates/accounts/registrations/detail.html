@@ -14,7 +14,35 @@
     <div class="sm:col-span-2"><dt class="text-txt-secondary">Address</dt><dd>{{ registration.building_number }} {{ registration.street }}, {{ registration.barangay|title }}, {{ registration.municipality|title }}, {{ registration.province|title }}, {{ registration.country|title }} {{ registration.postal_code }}</dd></div>
   </dl>
   <div class="flex flex-wrap items-start gap-6">
-  <form method="post" action="{% url request.resolver_match.namespace|add:':registration_approve' registration.pk %}">{% csrf_token %}<input type="hidden" name="submission_token" value="{{ token }}"><button class="btn btn-primary" type="submit">Approve and email account details</button></form>
+  <form method="post" action="{% url request.resolver_match.namespace|add:':registration_approve' registration.pk %}" class="w-full max-w-xl space-y-4">
+    {% csrf_token %}
+    <input type="hidden" name="submission_token" value="{{ token }}">
+    {% if suggestions %}
+    <fieldset class="space-y-3 rounded-xl border border-border p-4">
+      <legend class="px-1 text-sm font-semibold">This person may already be in the system</legend>
+      <p class="field-help">Linking keeps their Account ID and history and gives that same person a sign-in. Choose one, or create a new person.</p>
+      {% for s in suggestions %}
+      <label class="flex cursor-pointer items-start gap-3 text-sm">
+        <input type="radio" name="link_user" value="{{ s.id }}" required class="mt-0.5 size-5 shrink-0 accent-[var(--color-accent)]">
+        <span class="min-w-0 flex-1">
+          <span class="block font-medium text-txt-primary">{{ s.name }}</span>
+          <span class="block text-txt-secondary">{{ s.type_label }} · {{ s.extension }} · birth date {{ s.birth_note }}</span>
+        </span>
+        <span class="font-mono text-txt-secondary">{{ s.account_id }}</span>
+      </label>
+      {% endfor %}
+      <label class="flex cursor-pointer items-start gap-3 text-sm">
+        <input type="radio" name="link_user" value="new" required class="mt-0.5 size-5 shrink-0 accent-[var(--color-accent)]">
+        <span>None of these. Create a new person.</span>
+      </label>
+      <label class="flex cursor-pointer items-start gap-3 border-t border-border pt-3 text-sm">
+        <input type="checkbox" name="sync_details" value="1" checked class="mt-0.5 size-5 shrink-0 accent-[var(--color-accent)]">
+        <span>Fill in blank details on their record from this request (middle name, phone, address, birth date). Anything already filled is kept.</span>
+      </label>
+    </fieldset>
+    {% endif %}
+    <button class="btn btn-primary" type="submit">Approve and email account details</button>
+  </form>
   <form method="post" action="{% url request.resolver_match.namespace|add:':registration_reject' registration.pk %}" class="w-full max-w-md space-y-3">{% csrf_token %}<input type="hidden" name="submission_token" value="{{ token }}"><label class="label" for="reject-reason">Message to the applicant (sent by email)</label><textarea class="input" id="reject-reason" name="reason" rows="4" maxlength="1000" required></textarea><button class="btn btn-danger" type="submit">Reject and send message</button></form>
   </div>
   

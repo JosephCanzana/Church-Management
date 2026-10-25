@@ -15,6 +15,7 @@ from ..services.registration import (
     approve_registration, registration_requests_for, reject_registration,
     send_approval_email, submit_registration,
 )
+from ..services.users import registration_suggestions
 
 
 def _ip(request):
@@ -79,6 +80,7 @@ def approval_detail(request, pk):
         return redirect(_approvals_url(request))                        # <-- replaces the raise
     return render(request, "accounts/registrations/detail.html", {
         "registration": req, "token": new_submission_token(),
+        "suggestions": registration_suggestions(request.user, req),
     })
 
 
@@ -88,8 +90,16 @@ def approval_detail(request, pk):
 @never_cache
 def approve(request, pk):
     try:
+        link_user = request.POST.get("link_user") or None
+        sync = request.POST.get("sync_details") == "1"
+        if link_user is None:
+            # The radios' `required` only guards the browser; the server refuses a missing choice itself.
+            pending = registration_requests_for(request.user).filter(pk=pk).first()
+            if pending is not None and registration_suggestions(request.user, pending):
+                raise ServiceError("Choose who this request is, or create a new person.")
         outcome = approve_registration(
             request.user, request, pk, token=request.POST.get("submission_token"),
+            link_user=link_user, sync=sync,
         )
         if outcome is None:
             messages.info(request, "That request was already processed.")

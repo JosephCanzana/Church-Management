@@ -18,8 +18,8 @@ from collections import namedtuple
 from dataclasses import dataclass, field
 
 from django.core.exceptions import PermissionDenied, ValidationError
-from django.db import transaction
-from django.db.models import ProtectedError, RestrictedError
+from django.db import connection, transaction
+from django.db.models import ProtectedError, Q, RestrictedError
 from django.utils import timezone
 
 from apps.audit.services import log_action
@@ -276,6 +276,92 @@ def find_duplicate_person(first_name, middle_name, last_name, birth_date=None, *
         first_name, middle_name, last_name, birth_date, suffix=suffix, exclude_pk=exclude_pk, limit=1,
     )
     return found[0] if found else None
+
+
+def _first_word(text):
+    """First word of a name part, lowercase, without dots ("R." -> "r")."""
+    words = (text or "").replace(".", " ").split()
+    return words[0].lower() if words else ""
+
+
+def middle_names_compatible(a, b):
+    """True when two middle names could belong to one person.
+
+    Either blank, equal, or one is only the initial of the other ("r." and "robert").
+    """
+    a, b = _first_word(a), _first_word(b)
+    if not a or not b:
+        return True
+    return a == b or ((len(a) == 1 or len(b) == 1) and a[0] == b[0])
+
+
+def find_registration_matches(actor, first_name, middle_name, last_name, birth_date=None, *,
+                              suffix="", limit=10):
+    """Active guests and members without an account that a registration request may be.
+
+    Same first name, last name and suffix (case ignored), a middle name that is blank,
+    equal or an initial, and no clash of birth dates (a clash needs both sides to have one).
+    Starts from `User.objects.for_user(actor)`, so a coordinator only sees their own extension.
+    Only SUGGESTIONS: the approver chooses, and the approve service must call this again under lock.
+    """
+    people = (
+        User.objects.for_user(actor).select_related("extension")
+        .filter(
+            first_name__iexact=first_name, last_name__iexact=last_name,
+            status=Status.ACTIVE, role=Role.MEMBER,
+            person_type__in=(PersonType.GUEST, PersonType.MEMBER_RECORD),
+        )
+        .order_by("pk")
+    )
+    found = []
+    for other in people:
+        found.append(other)
+        if len(found) >= limit:
+            break
+    return found
+
+
+def registration_suggestions(actor, registration):
+    """Dicts for the approval template (never a phone, address or birth date, only a note).
+
+    Linking an existing person is for admins and super-admins only for now: a coordinator gets
+    no suggestions, so the page and the approve view's "choose who" check both stay out of the way.
+    """
+    if actor.role not in (Role.SUPER_ADMIN, Role.ADMIN):
+        return []
+    data = normalize_details({
+        "first_name": registration.first_name, "middle_name": registration.middle_name,
+        "last_name": registration.last_name, "suffix": registration.suffix,
+    })
+    rows = []
+    for p in find_registration_matches(
+        actor, data["first_name"], data["middle_name"], data["last_name"],
+        registration.birth_date, suffix=data["suffix"],
+    ):
+        if p.birth_date and registration.birth_date:
+            note = "matches" if p.birth_date == registration.birth_date else "DIFFERS from the request, check carefully"
+        else:
+            note = "not on file" if not p.birth_date else "not given in the request"
+        rows.append({
+            "id": p.pk, "name": p.full_name, "type_label": PersonType(p.person_type).label,
+            "extension": title_case(p.extension.name) if p.extension else "No extension",
+            "account_id": p.account_id, "birth_note": note,
+        })
+    return rows
+
+
+SYNC_FIELDS = ("middle_name", "gender", "birth_date", "phone_number", *ADDRESS_FIELDS)
+
+
+def sync_blank_details(person, details):
+    """Copy request details into the person's BLANK fields only. Returns the field names filled."""
+    details = normalize_details(details)
+    filled = []
+    for name in SYNC_FIELDS:
+        if not getattr(person, name) and details.get(name):
+            setattr(person, name, details[name])
+            filled.append(name)
+    return filled
 
 
 def duplicate_message(data, *, exclude_pk=None):
@@ -814,6 +900,53 @@ def grant_account(actor, request, ref, *, token, typed=""):
                     after={"person_type": PersonType.MEMBER_ACCOUNT, "needs_change": True,
                            "how_set": info.kind})
     return GrantResult(user=person, password=info)
+
+
+def link_existing_person(actor, request, person_id, details, *, sync=True):
+    """Give an existing guest or no-account member the sign-in a registration asked for.
+
+    Must run inside the caller's `transaction.atomic()` (the approve service has already consumed
+    its token). Same Account ID and history: the row is promoted (guest) and granted an account in
+    place. The id must still be one of `find_registration_matches` under the lock, so a tampered
+    form cannot link anybody else. Returns (person, PasswordInfo, filled_field_names).
+    `details` is a dict with the request's first_name, middle_name, last_name, suffix,
+    birth_date, gender, phone_number and address fields.
+    """
+    if not connection.in_atomic_block:
+        raise RuntimeError("link_existing_person() must run inside transaction.atomic().")
+    require_user_manager(actor)
+    locked = _lock_person(person_id)
+    person = locked.person
+    require_can_act(actor, person, GRANT_ACCOUNT)
+    clean = normalize_details(details)
+    allowed = find_registration_matches(
+        actor, clean.get("first_name", ""), clean.get("middle_name", ""), clean.get("last_name", ""),
+        clean.get("birth_date"), suffix=clean.get("suffix", ""),
+    )
+    if person.pk not in {p.pk for p in allowed}:
+        raise ServiceError("That person no longer matches this request. Reload the page.")
+    ext = locked.extension
+    if ext is None or ext.is_archived:
+        raise ServiceError("Put this person in an extension that is not archived first.")
+
+    old_type = person.person_type
+    filled = sync_blank_details(person, clean) if sync else []
+    if filled:
+        check_contact({n: getattr(person, n) for n in CONTACT_FIELDS})   # no half-filled address
+    person.person_type = PersonType.MEMBER_ACCOUNT        # before the password: guests get none
+    info = _set_initial_password(actor, person, "")
+    person.must_change_password = True
+    person.save(update_fields=[
+        "person_type", "password", "must_change_password", "updated_at", *filled,
+    ])
+    _log_person(
+        "account.grant_account", actor, request, person,
+        before={"person_type": old_type},
+        after={"person_type": PersonType.MEMBER_ACCOUNT, "needs_change": True,
+               "how_set": info.kind, "from_registration": True,
+               "synced_fields": filled},      # names only, never the values
+    )
+    return person, info, filled
 
 
 # ---------------------------------------------------------------- reset password
