@@ -2,6 +2,7 @@
 
     {% load people_tags %}
     {% role_url 'user_detail' person.pk %}      -> /superadmin/users/5/, /admin/users/5/ or /coordinator/users/5/
+    {% role_url_or_empty 'report_print' as url %} -> the same, or "" while the route does not exist
     {% person_actions person as can %}           -> then {% if 'archive' in can %} ... {% endif %}
     {% may_type_password as may_type %}          -> then {% if may_type %} ... {% endif %}
     {% person_tags person %}                     -> the badges: Needs password change, Guest, Member (no account), ...
@@ -12,7 +13,7 @@ matrix the services enforce, so a button is only drawn when the server would acc
 Hiding a button is not access control; the services still check.
 """
 from django import template
-from django.urls import reverse
+from django.urls import NoReverseMatch, reverse
 
 from ..permissions import available_actions, can_type_password
 
@@ -30,11 +31,41 @@ TAG_LABELS = {
 }
 
 
+#: Url namespace of each leader's area. Used only when the page itself is not inside an area (the dashboards
+#: live under their own ``dashboards`` namespace but link into the person's area: prayer inbox, reports...).
+AREA_NAMESPACES = {"super_admin": "superadmin", "admin": "admin_area", "coordinator": "coordinator_area"}
+
+
+def _area_namespace(context):
+    """Namespace to reverse in: the page's own when it is an area, else the signed-in person's area."""
+    request = context["request"]
+    namespace = request.resolver_match.namespace
+    if namespace in AREA_NAMESPACES.values():
+        return namespace
+    return AREA_NAMESPACES.get(getattr(request.user, "role", None), namespace)
+
+
 @register.simple_tag(takes_context=True)
 def role_url(context, name, *args):
-    """URL of `name` in the current role's namespace (superadmin, admin_area or coordinator_area)."""
-    namespace = context["request"].resolver_match.namespace
-    return reverse(f"{namespace}:{name}", args=args)
+    """URL of `name` in the current role's namespace (superadmin, admin_area or coordinator_area).
+
+    On a page outside every area (the dashboards) it uses the signed-in person's own area, so a dashboard
+    template never hardcodes a role namespace.
+    """
+    return reverse(f"{_area_namespace(context)}:{name}", args=args)
+
+
+@register.simple_tag(takes_context=True)
+def role_url_or_empty(context, name, *args):
+    """Like `role_url`, but gives "" when the route does not exist (yet) instead of raising.
+
+    For links to pages another brick adds later (the report and its print page): the template draws the link
+    only when this is not empty, so nothing points at a missing route.
+    """
+    try:
+        return reverse(f"{_area_namespace(context)}:{name}", args=args)
+    except NoReverseMatch:
+        return ""
 
 
 @register.simple_tag(takes_context=True)

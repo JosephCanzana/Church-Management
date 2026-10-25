@@ -1,6 +1,7 @@
 <!--
 dashboards/superadmin.html
-Super-admin dashboard: the shared sections plus the overview (people, extensions, attendance, tithes) for every extension.
+Super-admin dashboard: tiles, charts, prayer, events, extension comparison and giving for every extension,
+with the extension picker (?extension=).
 Context: dashboard.
 -->
 {% extends "dashboards/dashboard_base.html" %}
@@ -12,3 +13,5 @@ Context: dashboard.
 {% block leader_sections %}
 {% include "dashboards/_leader_overview.html" %}
 {% endblock %}
+
+{% block coming_soon %}{# the events card inside the overview replaced the placeholder #}{% endblock %}

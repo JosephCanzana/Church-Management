@@ -1,0 +1,19 @@
+{% comment %}
+dashboards/_chart_spark.html
+Sparkline (the giving trend): a tiny line with no axes, drawn from charts.sparkline(). No card around it, so it
+sits inside _giving_card.html. Pass: chart (prepared dict: width, height, points, polyline, last, items, aria).
+The numbers are NOT drawn on the line: they are the visually hidden list below (label and amount per gathering),
+and the same text is in aria-label. The muted stroke is on purpose (giving is a quiet card).
+{% endcomment %}
+{% load l10n %}
+{% if chart and not chart.empty %}
+{% localize off %}
+<svg viewBox="0 0 {{ chart.width }} {{ chart.height }}" role="img" aria-label="{{ chart.aria }}" class="h-8 w-32 shrink-0">
+  {% if chart.points|length > 1 %}<polyline points="{{ chart.polyline }}" fill="none" class="stroke-txt-secondary" stroke-width="2" stroke-linejoin="round" stroke-linecap="round"/>{% endif %}
+  {% if chart.last %}<circle cx="{{ chart.last.x }}" cy="{{ chart.last.y }}" r="3" class="fill-txt-secondary"><title>{% for item in chart.items|slice:"-1:" %}{{ item.label }}: {{ item.display }}{% endfor %}</title></circle>{% endif %}
+</svg>
+{% endlocalize %}
+<ul class="sr-only">
+  {% for item in chart.items %}<li>{{ item.label }}: {{ item.display }}</li>{% endfor %}
+</ul>
+{% endif %}

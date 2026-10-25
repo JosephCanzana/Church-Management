@@ -61,6 +61,16 @@
      Surface color with a hint of the primary color. Depth comes from shadows in the templates. */
   --color-shell:          color-mix(in oklab, var(--color-primary) 3%, var(--color-surface));
   --color-shell-border:   color-mix(in oklab, var(--color-primary) 14%, var(--color-surface));
+
+  /* Chart colors (series and donut slices). Each one points at an existing token, so themes.css already
+     recolors them in dark mode and in every preset: no second set of values to keep in step. The order is
+     the order a chart uses them (men, women...). Charts never rely on color alone: every slice, bar and
+     point also has its label and value as text. */
+  --color-chart-1:        var(--color-accent);
+  --color-chart-2:        var(--color-highlight);
+  --color-chart-3:        var(--color-success);
+  --color-chart-4:        var(--color-warning);
+  --color-chart-5:        var(--color-txt-muted);
 }
 
 /* Keeps Alpine-controlled elements (modals, bars) hidden until Alpine has started. */
@@ -215,6 +225,25 @@
     @apply rounded-2xl bg-surface border border-border;
     box-shadow: 0 4px 16px -8px color-mix(in oklab, black 20%, transparent);
   }
+
+  /* Chart colors by number (1..5), picked with the chart_slot filter in dashboards/templatetags/chart_tags.py.
+     They are written out here, in a component layer, so the build always keeps them even though no template
+     spells the full class name. */
+  .chart-fill-1 { fill: var(--color-chart-1); }
+  .chart-fill-2 { fill: var(--color-chart-2); }
+  .chart-fill-3 { fill: var(--color-chart-3); }
+  .chart-fill-4 { fill: var(--color-chart-4); }
+  .chart-fill-5 { fill: var(--color-chart-5); }
+  .chart-stroke-1 { stroke: var(--color-chart-1); }
+  .chart-stroke-2 { stroke: var(--color-chart-2); }
+  .chart-stroke-3 { stroke: var(--color-chart-3); }
+  .chart-stroke-4 { stroke: var(--color-chart-4); }
+  .chart-stroke-5 { stroke: var(--color-chart-5); }
+  .chart-bg-1 { background-color: var(--color-chart-1); }
+  .chart-bg-2 { background-color: var(--color-chart-2); }
+  .chart-bg-3 { background-color: var(--color-chart-3); }
+  .chart-bg-4 { background-color: var(--color-chart-4); }
+  .chart-bg-5 { background-color: var(--color-chart-5); }
 
   /* No lifting or press effects for people who prefer reduced motion. */
   @media (prefers-reduced-motion: reduce) {

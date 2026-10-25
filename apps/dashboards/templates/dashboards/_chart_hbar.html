@@ -1,0 +1,33 @@
+{% comment %}
+dashboards/_chart_hbar.html
+Horizontal bars (people per extension, attendance per extension), drawn as inline SVG from charts.hbar().
+Pass: span (grid-span classes from the bento grid, optional), chart (prepared dict: rows, max_width, height, empty, more, title, caption, aria) and empty_text.
+Each row is a label and its value as text on one line with the bar under it (so long names get the full width).
+Long names were already shortened by the service; the tooltip (<title>) carries the full name. A bar is never
+the only carrier of the number: the value is always printed on the right.
+{% endcomment %}
+{% load l10n %}
+<section class="card @container p-4 {{ span }}">
+  <h3 class="text-base font-semibold text-txt-primary">{{ chart.title }}</h3>
+  {% if chart.caption %}<p class="text-sm text-txt-secondary">{{ chart.caption }}</p>{% endif %}
+  {% if chart.empty %}
+  <p class="mt-3 text-base text-txt-secondary">{{ empty_text }}</p>
+  {% else %}
+  <div class="mt-3 max-h-72 overflow-y-auto">
+  {% localize off %}
+  <svg viewBox="0 0 {{ chart.max_width }} {{ chart.height }}" role="img" aria-label="{{ chart.aria }}" class="h-auto w-full">
+    {% for row in chart.rows %}
+    <g transform="translate(0 {{ row.y }})">
+      <title>{{ row.full }}: {{ row.value }}</title>
+      <text x="0" y="13" class="fill-txt-primary" font-size="14">{{ row.label }}</text>
+      <text x="{{ chart.max_width }}" y="13" text-anchor="end" class="fill-txt-primary font-mono" font-size="14">{{ row.value }}</text>
+      <rect x="0" y="20" width="{{ chart.max_width }}" height="10" rx="5" class="fill-border"/>
+      <rect x="0" y="20" width="{{ row.width }}" height="10" rx="5" class="fill-accent"/>
+    </g>
+    {% endfor %}
+  </svg>
+  {% endlocalize %}
+  </div>
+  {% if chart.more %}<p class="mt-3 text-sm text-txt-secondary">and {{ chart.more }} more</p>{% endif %}
+  {% endif %}
+</section>

@@ -1,0 +1,31 @@
+{% comment %}
+dashboards/_extension_comparison.html
+Extension comparison for admin and super-admin, as three bento items placed straight into the grid of
+_leader_overview.html: people per extension, attendance per extension, and "Needs a look" (who has a coordinator, who
+has not sent a sheet lately). Pass: span_third and span_wide (grid-span classes). Context: dashboard.extension_stats and
+dashboard.charts.people_bars / attendance_bars. Nothing is drawn for a coordinator (extension_stats is None).
+It compares EVERY extension, so the extension picker does not change it (the chart captions say so).
+Silent extensions are listed by name only, up to 10, then "and N more".
+{% endcomment %}
+{% with ext=dashboard.extension_stats %}
+{% if ext %}
+{% include "dashboards/_chart_hbar.html" with span=span_third chart=dashboard.charts.people_bars empty_text="No extensions yet." %}
+{% include "dashboards/_chart_hbar.html" with span=span_third chart=dashboard.charts.attendance_bars empty_text="No uploaded attendance sheets in this period." %}
+<section class="card @container p-4 {{ span_wide }}" aria-labelledby="needs-look-heading">
+  <h3 id="needs-look-heading" class="text-base font-semibold text-txt-primary">Needs a look</h3>
+  <p class="mt-2 text-base text-txt-secondary">
+    <span class="font-mono text-txt-primary">{{ ext.with_coordinator }}</span> of <span class="font-mono text-txt-primary">{{ ext.total }}</span> extensions have a coordinator who can sign in
+    ({{ ext.without_coordinator }} without).
+  </p>
+  {% if ext.silent %}
+  <p class="mt-3 text-base text-txt-primary">No uploaded sheet in the last {{ ext.silent_days }} days:</p>
+  <ul class="mt-1 flex flex-wrap gap-2">
+    {% for item in ext.silent|slice:":10" %}<li class="rounded-full border border-border px-3 py-1 text-sm text-txt-primary">{{ item.name }}</li>{% endfor %}
+  </ul>
+  {% if ext.silent|length > 10 %}<p class="mt-2 text-sm text-txt-secondary">and {{ ext.silent|length|add:"-10" }} more</p>{% endif %}
+  {% else %}
+  <p class="mt-3 text-base text-txt-secondary">Every extension sent a sheet in the last {{ ext.silent_days }} days.</p>
+  {% endif %}
+</section>
+{% endif %}
+{% endwith %}

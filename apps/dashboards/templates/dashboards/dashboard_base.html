@@ -2,15 +2,20 @@
 dashboards/dashboard_base.html
 Shared layout of the four role dashboards. Each role template extends this file and may fill:
   role_intro       a short line under the greeting (optional)
-  leader_sections  extra sections between the verse row and the quick links (leaders only)
+  leader_sections  the leader overview, drawn right under the greeting (leaders only; members leave it empty)
+  coming_soon      the "Coming soon" cards; leaders override it with nothing because their events card is real
 Context: dashboard (built by get_dashboard_context in dashboards/services.py).
-Extends base_app.html, so the page heading (h1) comes from page_title; sections here use h2 and below.
+Extends base_app.html and overrides main_class so the page uses the full width. The page heading (h1) comes from page_title; sections here use h2 and below.
 Includes (all in this folder): _daily_verse, _continue_reading, _quick_links, _coming_soon.
+The verse row and quick links stay on every role page for now; Brick 3 moves the personal parts to the Personal tab.
 -->
 {% extends "base_app.html" %}
 
 {% block title %}Dashboard{% endblock %}
 {% block page_title %}Dashboard{% endblock %}
+
+{# Full width: the dashboards use the whole page (base_app.html caps <main> at max-w-6xl and centers it). The bottom padding keeps the mobile bottom bar from covering the last card. #}
+{% block main_class %}w-full flex-1 px-4 py-6 sm:px-6 lg:px-8{% if mobile_nav_style == 'bottom' %} pb-[calc(5rem+env(safe-area-inset-bottom))] sm:pb-6{% endif %}{% endblock %}
 
 {% block content %}
 <div class="space-y-6">
@@ -22,6 +27,8 @@ Includes (all in this folder): _daily_verse, _continue_reading, _quick_links, _c
     {% block role_intro %}{% endblock %}
   </section>
 
+  {% block leader_sections %}{% endblock %}
+
   <div class="grid gap-6 lg:grid-cols-3">
     <div class="lg:col-span-2">
       {% include "dashboards/_daily_verse.html" %}
@@ -29,10 +36,8 @@ Includes (all in this folder): _daily_verse, _continue_reading, _quick_links, _c
     {% include "dashboards/_continue_reading.html" %}
   </div>
 
-  {% block leader_sections %}{% endblock %}
-
   {% include "dashboards/_quick_links.html" %}
-  {% include "dashboards/_coming_soon.html" %}
+  {% block coming_soon %}{% include "dashboards/_coming_soon.html" %}{% endblock %}
 
 </div>
 {% endblock %}

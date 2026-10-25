@@ -1,0 +1,39 @@
+{% comment %}
+dashboards/_chart_columns.html
+Grouped columns (men and women by age group), drawn as inline SVG from charts.column_groups().
+Pass: span (grid-span classes from the bento grid, optional), chart (prepared dict: groups, y_ticks, baseline_y, plot, width, height, empty, series, title, caption, aria)
+and empty_text. Each group is one age group; each bar in it is one series (men, women), colored with the
+chart_slot colors and always named in the legend under the chart. Every bar prints its value above it and has a
+<title> tooltip with group, series and value.
+{% endcomment %}
+{% load l10n chart_tags %}
+<section class="card @container p-4 {{ span }}">
+  <h3 class="text-base font-semibold text-txt-primary">{{ chart.title }}</h3>
+  {% if chart.caption %}<p class="text-sm text-txt-secondary">{{ chart.caption }}</p>{% endif %}
+  {% if chart.empty %}
+  <p class="mt-3 text-base text-txt-secondary">{{ empty_text }}</p>
+  {% else %}
+  <div class="mt-3 overflow-x-auto">
+    {% localize off %}
+    <svg viewBox="0 0 {{ chart.width }} {{ chart.height }}" role="img" aria-label="{{ chart.aria }}" class="h-auto max-h-60 w-full min-w-[26rem]">
+      {% for tick in chart.y_ticks %}
+      <line x1="{{ chart.plot.left }}" x2="{{ chart.plot.right }}" y1="{{ tick.y }}" y2="{{ tick.y }}" class="stroke-border" stroke-width="1"/>
+      <text x="{{ chart.plot.left }}" y="{{ tick.y }}" dx="-8" dy="4" text-anchor="end" class="fill-txt-secondary" font-size="12">{{ tick.label }}</text>
+      {% endfor %}
+      {% for group in chart.groups %}
+      {% for bar in group.bars %}
+      <rect x="{{ bar.x }}" y="{{ bar.y }}" width="{{ bar.width }}" height="{{ bar.height }}" rx="3" class="chart-fill-{{ bar.series|chart_slot }}"><title>{{ bar.group }}, {{ bar.series_label }}: {{ bar.value|floatformat:0 }}</title></rect>
+      <text x="{{ bar.cx }}" y="{{ bar.y }}" dy="-5" text-anchor="middle" class="fill-txt-primary font-mono" font-size="12">{{ bar.value|floatformat:0 }}</text>
+      {% endfor %}
+      <text x="{{ group.label_x }}" y="{{ chart.baseline_y }}" dy="20" text-anchor="middle" class="fill-txt-secondary" font-size="12">{{ group.label }}</text>
+      {% endfor %}
+    </svg>
+    {% endlocalize %}
+  </div>
+  <ul class="mt-3 flex flex-wrap gap-x-5 gap-y-1 text-sm text-txt-secondary" aria-label="Legend">
+    {% for name in chart.series %}
+    <li class="flex items-center gap-2"><span class="size-3 rounded-sm chart-bg-{{ forloop.counter0|chart_slot }}" aria-hidden="true"></span>{{ name }}</li>
+    {% endfor %}
+  </ul>
+  {% endif %}
+</section>

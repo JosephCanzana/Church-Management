@@ -1,0 +1,36 @@
+{% load people_tags %}
+{% comment %}
+dashboards/_filter_bar.html
+The bar under the dashboard header. Context: dashboard.filter (enabled, extension_id, label, options) and
+dashboard.period (start, end, or None).
+* Admin and super-admin get a GET form with an extension <select> ("All extensions" first) and an Apply button, so it
+  works without JavaScript; Alpine also submits it when the choice changes. A coordinator has no form: the bar only
+  says whose numbers these are (their own extension).
+* "Print report" appears only when the report's print route exists ({% role_url_or_empty %} gives "" until Brick 4
+  adds it) and carries the chosen extension in its querystring. It opens in a new tab.
+{% endcomment %}
+<div class="card col-span-full flex flex-wrap items-end gap-x-4 gap-y-3 p-3">
+  {% if dashboard.filter.enabled %}
+  <form method="get" x-data @change="$el.requestSubmit()" class="flex flex-wrap items-end gap-3" aria-label="Dashboard filter">
+    <div class="min-w-48">
+      <label for="filter-extension" class="label">Extension</label>
+      <select id="filter-extension" name="extension" class="input">
+        <option value="">All extensions</option>
+        {% for option in dashboard.filter.options %}
+        <option value="{{ option.id }}"{% if option.id == dashboard.filter.extension_id %} selected{% endif %}>{{ option.name }}</option>
+        {% endfor %}
+      </select>
+    </div>
+    <button type="submit" class="btn btn-secondary">Apply</button>
+  </form>
+  {% endif %}
+
+  <p class="min-w-0 flex-1 text-base text-txt-secondary">
+    Showing <span class="font-semibold text-txt-primary">{{ dashboard.filter.label }}</span>{% if dashboard.period %}, {{ dashboard.period.start|date:"M j" }} to {{ dashboard.period.end|date:"M j, Y" }}{% endif %}
+  </p>
+
+  {% role_url_or_empty 'report_print' as print_url %}
+  {% if print_url %}
+  <a href="{{ print_url }}{% if dashboard.filter.extension_id %}?extension={{ dashboard.filter.extension_id }}{% endif %}" target="_blank" rel="noopener" class="btn btn-secondary">Print report</a>
+  {% endif %}
+</div>

@@ -1,0 +1,30 @@
+{% comment %}
+dashboards/_events_card.html
+Pass span (bento grid classes). The next events the person may see (replaces the "Coming soon" placeholder on the leader pages).
+Context: dashboard.upcoming_events (id, title, start_at, end_at, is_global, extension) and dashboard.events_url (the
+calendar, "" when no events route resolves). Scoping happened in services.upcoming_events (visible_events), so
+this file only draws. Each row has the date as text and a "Global" or extension badge with its own word, never color alone.
+Dates print in the active time zone (Manila). Brick 3 reuses this card on the personal dashboard.
+{% endcomment %}
+<section class="card @container p-4 {{ span }}" aria-labelledby="events-heading">
+  <div class="flex items-baseline justify-between gap-3">
+    <h3 id="events-heading" class="text-base font-semibold text-txt-primary">Upcoming events</h3>
+    {% if dashboard.events_url %}<a href="{{ dashboard.events_url }}" class="inline-flex min-h-11 items-center text-sm font-medium text-accent underline">Open calendar</a>{% endif %}
+  </div>
+  {% if dashboard.upcoming_events %}
+  <ul class="mt-2 divide-y divide-border">
+    {% for event in dashboard.upcoming_events %}
+    <li class="flex items-start gap-3 py-2">
+      <time datetime="{{ event.start_at|date:'c' }}" class="w-16 shrink-0 font-mono text-sm text-txt-secondary">{{ event.start_at|date:"M j" }}</time>
+      <div class="min-w-0 flex-1">
+        <p class="truncate text-base text-txt-primary">{{ event.title }}</p>
+        <p class="text-sm text-txt-secondary">{{ event.start_at|date:"D, g:i A" }}</p>
+      </div>
+      <span class="shrink-0 rounded-full border border-border px-2 py-0.5 text-sm text-txt-secondary">{% if event.is_global %}Global{% else %}{{ event.extension }}{% endif %}</span>
+    </li>
+    {% endfor %}
+  </ul>
+  {% else %}
+  <p class="mt-3 text-base text-txt-secondary">No upcoming events.</p>
+  {% endif %}
+</section>

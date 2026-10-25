@@ -1,14 +1,17 @@
 <!--
 dashboards/coordinator.html
-Coordinator dashboard: the shared sections plus the overview for the coordinator's own extension only.
-Context: dashboard (dashboard.leader.scope_label is the extension name).
+Coordinator dashboard: tiles, charts, prayer, events and giving for the coordinator's own extension only.
+No extension picker and no extension comparison; the extension name is in the header.
+Context: dashboard.
 -->
 {% extends "dashboards/dashboard_base.html" %}
 
 {% block role_intro %}
-<p class="mt-1 text-base text-txt-secondary">Numbers for {{ dashboard.leader.scope_label }}.</p>
+<p class="mt-1 text-base text-txt-secondary">Numbers for {{ dashboard.filter.label }}.</p>
 {% endblock %}
 
 {% block leader_sections %}
 {% include "dashboards/_leader_overview.html" %}
 {% endblock %}
+
+{% block coming_soon %}{# the events card inside the overview replaced the placeholder #}{% endblock %}

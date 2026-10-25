@@ -1,0 +1,40 @@
+{% comment %}
+dashboards/_chart_donut.html
+Donut (people by role, people by status), drawn as inline SVG from charts.donut().
+Pass: span (grid-span classes from the bento grid, optional), chart (prepared dict: size, cx, cy, r, stroke, arcs, items, total, empty, title, caption, aria) and empty_text.
+Arcs start at 12 o'clock (the group is rotated -90 degrees) and use stroke-dasharray / stroke-dashoffset from
+charts.py. The legend next to the ring is the text version: every slice has its label, count and percent, so no
+meaning depends on color. The total sits in the middle.
+{% endcomment %}
+{% load l10n chart_tags %}
+<section class="card @container p-4 {{ span }}">
+  <h3 class="text-base font-semibold text-txt-primary">{{ chart.title }}</h3>
+  {% if chart.caption %}<p class="text-sm text-txt-secondary">{{ chart.caption }}</p>{% endif %}
+  {% if chart.empty %}
+  <p class="mt-3 text-base text-txt-secondary">{{ empty_text }}</p>
+  {% else %}
+  <div class="mt-3 flex flex-col items-center gap-4 @xs:flex-row">
+    {% localize off %}
+    <svg viewBox="0 0 {{ chart.size }} {{ chart.size }}" role="img" aria-label="{{ chart.aria }}" class="size-28 shrink-0">
+      <circle cx="{{ chart.cx }}" cy="{{ chart.cy }}" r="{{ chart.r }}" fill="none" class="stroke-border" stroke-width="{{ chart.stroke }}"/>
+      <g transform="rotate(-90 {{ chart.cx }} {{ chart.cy }})">
+        {% for arc in chart.arcs %}
+        <circle cx="{{ chart.cx }}" cy="{{ chart.cy }}" r="{{ chart.r }}" fill="none" class="chart-stroke-{{ arc.index|chart_slot }}" stroke-width="{{ chart.stroke }}" stroke-dasharray="{{ arc.dasharray }}" stroke-dashoffset="{{ arc.dashoffset }}"><title>{{ arc.label }}: {{ arc.value }} ({{ arc.pct }}%)</title></circle>
+        {% endfor %}
+      </g>
+      <text x="{{ chart.cx }}" y="{{ chart.cy }}" dy="8" text-anchor="middle" class="fill-txt-primary font-mono" font-size="24" font-weight="600">{{ chart.total|floatformat:0 }}</text>
+    </svg>
+    {% endlocalize %}
+    <ul class="w-full min-w-0 space-y-1.5 @xs:flex-1">
+      {% for item in chart.items %}
+      <li class="flex items-center gap-2 text-base">
+        <span class="size-3 shrink-0 rounded-sm chart-bg-{{ item.index|chart_slot }}" aria-hidden="true"></span>
+        <span class="min-w-0 flex-1 truncate text-txt-primary">{{ item.label }}</span>
+        <span class="font-mono text-txt-primary">{{ item.value }}</span>
+        <span class="w-14 text-right font-mono text-sm text-txt-secondary">{{ item.pct|floatformat:0 }}%</span>
+      </li>
+      {% endfor %}
+    </ul>
+  </div>
+  {% endif %}
+</section>

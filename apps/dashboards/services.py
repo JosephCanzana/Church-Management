@@ -21,6 +21,10 @@ plain dicts and lists (no templates, no chart geometry: that is ``charts.py``). 
 ``_scope_people``, ``_scope_attendance`` and ``_scope_tithes``; prayer and events keep their own single scoping
 helpers (``inbox_for`` and ``visible_events``).
 
+Brick 2 adds what the leader pages draw: ``tiles`` (four headline numbers), ``charts`` (every chart's geometry from
+``charts.py`` plus its text, ready for the ``_chart_*`` partials) and ``events_url``. They are built from the Brick 1
+stats, so they follow the same scoping and the same ``?extension=`` filter and add no query of their own.
+
 Privacy: tithe amounts are shown only to leaders, only here, and are never written
 to ``audit_log`` or ``notification.data``.
 """
@@ -48,6 +52,8 @@ from apps.prayer.models import PrayerRequest, signin_filter
 from apps.prayer.permissions import can_use_inbox, sender_label
 from apps.tithes.models import TithesOffering
 
+from . import charts
+
 # Name of the cookie the Bible reader uses for the chosen version (apps/bible).
 # It must match the reader; the value is validated by resolve_version().
 VERSION_COOKIE = "bible_version"
@@ -64,6 +70,10 @@ PRAYER_LATEST = 5            # prayer requests listed on the dashboard card
 SILENT_DAYS = 7              # an extension with no uploaded sheet this many days back counts as "not reporting"
 PRAYER_SCOPE_NOTE = "This extension's coordinator handles its prayer requests."
 NAV_LABELS_NOT_QUICK_LINKS = {"Home", "Django admin"}
+CHART_WIDTH = 560            # drawing width (SVG units) of the line and column charts; the SVG scales to its card
+CHART_HEIGHT = 220
+HBAR_WIDTH = 400             # drawing width of one horizontal-bar chart
+LABEL_LIMIT = 34             # longest bar label drawn in full; longer ones end with an ellipsis (full name in the tooltip)
 
 # Cards for features that are planned but not built yet (shown as "Coming soon").
 # The Bible streak and goals cards were replaced by real widgets (_streaks.html, _goals_today.html).
@@ -97,8 +107,11 @@ def get_dashboard_context(user, version_code, path, extension=None, start=None, 
 
     New keys (all present for every role; None where the role may not see the data):
     ``filter``, ``period``, ``attendance_stats``, ``people_stats``, ``extension_stats``, ``giving_stats``,
-    ``prayer_summary`` and ``upcoming_events`` (a list, for every role). The old ``leader`` block is unchanged
-    and ignores the filter until Brick 2 replaces it.
+    ``prayer_summary`` and ``upcoming_events`` (a list, for every role).
+
+    Brick 2 keys: ``tiles`` (list of ``{"label", "value", "hint"}``), ``charts`` (see ``leader_charts``; both None
+    for a member) and ``events_url`` (the calendar page, "" if no events route resolves). The old ``leader``
+    block is unchanged and still ignores the filter; the leader pages no longer draw it.
     """
     today = timezone.localdate()
     is_leader = user.role in LEADER_ROLES
@@ -111,6 +124,11 @@ def get_dashboard_context(user, version_code, path, extension=None, start=None, 
     if attendance and start is None and end is None and attendance["period"]:
         period_start = attendance["period"]["start"]
         period_end = max(attendance["period"]["end"], today)
+
+    people = people_stats(user, extension_id, period_start, period_end)
+    extensions = extension_stats(user, period_start, period_end)
+    giving = giving_stats(user, extension_id, period_start, period_end)
+    period_given = start is not None or end is not None
 
     return {
         "greeting_name": title_case(user.first_name),
@@ -126,11 +144,14 @@ def get_dashboard_context(user, version_code, path, extension=None, start=None, 
         "filter": _filter_info(user, chosen),
         "period": {"start": period_start, "end": period_end} if (period_start or period_end) else None,
         "attendance_stats": attendance,
-        "people_stats": people_stats(user, extension_id, period_start, period_end),
-        "extension_stats": extension_stats(user, period_start, period_end),
-        "giving_stats": giving_stats(user, extension_id, period_start, period_end),
+        "people_stats": people,
+        "extension_stats": extensions,
+        "giving_stats": giving,
         "prayer_summary": prayer_summary(user, extension_id),
         "upcoming_events": upcoming_events(user, 5),
+        "events_url": _safe_reverse("events:calendar") or _safe_reverse("events:list") or _safe_reverse("events:index"),
+        "tiles": dashboard_tiles(attendance, people, extensions, period_start) if is_leader else None,
+        "charts": leader_charts(attendance, people, extensions, giving, period_given) if is_leader else None,
     }
 
 
@@ -721,6 +742,138 @@ def upcoming_events(user, limit=5):
         }
         for event in events
     ]
+
+
+# ------------------------------------------------- what the leader pages draw (Brick 2)
+def dashboard_tiles(attendance, people, extensions, period_start=None):
+    """Return the four headline tiles of a leader dashboard as ``{"label", "value", "hint"}`` dicts.
+
+    People, the last gathering, average attendance, and either how many extensions reported lately (admin and
+    super-admin: ``extensions`` is set) or the first-timers total (a coordinator has no extension comparison).
+    Every number is also text, so no tile depends on color.
+    """
+    if not attendance or not people:
+        return []
+    count = attendance["count"]
+    latest = attendance["latest"]
+    joined = people["new_in_period"]
+    gatherings = f"{count} gathering{'' if count == 1 else 's'}"
+
+    tiles = [
+        {
+            "label": "People",
+            "value": people["total"],
+            "hint": f"{joined} new since {_day_label(period_start)}" if joined is not None and period_start else f"{people['active']} active",
+        },
+        {
+            "label": "Last gathering",
+            "value": latest["present"] if latest else "–",
+            "hint": latest["label"] if latest else "No uploaded sheets yet",
+        },
+        {
+            "label": "Average attendance",
+            "value": f"{attendance['average']:g}" if count else "–",
+            "hint": f"Over {gatherings}" if count else "No uploaded sheets yet",
+        },
+    ]
+    if extensions:
+        reporting = extensions["total"] - len(extensions["silent"])
+        tiles.append({
+            "label": "Extensions reporting",
+            "value": f"{reporting} of {extensions['total']}",
+            "hint": f"Sent a sheet in the last {extensions['silent_days']} days",
+        })
+    else:
+        tiles.append({
+            "label": "First-timers",
+            "value": attendance["first_timers"],
+            "hint": f"Over {gatherings}" if count else "No uploaded sheets yet",
+        })
+    return tiles
+
+
+def _ellipsize(text, limit=LABEL_LIMIT):
+    """Return ``text`` cut to ``limit`` characters with an ellipsis (SVG text cannot truncate itself)."""
+    return text if len(text) <= limit else text[: limit - 1].rstrip() + "…"
+
+
+def _donut_chart(title, caption, rows):
+    """Return donut geometry plus its title, caption and a one-line text description (for ``aria-label``)."""
+    donut = charts.donut([(row["label"], row["count"]) for row in rows], radius=60, stroke=22)
+    summary = ", ".join(f"{item['label']} {item['value']}" for item in donut["items"])
+    return {**donut, "title": title, "caption": caption, "aria": f"{title}: {summary}" if summary else f"{title}: no data"}
+
+
+def _hbar_chart(title, caption, rows, more=0):
+    """Return horizontal-bar geometry for ``{"name", "count"}`` rows, with long names shortened.
+
+    Each drawn row keeps the full name in ``full`` (the tooltip) and the number in ``value`` (the text).
+    """
+    chart = charts.hbar([(_ellipsize(row["name"]), row["count"]) for row in rows], max_width=HBAR_WIDTH, row_height=36, gap=10)
+    for drawn, source in zip(chart["rows"], rows):
+        drawn["full"] = source["name"]
+    summary = ", ".join(f"{row['name']} {row['count']}" for row in rows)
+    return {**chart, "title": title, "caption": caption, "more": more, "aria": f"{title}: {summary}" if summary else f"{title}: no data"}
+
+
+def leader_charts(attendance, people, extensions, giving, period_given=False):
+    """Return every leader chart as a prepared dict for the ``_chart_*`` partials (None for a member).
+
+    Keys: ``attendance_line``, ``attendance_columns`` (men and women by age network: the newest gathering, or
+    every gathering when a period was asked for), ``donut_roles``, ``donut_status``, ``giving_spark`` and, for
+    admin and super-admin only, ``people_bars`` and ``attendance_bars`` (None for a coordinator). Each dict is the
+    geometry from ``charts.py`` plus ``title``, ``caption`` and ``aria`` (the whole chart as one sentence); the
+    drawn values are always in the dict too, so the partials can print them as text.
+    """
+    if attendance is None or people is None:
+        return None
+    points, count = attendance["points"], attendance["count"]
+
+    line = charts.line_chart(attendance["values"], attendance["labels"], CHART_WIDTH, CHART_HEIGHT)
+    line.update(
+        title="Attendance",
+        caption="Total present per gathering in the period" if period_given else f"Total present, last {count} gathering{'' if count == 1 else 's'}",
+        aria="Attendance: " + (", ".join(f"{p['label']} {p['present']}" for p in points) if points else "no uploaded sheets yet"),
+    )
+
+    network = attendance["network"] if period_given else attendance["network_latest"]
+    series = [row["label"] for row in network["rows"]]
+    groups = [(col["label"], [row["values"][i] for row in network["rows"]]) for i, col in enumerate(network["columns"])]
+    columns = charts.column_groups(groups, CHART_WIDTH, CHART_HEIGHT)
+    latest = attendance["latest"]
+    for group in columns["groups"]:
+        for bar in group["bars"]:
+            bar["series_label"] = series[bar["series"]] if bar["series"] < len(series) else ""   # for the tooltip
+            bar["cx"] = round(bar["x"] + bar["width"] / 2, 2)                                      # centre, for the value text
+    parts = [
+        f"{label}: " + ", ".join(f"{name} {bar['value']:g}" for name, bar in zip(series, group["bars"]))
+        for (label, _values), group in zip(groups, columns["groups"])
+    ]
+    columns.update(
+        title="Men and women by age group",
+        caption="Every gathering in the period" if period_given else (f"Latest gathering, {latest['label']}" if latest else "No uploaded sheets yet"),
+        series=series,
+        aria="Men and women by age group: " + ("no data" if columns["empty"] else "; ".join(parts)),
+    )
+
+    spark = charts.sparkline(giving["totals"], 120, 32) if giving else None
+    if spark is not None:
+        spark["items"] = [{"label": row["label"], "display": _peso(row["total"])} for row in giving["trend"]]
+        spark["aria"] = "Giving per gathering: " + (", ".join(f"{i['label']} {i['display']}" for i in spark["items"]) or "no reports yet")
+
+    return {
+        "attendance_line": line,
+        "attendance_columns": columns,
+        "donut_roles": _donut_chart("People by role", "Not archived", people["roles"]),
+        "donut_status": _donut_chart("People by status", "Everyone, including archived", people["statuses"]),
+        "giving_spark": spark,
+        "people_bars": _hbar_chart(
+            "People per extension", "Biggest, not archived. Not changed by the picker.", extensions["people_per_extension"], extensions["people_more"]
+        ) if extensions else None,
+        "attendance_bars": _hbar_chart(
+            "Attendance per extension", "Total present in the period. Not changed by the picker.", extensions["attendance_per_extension"]
+        ) if extensions else None,
+    }
 
 
 # ----------------------------------------------------------------- helpers

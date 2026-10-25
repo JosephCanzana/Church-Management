@@ -1,6 +1,7 @@
 <!--
 dashboards/admin.html
-Admin dashboard: the shared sections plus the overview (people, extensions, attendance, tithes) for every extension.
+Admin dashboard: the same as the super-admin's (tiles, charts, prayer, events, extension comparison and giving),
+with the extension picker (?extension=). Super-admin rows are never counted for an admin.
 Context: dashboard.
 -->
 {% extends "dashboards/dashboard_base.html" %}
@@ -12,3 +13,5 @@ Context: dashboard.
 {% block leader_sections %}
 {% include "dashboards/_leader_overview.html" %}
 {% endblock %}
+
+{% block coming_soon %}{# the events card inside the overview replaced the placeholder #}{% endblock %}

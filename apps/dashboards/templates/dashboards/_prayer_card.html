@@ -1,0 +1,42 @@
+{% load people_tags %}
+{% comment %}
+dashboards/_prayer_card.html
+Prayer inbox at a glance. Pass span (bento grid classes). Context: dashboard.prayer_summary (open, completed, latest, scope_note), or None for people
+who do not handle prayer (nothing is drawn then).
+* latest rows show only "label" (already anonymous when the request is anonymous), the extension, the status and the
+  date. The request text and the sender's id are never in the context, so they cannot be printed here.
+* When scope_note is set (an admin filtered to an extension whose coordinator handles its prayer), the note replaces
+  the counts and the rows: the inbox holds none of that extension's requests.
+* "Open inbox" goes through {% role_url %}-style lookup, so it follows the person's own area.
+{% endcomment %}
+{% with summary=dashboard.prayer_summary %}
+{% if summary %}
+<section class="card @container p-4 {{ span }}" aria-labelledby="prayer-heading">
+  <div class="flex items-baseline justify-between gap-3">
+    <h3 id="prayer-heading" class="text-base font-semibold text-txt-primary">Prayer requests</h3>
+    {% role_url_or_empty 'prayer_inbox' as inbox_url %}
+    {% if inbox_url %}<a href="{{ inbox_url }}" class="inline-flex min-h-11 items-center text-sm font-medium text-accent underline">Open inbox</a>{% endif %}
+  </div>
+  {% if summary.scope_note %}
+  <p class="mt-3 text-base text-txt-secondary" role="note">{{ summary.scope_note }}</p>
+  {% else %}
+  <p class="mt-1 text-base text-txt-secondary"><span class="font-mono text-2xl font-semibold text-txt-primary">{{ summary.open }}</span> open &middot; <span class="font-mono">{{ summary.completed }}</span> completed</p>
+  {% if summary.latest %}
+  <ul class="mt-3 divide-y divide-border">
+    {% for item in summary.latest %}
+    <li class="flex items-baseline justify-between gap-3 py-2">
+      <div class="min-w-0">
+        <p class="truncate text-base text-txt-primary">{{ item.label }}</p>
+        <p class="truncate text-sm text-txt-secondary">{{ item.extension }}</p>
+      </div>
+      <p class="shrink-0 text-sm text-txt-secondary">{{ item.status_label }} &middot; {{ item.created_at|date:"M j" }}</p>
+    </li>
+    {% endfor %}
+  </ul>
+  {% else %}
+  <p class="mt-3 text-base text-txt-secondary">No open requests.</p>
+  {% endif %}
+  {% endif %}
+</section>
+{% endif %}
+{% endwith %}

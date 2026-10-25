@@ -1,0 +1,35 @@
+{% comment %}
+dashboards/_chart_line.html
+Line chart (attendance over the last gatherings), drawn as inline SVG from charts.line_chart().
+Pass: span (grid-span classes from the bento grid, optional), chart (a prepared dict from services.leader_charts: width, height, plot, points, polyline, area, y_ticks,
+baseline_y, empty, title, caption, aria) and empty_text (shown when there is nothing to draw).
+Colors are token classes only. Every value is also printed as text above its point, the whole chart has one
+sentence in aria-label, and each point has a <title> tooltip. Narrow screens scroll the chart sideways rather than
+shrink the text. {% localize off %} keeps coordinates as plain "12.5" whatever the locale.
+{% endcomment %}
+{% load l10n %}
+<section class="card @container p-4 {{ span }}">
+  <h3 class="text-base font-semibold text-txt-primary">{{ chart.title }}</h3>
+  {% if chart.caption %}<p class="text-sm text-txt-secondary">{{ chart.caption }}</p>{% endif %}
+  {% if chart.empty %}
+  <p class="mt-3 text-base text-txt-secondary">{{ empty_text }}</p>
+  {% else %}
+  <div class="mt-3 overflow-x-auto">
+    {% localize off %}
+    <svg viewBox="0 0 {{ chart.width }} {{ chart.height }}" role="img" aria-label="{{ chart.aria }}" class="h-auto max-h-60 w-full min-w-[26rem]">
+      {% for tick in chart.y_ticks %}
+      <line x1="{{ chart.plot.left }}" x2="{{ chart.plot.right }}" y1="{{ tick.y }}" y2="{{ tick.y }}" class="stroke-border" stroke-width="1"/>
+      <text x="{{ chart.plot.left }}" y="{{ tick.y }}" dx="-8" dy="4" text-anchor="end" class="fill-txt-secondary" font-size="12">{{ tick.label }}</text>
+      {% endfor %}
+      {% if chart.area %}<path d="{{ chart.area }}" class="fill-accent/10"/>{% endif %}
+      {% if chart.points|length > 1 %}<polyline points="{{ chart.polyline }}" fill="none" class="stroke-accent" stroke-width="2.5" stroke-linejoin="round" stroke-linecap="round"/>{% endif %}
+      {% for point in chart.points %}
+      <circle cx="{{ point.x }}" cy="{{ point.y }}" r="4.5" class="fill-accent stroke-surface" stroke-width="2"><title>{{ point.label }}: {{ point.value }}</title></circle>
+      <text x="{{ point.x }}" y="{{ point.y }}" dy="-11" text-anchor="middle" class="fill-txt-primary font-mono" font-size="12">{{ point.value }}</text>
+      <text x="{{ point.x }}" y="{{ chart.baseline_y }}" dy="20" text-anchor="middle" class="fill-txt-secondary" font-size="12">{{ point.label }}</text>
+      {% endfor %}
+    </svg>
+    {% endlocalize %}
+  </div>
+  {% endif %}
+</section>

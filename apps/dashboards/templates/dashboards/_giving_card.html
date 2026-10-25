@@ -1,0 +1,27 @@
+{% comment %}
+dashboards/_giving_card.html
+Pass span (bento grid classes). Giving, small and muted on purpose (no big figure, no accent-colored title). Leaders only.
+Context: dashboard.giving_stats (reports, tithes_display, offering_display) and dashboard.charts.giving_spark.
+Counts and totals are plain text; the sparkline is a quiet extra whose values are also in a hidden list
+(_chart_spark.html). Amounts come from FROZEN values of finalized reports on uploaded sheets and are shown here
+and nowhere else (never in audit_log or notification.data).
+{% endcomment %}
+{% with giving=dashboard.giving_stats %}
+{% if giving %}
+<section class="rounded-2xl border border-border bg-surface-alt p-4 {{ span }}" aria-labelledby="giving-heading">
+  <h3 id="giving-heading" class="text-base font-medium text-txt-secondary">Giving</h3>
+  {% if giving.reports %}
+  <div class="mt-2 flex flex-wrap items-center gap-x-8 gap-y-3">
+    <dl class="flex flex-wrap gap-x-8 gap-y-2 text-base text-txt-secondary">
+      <div><dt class="text-sm">Finalized reports</dt><dd class="font-mono text-txt-primary">{{ giving.reports }}</dd></div>
+      <div><dt class="text-sm">Tithes</dt><dd class="font-mono text-txt-primary">{{ giving.tithes_display }}</dd></div>
+      <div><dt class="text-sm">Offering</dt><dd class="font-mono text-txt-primary">{{ giving.offering_display }}</dd></div>
+    </dl>
+    {% include "dashboards/_chart_spark.html" with chart=dashboard.charts.giving_spark %}
+  </div>
+  {% else %}
+  <p class="mt-2 text-base text-txt-secondary">No finalized tithes reports in this period yet.</p>
+  {% endif %}
+</section>
+{% endif %}
+{% endwith %}
