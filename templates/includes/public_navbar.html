@@ -6,14 +6,14 @@
 >
   <nav class="mx-auto flex h-14 max-w-7xl items-center justify-between px-3 md:grid md:grid-cols-[1fr_auto_1fr]" aria-label="Main">
 
-    <a href="/" class="flex items-center gap-1.5 justify-self-start text-sm font-semibold sm:text-base">
+    <a href="{{ landing_url }}" class="flex items-center gap-1.5 justify-self-start text-sm font-semibold sm:text-base">
       {% include "includes/logo.html" with variant="mark" size="size-6" decorative=True %}
       Jesus Is Lord Church
     </a>
 
     <ul class="hidden items-center gap-0.5 justify-self-center md:flex">
       <li>
-        <a href="/"
+        <a href="{{ landing_url }}"
            class="rounded-md px-2.5 py-1.5 text-sm font-medium hover:bg-bg
                   {% if request.path == '/' %}text-txt-primary{% else %}text-txt-secondary{% endif %}">
           Home
@@ -76,7 +76,7 @@
        @click.outside="open = false"
        class="absolute inset-x-0 top-full border-b border-border bg-surface shadow-lg md:hidden">
     <ul class="mx-auto max-w-7xl space-y-0.5 px-3 py-2">
-      <li><a href="/" class="block rounded-md px-2.5 py-2 text-sm font-medium text-txt-primary hover:bg-bg">Home</a></li>
+      <li><a href="{{ landing_url }}" class="block rounded-md px-2.5 py-2 text-sm font-medium text-txt-primary hover:bg-bg">Home</a></li>
       <li><a href="{{ landing_url }}#about" class="block rounded-md px-2.5 py-2 text-sm font-medium text-txt-secondary hover:bg-bg" @click="open = false">About</a></li>
       <li><a href="{{ give_url }}" class="block rounded-md px-2.5 py-2 text-sm font-medium {% if request.path == give_url %}text-txt-primary{% else %}text-txt-secondary{% endif %} hover:bg-bg">Give</a></li>
       {% if not user.is_authenticated %}<li><a href="{% url 'accounts:register' %}" class="block rounded-md px-2.5 py-2 text-sm font-medium text-txt-secondary hover:bg-bg">Register</a></li>{% endif %}

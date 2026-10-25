@@ -25,19 +25,31 @@ def _viewer_context(request):
     }
 
 
-@require_GET
-def landing_page(request):
-    """Public landing page at "/". All content and defaults come from the service.
-
-    Members and coordinators still go straight to their dashboard; super-admin and
-    admin stay here so they can check the page without logging out.
-    """
-    if request.user.is_authenticated and not _is_site_manager(request.user):
-        return redirect(home_url_for(request.user))
+def _render_landing(request):
     return render(request, "pages/landing.html", {**get_landing_context(), **_viewer_context(request)})
 
 
-# The root URL and AGENTS.md refer to this name; keep both names pointing at one view.
+@require_GET
+def root_view(request):
+    """Entry point at "/": signed-in users go to their own home, visitors see the landing page."""
+    if request.user.is_authenticated:
+        return redirect(home_url_for(request.user))
+    return _render_landing(request)
+
+
+@require_GET
+def landing_page(request):
+    """Public landing page at /welcome/ (name `pages:landing`).
+
+    Super-admin and admin can open it while signed in to check the page;
+    members and coordinators still go to their dashboard.
+    """
+    if request.user.is_authenticated and not _is_site_manager(request.user):
+        return redirect(home_url_for(request.user))
+    return _render_landing(request)
+
+
+# Keep the old name in case other code or AGENTS.md still refers to it.
 landing_view = landing_page
 
 
@@ -52,3 +64,5 @@ def give_view(request):
 def about_view(request):
     """In-app About page at /about/ for every signed-in role (mission, vision, core values)."""
     return render(request, "pages/about.html", get_about_context())
+
+
