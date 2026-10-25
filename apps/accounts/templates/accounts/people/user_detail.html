@@ -117,8 +117,8 @@
 </div>
 {% endif %}
 
-<div class="mt-6 grid items-start gap-6 {% if attendance_overview %}lg:grid-cols-[minmax(0,1fr)_minmax(0,1.4fr)] 2xl:grid-cols-[minmax(0,1fr)_minmax(0,2fr)]{% else %}lg:grid-cols-2{% endif %}">
-  <div class="grid content-start gap-6 {% if not attendance_overview %}lg:col-span-2 lg:grid-cols-2{% endif %}">
+<div class="mt-6 grid items-start gap-6 {% if show_side_column %}lg:grid-cols-[minmax(0,1fr)_minmax(0,1.4fr)] 2xl:grid-cols-[minmax(0,1fr)_minmax(0,2fr)]{% else %}lg:grid-cols-2{% endif %}">
+  <div class="grid content-start gap-6 {% if not show_side_column %}lg:col-span-2 lg:grid-cols-2{% endif %}">
   <section class="card" aria-labelledby="details-heading">
     <h2 id="details-heading" class="text-base font-semibold">Details</h2>
     <dl class="mt-3 grid grid-cols-[auto_1fr] gap-x-6 gap-y-2 text-sm">
@@ -161,8 +161,16 @@
   </section>
   </div>
 
-  {% if attendance_overview %}
-  {% include "accounts/people/_attendance_panel.html" with ov=attendance_overview %}
+  {% if show_side_column %}
+  <div class="grid content-start gap-6">
+    {% include "accounts/people/_period_picker.html" %}
+    {% if attendance_overview %}
+    {% include "accounts/people/_attendance_panel.html" with ov=attendance_overview %}
+    {% endif %}
+    {% if tithes_overview %}
+    {% include "accounts/people/_tithes_panel.html" with tv=tithes_overview %}
+    {% endif %}
+  </div>
   {% endif %}
 </div>
 

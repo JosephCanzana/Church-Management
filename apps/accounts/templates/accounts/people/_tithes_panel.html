@@ -1,0 +1,41 @@
+{% load ui_tags people_tags %}
+{# One person's giving history for the month range in `period`. `tv` comes from tithes.person_overview (admin and super-admin only). Numbers and a list, no chart. Amounts are never logged. #}
+<section class="card" aria-labelledby="tithes-heading">
+  <div class="flex flex-wrap items-baseline justify-between gap-2">
+    <h2 id="tithes-heading" class="text-base font-semibold">Tithes</h2>
+    <p class="text-sm text-txt-secondary">Finalized reports only</p>
+  </div>
+
+  {% if not tv.all_count %}
+  <p class="mt-3 text-sm text-txt-secondary">No finalized tithes recorded for this person yet. Giving shows here once a report is finalized.</p>
+  {% else %}
+
+  <dl class="mt-4 grid grid-cols-2 gap-2 sm:grid-cols-4">
+    <div class="rounded-lg bg-surface-alt p-3"><dt class="text-xs text-txt-secondary">Given</dt><dd class="mt-0.5 text-xl font-semibold tabular-nums">{{ tv.currency }}{{ tv.window_total|floatformat:"2g" }}</dd></div>
+    <div class="rounded-lg bg-surface-alt p-3"><dt class="text-xs text-txt-secondary">Envelopes</dt><dd class="mt-0.5 text-xl font-semibold">{{ tv.window_count }}</dd></div>
+    <!-- <div class="rounded-lg bg-surface-alt p-3"><dt class="text-xs text-txt-secondary">Average</dt><dd class="mt-0.5 text-xl font-semibold tabular-nums">{% if tv.average %}{{ tv.currency }}{{ tv.average|floatformat:"2g" }}{% else %}-{% endif %}</dd></div> -->
+    <div class="rounded-lg bg-surface-alt p-3"><dt class="text-xs text-txt-secondary">Last gave</dt><dd class="mt-0.5 text-base font-semibold">{{ tv.last_date|date:"j M Y" }}</dd></div>
+  </dl>
+<!-- 
+  <h3 class="mt-5 text-sm font-medium">Giving history <span class="font-normal text-txt-secondary">({{ tv.window_count }})</span></h3>
+  <p class="text-xs text-txt-secondary">Newest first. A shared envelope counts in full for everyone on it. Offering is recorded per service, not per person, so it is not shown.</p>
+  {% if tv.rows %}
+  {% with home=person.extension.name|title_case %}
+  <ul class="mt-1 max-h-96 divide-y divide-border overflow-y-auto rounded-lg border border-border px-3 text-sm" role="list" tabindex="0" aria-label="Giving history">
+    {% for r in tv.rows %}
+    <li class="flex flex-wrap items-start justify-between gap-x-4 gap-y-1 py-2">
+      <div class="min-w-0">
+        <p>{{ r.date|date:"D, j M Y" }} <span class="text-txt-secondary">{{ r.label|title_case }}{% if r.extension != home %}, at {{ r.extension }}{% endif %}</span></p>
+        {% if r.shared_with %}<p class="text-xs text-txt-secondary">Shared with {{ r.shared_with|join:", " }}{% if r.role == 'co_giver' %} (named as co-giver){% endif %}</p>{% endif %}
+      </div>
+      <span class="font-medium tabular-nums">{{ tv.currency }}{{ r.amount|floatformat:"2g" }}</span>
+    </li>
+    {% endfor %}
+  </ul>
+  {% endwith %}
+  {% else %}
+  <p class="mt-1 text-sm text-txt-secondary">No giving recorded between {{ period.start|date:"F Y" }} and {{ period.end|date:"F Y" }}.</p>
+  {% endif %} -->
+  {% if tv.outside %}<p class="mt-2 text-xs text-txt-secondary">{{ tv.outside }} more envelope{{ tv.outside|pluralize }} outside this range. Change the months above to see {{ tv.outside|pluralize:"it,them" }}.</p>{% endif %}
+  {% endif %}
+</section>

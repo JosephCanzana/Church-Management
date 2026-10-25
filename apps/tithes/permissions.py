@@ -22,6 +22,7 @@ Permission table (S = special member, C = coordinator, A = admin or super-admin)
   reopen a finalized report             A only
   manage households                     C own extension | A any | S no
   print or save as PDF                  any report the person can open (a special member: drafts)
+  one person's tithe history            A only (the card on the people detail page) | C no | S no
 
 A report whose sheet is ARCHIVED is read-only: every write check below is False for it, while the
 view and print checks still answer from `can_view`.
@@ -190,6 +191,16 @@ def can_manage_households(actor, extension_id):
 def can_print(actor, report):
     """May `actor` print or save as PDF? Any report they can open (a special member: drafts)."""
     return can_view(actor, report)
+
+
+def can_view_person_giving(actor):
+    """May `actor` see ONE person's tithe history (the card on the people detail page)?
+
+    Admin and super-admin only. A coordinator is deliberately left out: they work with the reports of
+    their own extension, but a person's giving across every service is not theirs to browse. Not a
+    special member either. This is about the person's whole history, so there is no report to check.
+    """
+    return _signed_in(actor) and actor.role in _ADMINS
 
 
 def require(check, actor, obj=None):

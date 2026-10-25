@@ -1,0 +1,19 @@
+{% load people_tags %}
+{# Month range for the attendance and tithes cards. A plain GET form: `from` and `to` are "YYYY-MM". #}
+<form method="get" action="{% role_url 'user_detail' person.pk %}" class="card flex flex-wrap items-end gap-3" aria-label="Choose the months to show">
+  <div>
+    <label for="period-from" class="label">From</label>
+    <select id="period-from" name="from" class="input">
+      {% for o in month_options %}<option value="{{ o.value }}"{% if o.value == period.from_value %} selected{% endif %}>{{ o.date|date:"F Y" }}</option>{% endfor %}
+    </select>
+  </div>
+  <div>
+    <label for="period-to" class="label">To</label>
+    <select id="period-to" name="to" class="input">
+      {% for o in month_options %}<option value="{{ o.value }}"{% if o.value == period.to_value %} selected{% endif %}>{{ o.date|date:"F Y" }}</option>{% endfor %}
+    </select>
+  </div>
+  <button type="submit" class="btn btn-secondary">Show</button>
+  {% if not period.is_default %}<a href="{% role_url 'user_detail' person.pk %}" class="btn btn-ghost">Last 12 months</a>{% endif %}
+  <p class="basis-full text-sm text-txt-secondary">Showing {{ period.start|date:"F Y" }} to {{ period.end|date:"F Y" }}, {{ period.months }} month{{ period.months|pluralize }}. This applies to attendance{% if tithes_overview %} and tithes{% endif %}.</p>
+</form>

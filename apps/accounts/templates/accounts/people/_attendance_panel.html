@@ -1,22 +1,20 @@
 {% load ui_tags people_tags %}
-{# The attendance picture on the person detail page. `ov` comes from attendance.person_overview (dates, labels and counts only). #}
+{# The attendance picture on the person detail page. `ov` comes from attendance.person_overview (dates, labels and counts only), for the month range in `period`. #}
 <section class="card" aria-labelledby="attendance-heading">
   <div class="flex flex-wrap items-baseline justify-between gap-2">
     <h2 id="attendance-heading" class="text-base font-semibold">Attendance</h2>
-    {% if ov.total %}
-    <p class="text-sm text-txt-secondary">Last {{ ov.total }} service{{ ov.total|pluralize }} at {{ person.extension.name|title_case }}</p>
-    {% endif %}
+    {% if ov.total %}<p class="text-sm text-txt-secondary">{{ ov.total }} service{{ ov.total|pluralize }} at {{ person.extension.name|title_case }}</p>{% endif %}
   </div>
 
   {% if not ov.total %}
-  <p class="mt-3 text-sm text-txt-secondary">No uploaded services yet for this person's extension. Attendance shows here once a sheet is uploaded.</p>
+  <p class="mt-3 text-sm text-txt-secondary">No uploaded services between {{ period.start|date:"F Y" }} and {{ period.end|date:"F Y" }}. Try a wider range, or wait until a sheet is uploaded.</p>
   {% else %}
 
   <dl class="mt-4 grid grid-cols-2 gap-2 sm:grid-cols-4">
     <div class="rounded-lg bg-surface-alt p-3"><dt class="text-xs text-txt-secondary">Attended</dt><dd class="mt-0.5 text-xl font-semibold">{{ ov.attended }}</dd></div>
     <div class="rounded-lg bg-surface-alt p-3"><dt class="text-xs text-txt-secondary">Missed</dt><dd class="mt-0.5 text-xl font-semibold">{{ ov.missed }}</dd></div>
     <div class="rounded-lg bg-surface-alt p-3"><dt class="text-xs text-txt-secondary">Rate</dt><dd class="mt-0.5 text-xl font-semibold">{{ ov.rate }}%</dd></div>
-    <div class="rounded-lg bg-surface-alt p-3"><dt class="text-xs text-txt-secondary">In a row</dt><dd class="mt-0.5 text-xl font-semibold">{{ ov.streak }}</dd></div>
+    <div class="rounded-lg bg-surface-alt p-3"><dt class="text-xs text-txt-secondary">Longest run</dt><dd class="mt-0.5 text-xl font-semibold">{{ ov.longest_run }}</dd></div>
   </dl>
 
   <div class="mt-4 flex h-2 gap-0.5 overflow-hidden rounded-full" role="img"
@@ -31,23 +29,31 @@
     <li class="flex items-center gap-1.5"><span class="size-2.5 rounded-sm border border-dashed border-border" aria-hidden="true"></span>Missed: {{ ov.missed }}</li>
   </ul>
 
-  <h3 class="mt-5 text-sm font-medium">Service by service</h3>
-  <p class="text-xs text-txt-secondary">Oldest on the left, newest on the right. A tick is attended, an arrow is a visit to another extension, a cross is missed.</p>
-  <ul class="mt-2 grid grid-cols-8 gap-1.5 xl:grid-cols-[repeat(16,minmax(0,1fr))]" role="list">
-    {% for c in ov.cells %}
-    <li title="{{ c.date|date:'D, j M Y' }}: {{ c.state_label }}"
-        class="flex aspect-square items-center justify-center rounded-md {% if c.state == 'present' %}bg-accent text-on-accent{% elif c.state == 'elsewhere' %}bg-accent/40 text-txt-primary{% else %}border border-dashed border-border text-danger{% endif %}">
-      <svg class="size-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
-        {% if c.state == 'present' %}<path d="M4.5 12.75l6 6 9-13.5"/>{% elif c.state == 'elsewhere' %}<path d="M4.5 19.5l15-15m0 0H8.25m11.25 0v11.25"/>{% else %}<path d="M6 18L18 6M6 6l12 12"/>{% endif %}
-      </svg>
-      <span class="sr-only">{{ c.date|date:"D, j M Y" }}: {{ c.state_label }}</span>
+  <h3 class="mt-5 text-sm font-medium">Month by month</h3>
+  <p class="text-xs text-txt-secondary">Newest month first. Each square is one service, oldest on the left. A tick is attended, an arrow is a visit to another extension, a cross is missed.</p>
+  <ul class="mt-2 max-h-96 divide-y divide-border overflow-y-auto rounded-lg border border-border px-3" role="list" tabindex="0" aria-label="Attendance by month">
+    {% for m in ov.months %}
+    <li class="grid grid-cols-[5rem_minmax(0,1fr)_auto] items-center gap-3 py-2">
+      <span class="text-sm font-medium">{{ m.date|date:"M Y" }}</span>
+      <ul class="flex flex-wrap gap-1.5" role="list">
+        {% for c in m.cells %}
+        <li title="{{ c.date|date:'D, j M Y' }}: {{ c.state_label }}"
+            class="flex size-8 items-center justify-center rounded-md {% if c.state == 'present' %}bg-accent text-on-accent{% elif c.state == 'elsewhere' %}bg-accent/40 text-txt-primary{% else %}border border-dashed border-border text-danger{% endif %}">
+          <svg class="size-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+            {% if c.state == 'present' %}<path d="M4.5 12.75l6 6 9-13.5"/>{% elif c.state == 'elsewhere' %}<path d="M4.5 19.5l15-15m0 0H8.25m11.25 0v11.25"/>{% else %}<path d="M6 18L18 6M6 6l12 12"/>{% endif %}
+          </svg>
+          <span class="sr-only">{{ c.date|date:"D, j M Y" }}: {{ c.state_label }}</span>
+        </li>
+        {% endfor %}
+      </ul>
+      <span class="text-xs tabular-nums text-txt-secondary">{{ m.attended }} of {{ m.total }}</span>
     </li>
     {% endfor %}
   </ul>
-
-  <h3 class="mt-5 text-sm font-medium">Missed services</h3>
+<!-- 
+  <h3 class="mt-5 text-sm font-medium">Missed services <span class="font-normal text-txt-secondary">({{ ov.missed }})</span></h3>
   {% if ov.missed_list %}
-  <ul class="mt-1 divide-y divide-border text-sm" role="list">
+  <ul class="mt-1 max-h-72 divide-y divide-border overflow-y-auto rounded-lg border border-border px-3 text-sm" role="list" tabindex="0" aria-label="Missed services">
     {% for c in ov.missed_list %}
     <li class="flex flex-wrap items-center justify-between gap-2 py-2">
       <span>{{ c.date|date:"D, j M Y" }}</span>
@@ -56,7 +62,7 @@
     {% endfor %}
   </ul>
   {% else %}
-  <p class="mt-1 text-sm text-txt-secondary">No missed services in the last {{ ov.total }}.</p>
-  {% endif %}
+  <p class="mt-1 text-sm text-txt-secondary">No missed services in this range.</p>
+  {% endif %} -->
   {% endif %}
 </section>

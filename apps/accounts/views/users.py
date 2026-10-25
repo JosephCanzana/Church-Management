@@ -19,11 +19,12 @@ one-time token was already used.
 """
 from django.contrib import messages
 from django.core.paginator import Paginator
-from django.db.models import Q
+from django.db.models import Min, Q
 from django.db.models.functions import Lower
 from django.http import QueryDict
 from django.shortcuts import redirect, render
 from django.urls import reverse
+from django.utils import timezone
 from django.utils.module_loading import import_string
 from django.views.decorators.cache import never_cache
 from django.views.decorators.http import require_http_methods, require_POST
@@ -37,6 +38,7 @@ from ..address import ADDRESS_FIELDS, canonical_country
 from ..decorators import role_required
 from ..forms import GuestFilterForm, UserCreateForm, UserFilterForm, UserForm
 from ..models import PersonType, Role, Status, User, UserExtensionHistory
+from ..month_range import month_options, parse_month_range
 from ..permissions import (
     EDIT, allowed_bulk_actions, can_assign_special_roles, can_change_placement, require_can_act,
 )
@@ -487,8 +489,8 @@ def user_edit(request, pk):
 ATTENDANCE_OVERVIEW = "apps.attendance.person_overview.person_attendance_overview"
 
 
-def _attendance_overview(person):
-    """Attendance totals, strip and missed services for the detail page, or None (no panel).
+def _attendance_overview(person, period):
+    """Attendance totals, months and missed services in `period`, or None (no panel).
 
     Read-only; the caller already limited who can open this person (`_person_or_none`). A failure
     here is logged and only the panel is left out, so the rest of the page keeps working.
@@ -496,9 +498,23 @@ def _attendance_overview(person):
     if person.extension_id is None:
         return None
     try:
-        return import_string(ATTENDANCE_OVERVIEW)(person)
+        return import_string(ATTENDANCE_OVERVIEW)(person, start=period.start, end=period.end)
     except Exception:
         logger.exception("Attendance overview failed for person %s", person.pk)
+        return None
+
+
+#: Same idea for the giving history. Admin and super-admin only: the loaded function checks the viewer
+#: itself (`tithes.permissions.can_view_person_giving`) and returns None for anyone else.
+TITHES_OVERVIEW = "apps.tithes.person_overview.person_tithes_overview"
+
+
+def _tithes_overview(viewer, person, period):
+    """One person's tithe history in `period`, or None (no card). Amounts are never logged."""
+    try:
+        return import_string(TITHES_OVERVIEW)(viewer, person, start=period.start, end=period.end)
+    except Exception:
+        logger.exception("Tithes overview failed for person %s", person.pk)
         return None
 
 
@@ -514,6 +530,17 @@ def _render_detail(request, person, secrets=None):
         person.role == Role.MEMBER and person.person_type == PersonType.MEMBER_ACCOUNT
         and person.extension_id is not None and person.status != Status.ARCHIVED
     )
+    # The "from month to month" choice (?from=2026-01&to=2026-10) for the attendance and tithes cards.
+    today = timezone.localdate()
+    period = parse_month_range(request.GET.get("from"), request.GET.get("to"), today)
+    first_seen = [
+        d for d in (
+            UserExtensionHistory.objects.filter(user=person).aggregate(first=Min("from_date"))["first"],
+            timezone.localtime(person.created_at).date() if person.created_at else None,
+        ) if d
+    ]
+    attendance_overview = _attendance_overview(person, period)
+    tithes_overview = _tithes_overview(request.user, person, period)
     return render(request, DETAIL_TEMPLATE, {
         "person": person,
         "history": history,
@@ -523,7 +550,11 @@ def _render_detail(request, person, secrets=None):
             and can_assign_special_roles(request.user, person.extension_id)
         ),
         "address": _address_text(person),
-        "attendance_overview": _attendance_overview(person),
+        "attendance_overview": attendance_overview,
+        "tithes_overview": tithes_overview,
+        "period": period,
+        "month_options": month_options(min(first_seen) if first_seen else None, today),
+        "show_side_column": attendance_overview is not None or tithes_overview is not None,
         "is_self": person.pk == request.user.pk,
         "secrets": secrets,
         "submit_token": new_submission_token(),
