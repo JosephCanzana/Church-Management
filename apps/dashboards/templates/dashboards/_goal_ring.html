@@ -1,0 +1,22 @@
+{% comment %}
+dashboards/_goal_ring.html
+The goals-today completion ring, drawn as inline SVG from charts.donut().
+Pass: goals (dashboard.goals_today: donut, pct, aria) and class (size classes, optional; default size-28).
+Only the "Done" arc (index 0) is drawn; the track behind it is the rest. The percent is written in the middle and
+the whole ring has one sentence in aria-label, so no meaning depends on color. With nothing scheduled the ring is
+the track alone with a dash. {% localize off %} keeps the numbers plain ("12.5") whatever the locale.
+{% endcomment %}
+{% load l10n %}
+{% with chart=goals.donut %}
+{% localize off %}
+<svg viewBox="0 0 {{ chart.size }} {{ chart.size }}" role="img" aria-label="{{ goals.aria }}" class="{{ class|default:'size-28' }}">
+  <circle cx="{{ chart.cx }}" cy="{{ chart.cy }}" r="{{ chart.r }}" fill="none" class="stroke-border" stroke-width="{{ chart.stroke }}"/>
+  <g transform="rotate(-90 {{ chart.cx }} {{ chart.cy }})">
+    {% for arc in chart.arcs %}{% if arc.index == 0 %}
+    <circle cx="{{ chart.cx }}" cy="{{ chart.cy }}" r="{{ chart.r }}" fill="none" class="chart-stroke-1" stroke-width="{{ chart.stroke }}" stroke-dasharray="{{ arc.dasharray }}" stroke-dashoffset="{{ arc.dashoffset }}"><title>{{ arc.label }}: {{ arc.value }}</title></circle>
+    {% endif %}{% endfor %}
+  </g>
+  <text x="{{ chart.cx }}" y="{{ chart.cy }}" dy="7" text-anchor="middle" class="fill-txt-primary font-mono" font-size="20" font-weight="600">{% if chart.empty %}&ndash;{% else %}{{ goals.pct }}%{% endif %}</text>
+</svg>
+{% endlocalize %}
+{% endwith %}

@@ -1,43 +1,37 @@
-<!--
-dashboards/dashboard_base.html
-Shared layout of the four role dashboards. Each role template extends this file and may fill:
-  role_intro       a short line under the greeting (optional)
-  leader_sections  the leader overview, drawn right under the greeting (leaders only; members leave it empty)
-  coming_soon      the "Coming soon" cards; leaders override it with nothing because their events card is real
-Context: dashboard (built by get_dashboard_context in dashboards/services.py).
-Extends base_app.html and overrides main_class so the page uses the full width. The page heading (h1) comes from page_title; sections here use h2 and below.
-Includes (all in this folder): _daily_verse, _continue_reading, _quick_links, _coming_soon.
-The verse row and quick links stay on every role page for now; Brick 3 moves the personal parts to the Personal tab.
--->
 {% extends "base_app.html" %}
+
+{% comment %}
+dashboards/dashboard_base.html
+Shared layout of the dashboards. Each page template extends this file and fills one of:
+  role_intro          one short line next to the greeting (optional)
+  leader_sections     the leader overview (leaders only; admin.html, coordinator.html, superadmin.html)
+  personal_sections   the personal bento (member.html and personal.html)
+Context: dashboard (built by get_dashboard_context or get_personal_context in dashboards/services.py).
+Extends base_app.html and overrides main_class so the page uses the full width AND the full height: <main> is a flex
+column, so the wrapper below (flex-1) and a bento grid inside it (flex-1 plus a min-height on wide screens) stretch
+to the bottom of the window. The page heading (h1) comes from page_title; sections here use h2 and below.
+The greeting is one small line on purpose (the cards are the content). The verse, continue reading and the other
+personal cards live in _personal_body.html (the Personal tab for leaders, the home page for members).
+{% endcomment %}
 
 {% block title %}Dashboard{% endblock %}
 {% block page_title %}Dashboard{% endblock %}
 
-{# Full width: the dashboards use the whole page (base_app.html caps <main> at max-w-6xl and centers it). The bottom padding keeps the mobile bottom bar from covering the last card. #}
-{% block main_class %}w-full flex-1 px-4 py-6 sm:px-6 lg:px-8{% if mobile_nav_style == 'bottom' %} pb-[calc(5rem+env(safe-area-inset-bottom))] sm:pb-6{% endif %}{% endblock %}
+{# Full width and full height. The bottom padding keeps the mobile bottom bar from covering the last card. #}
+{% block main_class %}flex w-full flex-1 flex-col px-4 py-4 sm:px-6 lg:px-8{% if mobile_nav_style == 'bottom' %} pb-[calc(5rem+env(safe-area-inset-bottom))] sm:pb-4{% endif %}{% endblock %}
 
 {% block content %}
-<div class="space-y-6">
+<div class="flex flex-1 flex-col gap-3">
 
-  <section aria-labelledby="greeting-heading" x-data="{ hour: new Date().getHours() }">
-    <h2 id="greeting-heading" class="text-2xl font-semibold tracking-tight text-txt-primary">
+  <section aria-labelledby="greeting-heading" x-data="{ hour: new Date().getHours() }" class="flex flex-wrap items-baseline gap-x-3 gap-y-0">
+    <h2 id="greeting-heading" class="text-lg font-semibold tracking-tight text-txt-primary">
       <span x-text="hour &lt; 12 ? 'Good morning' : (hour &lt; 18 ? 'Good afternoon' : 'Good evening')">Welcome</span>{% if dashboard.greeting_name %}, {{ dashboard.greeting_name }}{% endif %}
     </h2>
     {% block role_intro %}{% endblock %}
   </section>
 
   {% block leader_sections %}{% endblock %}
-
-  <div class="grid gap-6 lg:grid-cols-3">
-    <div class="lg:col-span-2">
-      {% include "dashboards/_daily_verse.html" %}
-    </div>
-    {% include "dashboards/_continue_reading.html" %}
-  </div>
-
-  {% include "dashboards/_quick_links.html" %}
-  {% block coming_soon %}{% include "dashboards/_coming_soon.html" %}{% endblock %}
+  {% block personal_sections %}{% endblock %}
 
 </div>
 {% endblock %}

@@ -68,13 +68,20 @@ class AccessTests(TestCase):
             self.assertEqual(self.client.get(url).status_code, 302)
 
     def test_each_role_sees_its_own_dashboard(self):
-        """Own page: 200 with the shared sections."""
+        """Own page: 200. Members see the personal sections on their home; leaders see them on the Personal page."""
         for role, person in self.people.items():
             self.client.force_login(person)
             response = self.client.get(self.urls[role])
             self.assertEqual(response.status_code, 200, role)
-            self.assertContains(response, "Verse of the day")
-            self.assertContains(response, "Continue reading")
+            if role == Role.MEMBER:
+                self.assertContains(response, "Verse of the day")
+                self.assertContains(response, "Continue reading")
+            else:
+                # Brick 3 moved the personal cards off the leader overview (they are on the Personal tab).
+                self.assertNotContains(response, "verse-heading", msg_prefix=str(role))
+                personal = self.client.get(reverse("dashboards:personal"))
+                self.assertContains(personal, "Verse of the day")
+                self.assertContains(personal, "Continue reading")
 
     def test_other_roles_are_redirected_to_their_own_home(self):
         """A member opening the super-admin page lands on the member page."""

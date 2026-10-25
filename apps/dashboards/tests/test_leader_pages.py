@@ -68,12 +68,14 @@ class EveryLeaderRendersTests(LeaderPageBase):
         for text in ("Last gathering", "Average attendance", "Extensions reporting"):
             self.assertContains(response, text)
 
-    def test_member_page_has_no_leader_blocks_and_keeps_coming_soon(self):
+    def test_member_page_has_no_leader_blocks_and_the_real_events_card(self):
+        """Brick 3: the member home is the personal dashboard, so its placeholder became the real events card."""
         self.client.force_login(self.people[Role.MEMBER])
         response = self.client.get(reverse("dashboards:member"))
         self.assertNotContains(response, "Overview")
         self.assertNotContains(response, "People by role")
-        self.assertContains(response, "coming-soon-heading")
+        self.assertNotContains(response, "coming-soon-heading")
+        self.assertContains(response, "events-heading")
 
     def test_leaders_no_longer_see_the_coming_soon_placeholder(self):
         for role in URLS:

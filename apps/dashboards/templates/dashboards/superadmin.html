@@ -1,17 +1,17 @@
-<!--
+{% extends "dashboards/dashboard_base.html" %}
+
+{% comment %}
 dashboards/superadmin.html
 Super-admin dashboard: tiles, charts, prayer, events, extension comparison and giving for every extension,
 with the extension picker (?extension=).
 Context: dashboard.
--->
-{% extends "dashboards/dashboard_base.html" %}
+{% endcomment %}
 
 {% block role_intro %}
-<p class="mt-1 text-base text-txt-secondary">Here is how every extension is doing.</p>
+<p class="text-sm text-txt-secondary">Here is how every extension is doing.</p>
 {% endblock %}
 
 {% block leader_sections %}
 {% include "dashboards/_leader_overview.html" %}
 {% endblock %}
 
-{% block coming_soon %}{# the events card inside the overview replaced the placeholder #}{% endblock %}

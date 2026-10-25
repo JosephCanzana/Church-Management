@@ -1,19 +1,19 @@
-<!--
+{% comment %}
 dashboards/_continue_reading.html
-Card that sends the person back to the Bible where they left off: their bookmark.
+Card that sends the person back to the Bible where they left off: their bookmark. Pass span (bento grid classes, optional).
 Context: dashboard.continue_reading (label, url), or None when the person has no bookmark yet;
 dashboard.start_url (Genesis 1, empty if the route does not exist yet).
--->
-<section class="card p-5" aria-labelledby="continue-heading">
+{% endcomment %}
+<section class="card flex flex-col p-5 {{ span }}" aria-labelledby="continue-heading">
   <h2 id="continue-heading" class="text-sm font-semibold uppercase tracking-wide text-txt-secondary">Continue reading</h2>
   {% with card=dashboard.continue_reading %}
   {% if card %}
   <p class="mt-3 text-base text-txt-secondary">Your bookmark</p>
   <p class="text-xl font-semibold text-txt-primary">{{ card.label }}</p>
-  {% if card.url %}<a href="{{ card.url }}" class="btn btn-primary mt-4 inline-flex">Continue: {{ card.label }}</a>{% endif %}
+  {% if card.url %}<div class="mt-auto pt-4"><a href="{{ card.url }}" class="btn btn-primary inline-flex">Continue: {{ card.label }}</a></div>{% endif %}
   {% else %}
   <p class="mt-3 text-base text-txt-secondary">You have not started reading yet.</p>
-  {% if dashboard.start_url %}<a href="{{ dashboard.start_url }}" class="btn btn-primary mt-4 inline-flex">Start reading</a>{% endif %}
+  {% if dashboard.start_url %}<div class="mt-auto pt-4"><a href="{{ dashboard.start_url }}" class="btn btn-primary inline-flex">Start reading</a></div>{% endif %}
   {% endif %}
   {% endwith %}
 </section>

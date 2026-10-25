@@ -1,16 +1,17 @@
-<!--
+{% comment %}
 dashboards/_daily_verse.html
 Card with the verse of the day in the reader's Bible version.
+Pass span (bento grid classes, optional).
 Context: dashboard.verse (reference, version, text, note, available, chapter_url).
 When the version cannot be read, a notice replaces the text (never another version).
 Every ESV display carries "(ESV)", the copyright notice and a link to www.esv.org: the wording lives in
 apps/bible/versions.py, so it is printed from version.notice and version.notice_url, never retyped here.
--->
-<section class="card border-l-4 border-highlight p-5" aria-labelledby="verse-heading">
+{% endcomment %}
+<section class="card flex flex-col border-l-4 border-highlight p-5 {{ span }}" aria-labelledby="verse-heading">
   <h2 id="verse-heading" class="text-sm font-semibold uppercase tracking-wide text-txt-secondary">Verse of the day</h2>
 
   {% if dashboard.verse.available %}
-  <blockquote lang="{{ dashboard.verse.version.language }}" class="mt-3 text-xl leading-relaxed text-txt-primary">
+  <blockquote lang="{{ dashboard.verse.version.language }}" class="mt-3 flex-1 text-xl leading-relaxed text-txt-primary">
     {{ dashboard.verse.text }}
   </blockquote>
   <p class="mt-3 text-base font-semibold text-txt-primary">{{ dashboard.verse.reference }} ({{ dashboard.verse.version.label }})</p>
@@ -20,7 +21,7 @@ apps/bible/versions.py, so it is printed from version.notice and version.notice_
   {% endif %}
 
   {% if dashboard.verse.chapter_url %}
-  <a href="{{ dashboard.verse.chapter_url }}" class="btn btn-secondary mt-4 inline-flex">Read the whole chapter</a>
+  <a href="{{ dashboard.verse.chapter_url }}" class="btn btn-secondary mt-4 inline-flex self-start">Read the whole chapter</a>
   {% endif %}
 
   {% if dashboard.verse.available %}

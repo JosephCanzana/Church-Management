@@ -1,0 +1,17 @@
+{% extends "dashboards/dashboard_base.html" %}
+
+{% comment %}
+dashboards/personal.html
+Personal dashboard (dashboards:personal), open to every role. Leaders reach it through the Personal tab of the
+dashboard hub (Overview | Personal); the tabs are drawn by base_app.html. Only the signed-in person's OWN data is
+shown, whatever the role. The body is shared with member.html (_personal_body.html).
+Context: dashboard (services.get_personal_context).
+{% endcomment %}
+
+{% block title %}Personal{% endblock %}
+
+{% block role_intro %}
+<p class="text-sm text-txt-secondary">Your own goals, reading and buddy.</p>
+{% endblock %}
+
+{% block personal_sections %}{% include "dashboards/_personal_body.html" %}{% endblock %}

@@ -1,10 +1,14 @@
-<!--
-dashboards/member.html
-Member dashboard: the shared sections only (verse of the day, continue reading, quick links, coming soon).
-Context: dashboard.
--->
 {% extends "dashboards/dashboard_base.html" %}
 
+{% comment %}
+dashboards/member.html
+Member home (dashboards:member). Members have no tabs: this IS their personal dashboard, so it only fills the
+personal bento (_personal_body.html). Leaders see the same body on personal.html.
+Context: dashboard (services.get_personal_context).
+{% endcomment %}
+
 {% block role_intro %}
-<p class="mt-1 text-base text-txt-secondary">Glad you are here. Take a moment with today's verse.</p>
+<p class="text-sm text-txt-secondary">Glad you are here. Take a moment with today's verse.</p>
 {% endblock %}
+
+{% block personal_sections %}{% include "dashboards/_personal_body.html" %}{% endblock %}

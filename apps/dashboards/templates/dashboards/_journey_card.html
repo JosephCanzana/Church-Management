@@ -1,0 +1,48 @@
+{% comment %}
+dashboards/_journey_card.html
+"My journey" summary of the personal dashboard. Pass span (bento grid classes, optional).
+Context: dashboard.journey (services.journey_summary): services (last attended services, newest first, each with date
+and label; the person's OWN uploaded-sheet attendance only), goals (done and expected in the last 7 days, perfect-day
+streak; None for people who cannot use goals) and url (the journey hub, "" when the route does not exist).
+Both parts have an empty state, so the card never looks broken. Every number is text.
+{% endcomment %}
+{% with journey=dashboard.journey %}
+<section class="card flex flex-col p-5 {{ span }}" aria-labelledby="journey-heading">
+  <div class="flex items-baseline justify-between gap-3">
+    <h2 id="journey-heading" class="text-lg font-semibold text-txt-primary">My journey</h2>
+    {% if journey.url %}<a href="{{ journey.url }}" class="inline-flex min-h-11 items-center text-sm font-medium text-accent underline">Open</a>{% endif %}
+  </div>
+
+  <h3 class="mt-2 text-sm font-semibold uppercase tracking-wide text-txt-secondary">Recent services</h3>
+  {% if journey.services %}
+  <ul class="mt-1 divide-y divide-border">
+    {% for service in journey.services %}
+    <li class="flex items-baseline gap-3 py-2">
+      <time datetime="{{ service.date|date:'Y-m-d' }}" class="w-16 shrink-0 font-mono text-sm text-txt-secondary">{{ service.date|date:"M j" }}</time>
+      <span class="min-w-0 flex-1 truncate text-base text-txt-primary">{{ service.label }}</span>
+    </li>
+    {% endfor %}
+  </ul>
+  {% else %}
+  <p class="mt-1 text-base text-txt-secondary">Services you attend will show here.</p>
+  {% endif %}
+
+  <h3 class="mt-4 text-sm font-semibold uppercase tracking-wide text-txt-secondary">Goals this week</h3>
+  {% if journey.goals and journey.goals.has_goals %}
+  <dl class="mt-1 grid grid-cols-2 gap-3">
+    <div class="rounded-xl border border-border bg-surface-alt p-3">
+      <dt class="text-sm text-txt-secondary">Done</dt>
+      <dd class="font-mono text-2xl font-semibold text-txt-primary">{{ journey.goals.done }}<span class="text-base font-normal text-txt-secondary"> of {{ journey.goals.expected }}</span></dd>
+    </div>
+    <div class="rounded-xl border border-border bg-surface-alt p-3">
+      <dt class="text-sm text-txt-secondary">Perfect days in a row</dt>
+      <dd class="font-mono text-2xl font-semibold text-txt-primary">{{ journey.goals.streak }}<span class="text-base font-normal text-txt-secondary"> (best {{ journey.goals.best_streak }})</span></dd>
+    </div>
+  </dl>
+  {% elif journey.goals %}
+  <p class="mt-1 text-base text-txt-secondary">You have no goals yet. Add one to start your journey.</p>
+  {% else %}
+  <p class="mt-1 text-base text-txt-secondary">Goals are not available for your account.</p>
+  {% endif %}
+</section>
+{% endwith %}

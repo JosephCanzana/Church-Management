@@ -1,0 +1,38 @@
+{% comment %}
+dashboards/_chart_week.html
+The 7-day check-in strip: one small column pair per day (opened the app, read the Bible), drawn as inline SVG from
+charts.column_groups() (services.checkin_week adds series_label and view_box). Pass span (bento grid classes, optional).
+Context: dashboard.checkin (chart, series, days, opened, read, rows, aria); nothing is drawn when it is None
+(people who cannot use goals). A faint track behind every bar keeps an empty day visible. The totals are written as
+text under the title and every day is in the visually hidden list, so no meaning depends on the bars or their color.
+{% endcomment %}
+{% load l10n chart_tags %}
+{% if dashboard.checkin %}
+{% with c=dashboard.checkin %}
+<section class="card flex flex-col p-4 {{ span }}" aria-labelledby="checkin-heading">
+  <h3 id="checkin-heading" class="text-base font-semibold text-txt-primary">Last {{ c.days }} days</h3>
+  <p class="text-sm text-txt-secondary">Opened the app <span class="font-mono text-txt-primary">{{ c.opened }}</span> of {{ c.days }} &middot; read the Bible <span class="font-mono text-txt-primary">{{ c.read }}</span> of {{ c.days }}</p>
+  <div class="mt-2 flex flex-1 items-center">
+    {% localize off %}
+    <svg viewBox="{{ c.chart.view_box }}" role="img" aria-label="{{ c.aria }}" class="h-auto max-h-40 w-full">
+      {% for group in c.chart.groups %}
+      {% for bar in group.bars %}
+      <rect x="{{ bar.x }}" y="{{ c.chart.plot.top }}" width="{{ bar.width }}" height="{{ c.chart.plot.height }}" rx="3" class="fill-surface-alt"/>
+      {% if bar.value %}<rect x="{{ bar.x }}" y="{{ bar.y }}" width="{{ bar.width }}" height="{{ bar.height }}" rx="3" class="chart-fill-{{ bar.series|chart_slot }}"><title>{{ bar.group }}, {{ bar.series_label }}: yes</title></rect>{% endif %}
+      {% endfor %}
+      <text x="{{ group.label_x }}" y="{{ c.chart.baseline_y }}" dy="18" text-anchor="middle" class="fill-txt-secondary" font-size="12">{{ group.label }}</text>
+      {% endfor %}
+    </svg>
+    {% endlocalize %}
+  </div>
+  <ul class="mt-2 flex flex-wrap gap-x-5 gap-y-1 text-sm text-txt-secondary" aria-label="Legend">
+    {% for name in c.series %}
+    <li class="flex items-center gap-2"><span class="size-3 rounded-sm chart-bg-{{ forloop.counter0|chart_slot }}" aria-hidden="true"></span>{{ name }}</li>
+    {% endfor %}
+  </ul>
+  <ul class="sr-only">
+    {% for row in c.rows %}<li>{{ row.label }}: {% if row.opened %}opened the app{% else %}did not open the app{% endif %}, {% if row.read %}read the Bible{% else %}did not read{% endif %}</li>{% endfor %}
+  </ul>
+</section>
+{% endwith %}
+{% endif %}

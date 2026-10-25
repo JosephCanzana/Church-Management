@@ -79,6 +79,9 @@ class TabItem:
     ``prefixes`` are literal path prefixes that also belong to the tab (a whole area
     such as /manage/landing/, so pages added later need no change here). When
     several tabs match the current path the most specific (longest) match wins.
+    ``exact`` makes the tab active only on its own path, never on pages below it. The dashboard tabs need it: a
+    role's dashboard lives at ``/admin/`` and so does every other page of that area, so a prefix match would
+    light the tab (and draw the hub's tab row) on all of them.
     """
 
     label: str
@@ -86,6 +89,7 @@ class TabItem:
     roles: tuple = EVERYONE
     also: tuple = ()
     prefixes: tuple = ()
+    exact: bool = False
 
 
 # ---------------------------------------------------------------------------
@@ -94,7 +98,9 @@ class TabItem:
 # ---------------------------------------------------------------------------
 NAV_ITEMS = [
     # --- Personal ---------------------------------------------------------
-    NavItem("Home", ROLE_HOME, "home", bottom=True, exact=True),
+    # Members go straight to their personal dashboard; leaders open the dashboard hub (Overview | Personal).
+    NavItem("Home", ROLE_HOME, "home", roles=(MEMBER,), bottom=True, exact=True),
+    NavItem("Home", HUB, "home", roles=LEADERS, bottom=True, tabs="dashboard"),
     NavItem("Events", "events:index", "calendar-days", bottom=True),
     NavItem("Bible", "bible:reader", "book-open", bottom=True),
     # Buddy hub: Buddy | Messages | Their goals. Any role that can sign in may pair (see buddy/permissions.py).
@@ -134,6 +140,15 @@ NAV_ITEMS = [
 
 # Page tabs for each hub. The order here is the order of the tabs.
 SECTION_TABS = {
+    # Dashboard hub for leaders: Overview | Personal. Members have no tabs (their home IS the personal page).
+    # Brick 4 adds "Reports" here (one TabItem per role area, exact=False, also=("...report_print",)); it is left
+    # out until its route exists so no dead tab shows.
+    "dashboard": [
+        TabItem("Overview", "dashboards:superadmin", roles=(SUPER_ADMIN,), exact=True),
+        TabItem("Overview", "dashboards:admin", roles=(ADMIN,), exact=True),
+        TabItem("Overview", "dashboards:coordinator", roles=(COORDINATOR,), exact=True),
+        TabItem("Personal", "dashboards:personal", roles=LEADERS, exact=True),
+    ],
     "journey": [
         # Goals: every role that can sign in may hold goals. The whole /goals/ area belongs to this tab.
         TabItem("Goals", "faith:goals", prefixes=("/goals/",)),
@@ -237,8 +252,11 @@ def build_tabs(section, role, path):
         if role not in tab.roles:
             continue
         href = _resolve_name(tab.url_name, role)
-        owned = [href] + [_resolve_name(name, role) for name in tab.also] + list(tab.prefixes)
-        scores.append(_match_length(owned, path))
+        if tab.exact:
+            scores.append(len(href) if href and path == href else 0)
+        else:
+            owned = [href] + [_resolve_name(name, role) for name in tab.also] + list(tab.prefixes)
+            scores.append(_match_length(owned, path))
         tabs.append({"label": tab.label, "href": href or "#", "disabled": href is None, "active": False})
     best = max(scores, default=0)
     for tab, score in zip(tabs, scores):

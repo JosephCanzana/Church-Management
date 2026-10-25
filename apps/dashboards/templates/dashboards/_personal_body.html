@@ -1,0 +1,40 @@
+{% comment %}
+dashboards/_personal_body.html
+The personal dashboard as a BENTO GRID that fills the window. Shared by member.html and personal.html.
+Context: dashboard (goals_today, streaks, checkin, verse, continue_reading, buddy, journey, upcoming_events).
+Grid: 1 column on a phone, 6 on a tablet (md), 12 on a wide screen (xl). The wide grid has equal-height rows
+(auto-rows-fr) and a min-height, so together with the flex-1 of dashboard_base.html it stretches to the bottom of the
+window; if the content is taller than the window the page simply scrolls. grid-flow-dense plus the two layouts below
+leave no holes. Span classes are written out in full so the Tailwind build sees them.
+
+With goals (4 rows on xl):
+  goals 4x2 | streaks 4 | week 4
+            | verse 8
+  continue 4 | buddy 4 | journey 4x2
+  events 8              |
+Without goals (people who cannot use goals; 3 rows):
+  verse 8x2        | continue 4
+                   | buddy 4
+  journey 4 | events 8
+Every card is plain text first (values are always written out), so nothing depends on color.
+{% endcomment %}
+<div class="grid flex-1 grid-flow-dense grid-cols-1 gap-3 md:grid-cols-6 xl:min-h-[calc(100dvh-9.5rem)] xl:grid-cols-12 xl:auto-rows-fr xl:gap-4">
+
+  {% if dashboard.goals_today %}
+  {% include "dashboards/_goals_today.html" with span="md:col-span-3 xl:col-span-4 xl:row-span-2" %}
+  {% include "dashboards/_streaks.html" with span="md:col-span-3 xl:col-span-4" %}
+  {% include "dashboards/_chart_week.html" with span="md:col-span-3 xl:col-span-4" %}
+  {% include "dashboards/_daily_verse.html" with span="md:col-span-6 xl:col-span-8" %}
+  {% include "dashboards/_continue_reading.html" with span="md:col-span-3 xl:col-span-4" %}
+  {% include "dashboards/_buddy_card.html" with span="md:col-span-3 xl:col-span-4" %}
+  {% include "dashboards/_journey_card.html" with span="md:col-span-3 xl:col-span-4 xl:row-span-2" %}
+  {% include "dashboards/_events_card.html" with span="md:col-span-3 xl:col-span-8" %}
+  {% else %}
+  {% include "dashboards/_daily_verse.html" with span="md:col-span-6 xl:col-span-8 xl:row-span-2" %}
+  {% include "dashboards/_continue_reading.html" with span="md:col-span-3 xl:col-span-4" %}
+  {% include "dashboards/_buddy_card.html" with span="md:col-span-3 xl:col-span-4" %}
+  {% include "dashboards/_journey_card.html" with span="md:col-span-3 xl:col-span-4" %}
+  {% include "dashboards/_events_card.html" with span="md:col-span-3 xl:col-span-8" %}
+  {% endif %}
+
+</div>

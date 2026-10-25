@@ -25,6 +25,11 @@ Brick 2 adds what the leader pages draw: ``tiles`` (four headline numbers), ``ch
 ``charts.py`` plus its text, ready for the ``_chart_*`` partials) and ``events_url``. They are built from the Brick 1
 stats, so they follow the same scoping and the same ``?extension=`` filter and add no query of their own.
 
+Brick 3 adds the *personal dashboard* (``get_personal_context``), open to every role: goals today with a
+completion ring, streaks, a 7-day check-in strip, the verse, continue reading, the Buddy card, "My journey" and
+upcoming events. It takes no person id from the request: everything is about ``user`` only. ``get_dashboard_context``
+is unchanged, so the leader pages and their tests keep working.
+
 Privacy: tithe amounts are shown only to leaders, only here, and are never written
 to ``audit_log`` or ``notification.data``.
 """
@@ -44,6 +49,7 @@ from apps.attendance.summary import GENDER_ROW_LABELS, summary_table
 from apps.bible import daily_verse
 from apps.bible import services as bible_services
 from apps.bible.books import BOOKS_BY_ID
+from apps.buddy import services as buddy_services   # read-only: live_partnership, active_partnership, partner_card
 from apps.core.text import title_case
 from apps.faith import overview as faith_overview
 from apps.events.permissions import visible_events
@@ -73,6 +79,11 @@ NAV_LABELS_NOT_QUICK_LINKS = {"Home", "Django admin"}
 CHART_WIDTH = 560            # drawing width (SVG units) of the line and column charts; the SVG scales to its card
 CHART_HEIGHT = 220
 HBAR_WIDTH = 400             # drawing width of one horizontal-bar chart
+CHECKIN_DAYS = 7             # days in the personal check-in strip
+JOURNEY_SERVICES = 4         # attended services listed on the "My journey" card
+GOAL_RING_RADIUS = 40        # the goals-today ring: a two-segment donut (done, still to do)
+GOAL_RING_STROKE = 12
+CHECKIN_SERIES = ("Opened the app", "Read the Bible")
 LABEL_LIMIT = 34             # longest bar label drawn in full; longer ones end with an ellipsis (full name in the tooltip)
 
 # Cards for features that are planned but not built yet (shown as "Coming soon").
@@ -320,7 +331,23 @@ def _goals_today(user, today):
     """Return today's goal counts and next goals for the goals widget, or None when the person cannot use goals."""
     if not can_use_goals(user):
         return None
-    return {**faith_overview.today_summary(user, today), "url": _safe_reverse("faith:today")}
+    summary = faith_overview.today_summary(user, today)
+    return {**summary, **_goal_ring(summary), "url": _safe_reverse("faith:today")}
+
+
+def _goal_ring(summary):
+    """Return ``donut`` (geometry from ``charts.donut``), ``pct`` and ``aria`` for the goals-today ring.
+
+    Two segments: done and still to do. Only the first is drawn as an arc; the track is the rest. With nothing
+    scheduled the donut is ``empty`` and the template draws the track alone with a dash in the middle.
+    """
+    done, total = summary["done"], summary["total"]
+    pct = round(done / total * 100) if total else 0
+    aria = f"{done} of {total} goals done today ({pct} percent)." if total else "No goals scheduled today."
+    donut = charts.donut(
+        [("Done", done), ("To do", summary["remaining"])], radius=GOAL_RING_RADIUS, stroke=GOAL_RING_STROKE
+    )
+    return {"donut": donut, "pct": pct, "aria": aria}
 
 
 def _quick_links(user, path):
@@ -907,3 +934,129 @@ def _compact(value):
         if number >= limit:
             return f"{number / limit:.1f}".rstrip("0").rstrip(".") + suffix
     return f"{number:.0f}"
+
+
+# ------------------------------------------------- the personal dashboard (Brick 3)
+def get_personal_context(user, version_code, path):
+    """Return the ``dashboard`` dict of the personal page (every role; only the person's OWN data).
+
+    No id comes from the request and no extension filter is read: nothing here is scoped by anyone but ``user``.
+    Reuses the shared pieces (verse, bookmark, streaks, goals today) and adds ``checkin`` (7-day strip),
+    ``buddy``, ``journey``, ``upcoming_events`` and ``events_url``. ``streaks``, ``goals_today`` and ``checkin``
+    are None for people who cannot use goals, so the template draws no goals card for them.
+
+    ``path`` is accepted so the call looks like ``get_dashboard_context``; the page has no quick links.
+    """
+    today = timezone.localdate()
+    overview = faith_overview.global_overview(user, today) if can_use_goals(user) else None
+    return {
+        "greeting_name": title_case(user.first_name),
+        "verse": _verse_of_the_day(version_code),
+        "continue_reading": _continue_reading(user),
+        "bible_url": _safe_reverse("bible:reader"),
+        "start_url": _bible_chapter_url("Gen", 1),
+        "streaks": _streaks(user, today),
+        "goals_today": _goals_today(user, today),
+        "checkin": checkin_week(overview),
+        "buddy": buddy_summary(user),
+        "journey": journey_summary(user, overview),
+        "upcoming_events": upcoming_events(user, 5),
+        "events_url": _safe_reverse("events:calendar") or _safe_reverse("events:list") or _safe_reverse("events:index"),
+    }
+
+
+def checkin_week(overview):
+    """Return the 7-day check-in strip (grouped columns: opened the app, read the Bible), or None without goals.
+
+    ``overview`` is ``faith.overview.global_overview(user, today)`` (or None). Its ``activity`` rows carry one
+    cell per day with a ``state`` of done, missed or open. A day counts as 1 when ``done`` and 0 otherwise, so
+    "today, not yet" is a 0 and never a miss. Every day is also returned as text in ``rows`` and the totals are
+    in ``aria``, so no meaning depends on the bars.
+    """
+    if not overview:
+        return None
+    by_key = {row["key"]: row["cells"][-CHECKIN_DAYS:] for row in overview.get("activity", [])}
+    opened_cells, read_cells = by_key.get("open", []), by_key.get("read", [])
+    flags = [(o["date"], o["state"] == "done", r["state"] == "done") for o, r in zip(opened_cells, read_cells)]
+    chart = charts.column_groups(
+        [(f"{day:%a}", [int(opened), int(read)]) for day, opened, read in flags], width=300, height=120
+    )
+    for group in chart["groups"]:
+        for bar in group["bars"]:
+            bar["series_label"] = CHECKIN_SERIES[bar["series"]]
+    # No y-axis is drawn on this small strip, so the viewBox starts at the plot's left edge (no empty gutter).
+    plot = chart["plot"]
+    chart["view_box"] = f"{plot['left'] - 4} 0 {plot['width'] + 8} {chart['height']}"
+    opened_days = sum(1 for _d, opened, _r in flags if opened)
+    read_days = sum(1 for _d, _o, read in flags if read)
+    return {
+        "chart": chart,
+        "series": list(CHECKIN_SERIES),
+        "days": len(flags),
+        "opened": opened_days,
+        "read": read_days,
+        "rows": [{"label": f"{day:%a %b} {day.day}", "opened": opened, "read": read} for day, opened, read in flags],
+        "aria": (
+            f"Last {len(flags)} days: opened the app on {opened_days} days, read the Bible on {read_days} days."
+        ),
+    }
+
+
+def buddy_summary(user):
+    """Return the Buddy card numbers for ``user``: ``{"state", "url", ...}``.
+
+    ``state`` is ``live`` (name, extension, since and the partner's two streaks, all from
+    ``buddy.services.partner_card``), ``inactive`` (a partnership exists but the partner cannot sign in right
+    now: no name, no numbers) or ``none``. Never a goal, note or message of the partner. The unread message count
+    is left out on purpose: ``buddy.messaging.unread_count`` is not wired here until it is checked.
+    """
+    url = _safe_reverse("buddy:home")
+    card = buddy_services.partner_card(user)
+    if card is not None:
+        return {
+            "state": "live",
+            "url": url,
+            "name": card["name"],
+            "extension": title_case(card["extension"]) if card["extension"] else "",
+            "since": card["since"],
+            "streaks": card["streaks"],
+        }
+    if buddy_services.active_partnership(user) is not None:
+        return {"state": "inactive", "url": url}
+    return {"state": "none", "url": url}
+
+
+def _my_attended_services(user, limit):
+    """Return up to ``limit`` services the person attended, newest first, as ``{"date", "label"}`` dicts.
+
+    Source: the person's OWN attendance on UPLOADED sheets only (a reopened sheet drops out), the same history
+    as the "Attendance" tab of My journey (``attendance:mine``). Only the person's own rows, no id from the request.
+
+    NOT WIRED YET: the attendance models and the ``attendance:mine`` view were not part of the Brick 3 files, so
+    this returns an empty list and the card shows its empty state. Replace the body with the same query
+    ``attendance:mine`` uses, sliced to ``limit``, and the card fills in with no template change.
+    """
+    return []
+
+
+def journey_summary(user, overview=None):
+    """Return the "My journey" card numbers: recent services, goals done this week, perfect-day streak.
+
+    ``overview`` is ``faith.overview.global_overview`` (None for people who cannot use goals; ``goals`` is then
+    None and the card shows only the services part). ``url`` is the journey hub (its first tab, Goals).
+    """
+    goals = None
+    if overview:
+        week, perfect = overview["week"], overview["perfect"]
+        goals = {
+            "has_goals": overview["has_goals"],
+            "done": week["done"],
+            "expected": week["expected"],
+            "streak": perfect["current"],
+            "best_streak": perfect["best"],
+        }
+    return {
+        "services": _my_attended_services(user, JOURNEY_SERVICES),
+        "goals": goals,
+        "url": _safe_reverse("faith:goals"),
+    }

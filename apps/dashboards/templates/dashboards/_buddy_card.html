@@ -1,0 +1,41 @@
+{% comment %}
+dashboards/_buddy_card.html
+The Buddy card of the personal dashboard. Pass span (bento grid classes, optional).
+Context: dashboard.buddy (services.buddy_summary), a dict with state and url:
+  live      name, extension, since and streaks (open_current, read_current, ...; None when the streak engine is missing)
+  inactive  a partnership exists but the partner cannot sign in right now: no name and no numbers are shown
+  none      no buddy yet: an empty state with a link to find one
+Only what buddy.services.partner_card returns is drawn: never the partner's goals, notes or messages. The unread
+message count is not shown (not wired). The partner's name is text, escaped by the template engine.
+{% endcomment %}
+{% with buddy=dashboard.buddy %}
+<section class="card flex flex-col p-5 {{ span }}" aria-labelledby="buddy-heading">
+  <div class="flex items-baseline justify-between gap-3">
+    <h2 id="buddy-heading" class="text-sm font-semibold uppercase tracking-wide text-txt-secondary">Buddy</h2>
+    {% if buddy.url and buddy.state == 'live' %}<a href="{{ buddy.url }}" class="inline-flex min-h-11 items-center text-sm font-medium text-accent underline">Open</a>{% endif %}
+  </div>
+  {% if buddy.state == 'live' %}
+  <p class="mt-3 truncate text-xl font-semibold text-txt-primary">{{ buddy.name }}</p>
+  <p class="text-sm text-txt-secondary">{% if buddy.extension %}{{ buddy.extension }} &middot; {% endif %}Buddies since {{ buddy.since|date:"M j, Y" }}</p>
+  {% if buddy.streaks %}
+  <dl class="mt-auto grid grid-cols-2 gap-3 pt-4">
+    <div class="rounded-xl border border-border bg-surface-alt p-3">
+      <dt class="text-sm text-txt-secondary">Opened the app</dt>
+      <dd class="font-mono text-2xl font-semibold text-txt-primary">{{ buddy.streaks.open_current }} <span class="text-sm font-normal text-txt-secondary">day{{ buddy.streaks.open_current|pluralize }}</span></dd>
+    </div>
+    <div class="rounded-xl border border-border bg-surface-alt p-3">
+      <dt class="text-sm text-txt-secondary">Read the Bible</dt>
+      <dd class="font-mono text-2xl font-semibold text-txt-primary">{{ buddy.streaks.read_current }} <span class="text-sm font-normal text-txt-secondary">day{{ buddy.streaks.read_current|pluralize }}</span></dd>
+    </div>
+  </dl>
+  {% endif %}
+  {% elif buddy.state == 'inactive' %}
+  <p class="mt-3 text-base text-txt-secondary">Your buddy cannot sign in right now, so their numbers are hidden.</p>
+  {% if buddy.url %}<div class="mt-auto pt-4"><a href="{{ buddy.url }}" class="btn btn-secondary inline-flex">Open Buddy</a></div>{% endif %}
+  {% else %}
+  <p class="mt-3 text-base text-txt-primary">No buddy yet.</p>
+  <p class="text-base text-txt-secondary">A buddy is a friend who cheers you on with your goals and your Bible reading.</p>
+  {% if buddy.url %}<div class="mt-auto pt-4"><a href="{{ buddy.url }}" class="btn btn-primary inline-flex">Find a buddy</a></div>{% endif %}
+  {% endif %}
+</section>
+{% endwith %}
