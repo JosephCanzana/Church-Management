@@ -8,7 +8,8 @@ extension comparison, some people have no prayer inbox) never leaves a gap. Card
 container queries (the donut puts its legend beside or under the ring). Span classes are written out in full here
 so the Tailwind build sees them.
 Wide screen, roughly: filter | 4 tiles | line 7 + columns 5 | donut 4 + donut 4 + events 4 | prayer 4 + people 4 +
-attendance 4 | needs-a-look 8 + giving 4 (small and muted).
+attendance 4 | needs-a-look 8 + giving 4 (small and muted) | attendance table 7 + age-group table 5.
+The filter bar holds the period quick links, the period form (custom dates, giving switch) and Print report.
 Context: dashboard (tiles, charts, filter, period, prayer_summary, upcoming_events, extension_stats, giving_stats).
 {% endcomment %}
 {% if dashboard.charts %}
@@ -32,6 +33,8 @@ Context: dashboard (tiles, charts, filter, period, prayer_summary, upcoming_even
     {% include "dashboards/_prayer_card.html" with span="col-span-2 md:col-span-3 xl:col-span-4" %}
     {% include "dashboards/_extension_comparison.html" with span_third="col-span-2 md:col-span-3 xl:col-span-4" span_wide="col-span-2 md:col-span-6 xl:col-span-8" %}
     {% include "dashboards/_giving_card.html" with span="col-span-2 md:col-span-6 xl:col-span-4" %}
+
+    {% include "dashboards/_attendance_tables.html" with span_wide="col-span-2 md:col-span-6 xl:col-span-7" span_narrow="col-span-2 md:col-span-6 xl:col-span-5" %}
   </div>
 </section>
 {% endif %}

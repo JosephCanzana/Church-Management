@@ -1,0 +1,47 @@
+{% comment %}
+dashboards/_print_chart_columns.html
+Men and women by age group for the A4 print report, drawn from charts.column_groups() output.
+Pass: chart (the prepared dict from services.leader_charts: width, height, plot, groups, y_ticks, baseline_y, empty,
+series, aria).
+Standalone like the print page: NO Tailwind, only inline attributes and GRAYSCALE. The two series differ by FILL
+PATTERN, not only by shade, so they stay apart on a black-and-white printer: the first (Men) is solid dark grey, the
+second (Women) is white with diagonal black hatching. Each bar prints its value above it, and the legend under the
+chart repeats both fills (its swatches carry their own pattern definition, so they do not depend on the chart's).
+{% endcomment %}{% load l10n %}
+{% if chart.empty %}
+<p style="margin:0;font-style:italic">No attendance recorded in this period.</p>
+{% else %}
+{% localize off %}
+<svg viewBox="0 0 {{ chart.width }} {{ chart.height }}" width="100%" role="img" aria-label="{{ chart.aria }}" style="display:block;height:auto" font-family="Arial, Helvetica, sans-serif" font-size="11">
+  <defs>
+    <pattern id="print-hatch" width="6" height="6" patternUnits="userSpaceOnUse" patternTransform="rotate(45)">
+      <rect width="6" height="6" fill="#ffffff"/><line x1="0" y1="0" x2="0" y2="6" stroke="#000000" stroke-width="2.2"/>
+    </pattern>
+  </defs>
+  {% for tick in chart.y_ticks %}
+  <line x1="{{ chart.plot.left }}" x2="{{ chart.plot.right }}" y1="{{ tick.y }}" y2="{{ tick.y }}" stroke="#bbbbbb" stroke-width="0.6"/>
+  <text x="{{ chart.plot.left }}" y="{{ tick.y }}" dx="-6" dy="4" text-anchor="end" fill="#000000">{{ tick.label }}</text>
+  {% endfor %}
+  <line x1="{{ chart.plot.left }}" x2="{{ chart.plot.right }}" y1="{{ chart.baseline_y }}" y2="{{ chart.baseline_y }}" stroke="#000000" stroke-width="1"/>
+  {% for group in chart.groups %}
+  {% for bar in group.bars %}
+  <rect x="{{ bar.x }}" y="{{ bar.y }}" width="{{ bar.width }}" height="{{ bar.height }}"{% if bar.series == 0 %} fill="#333333"{% else %} fill="url(#print-hatch)"{% endif %} stroke="#000000" stroke-width="1"><title>{{ bar.group }}, {{ bar.series_label }}: {{ bar.value|floatformat:0 }}</title></rect>
+  <text x="{{ bar.cx }}" y="{{ bar.y }}" dy="-4" text-anchor="middle" fill="#000000" font-weight="700">{{ bar.value|floatformat:0 }}</text>
+  {% endfor %}
+  <text x="{{ group.label_x }}" y="{{ chart.baseline_y }}" dy="16" text-anchor="middle" fill="#000000">{{ group.label }}</text>
+  {% endfor %}
+</svg>
+{% endlocalize %}
+<ul style="margin:2mm 0 0;padding:0;list-style:none;display:flex;gap:8mm;font-size:8.5pt" aria-label="Legend">
+  {% for name in chart.series %}
+  <li style="display:flex;align-items:center;gap:2mm">
+    <svg width="14" height="14" viewBox="0 0 14 14" aria-hidden="true">
+      {% if forloop.first %}<rect x="0.5" y="0.5" width="13" height="13" fill="#333333" stroke="#000000"/>{% else %}
+      <defs><pattern id="print-hatch-key" width="6" height="6" patternUnits="userSpaceOnUse" patternTransform="rotate(45)"><rect width="6" height="6" fill="#ffffff"/><line x1="0" y1="0" x2="0" y2="6" stroke="#000000" stroke-width="2.2"/></pattern></defs>
+      <rect x="0.5" y="0.5" width="13" height="13" fill="url(#print-hatch-key)" stroke="#000000"/>{% endif %}
+    </svg>
+    <span>{{ name }}</span>
+  </li>
+  {% endfor %}
+</ul>
+{% endif %}

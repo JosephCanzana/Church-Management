@@ -1,0 +1,330 @@
+{% comment %}
+dashboards/report_print.html
+Standalone A4 church report for the browser's print dialog ("Save as PDF" is a print destination), opened from the
+dashboard's "Print report" button. It is NOT a print of the dashboard: different layout on purpose, TABLES first, then two grayscale charts, then three
+signature lines.
+It does NOT extend base_app.html: black text on white whatever the person's light or dark mode, inline CSS, no external
+fonts, no Tailwind, no includes/logo.html; the logo is a plain <img> of black-logo.svg. Same conventions as
+attendance/print.html and tithes/print.html (toolbar and grey desk are screen-only, no page numbers).
+Context (dashboards.views.report_print): report (get_report_context): filter, period, include_giving, query,
+prepared_for, summary_lines, dashboard_url, attendance_stats, network_table, attendance_gap, people_stats, extension_table, events,
+giving_stats, prayer (counts only), charts.
+Order: header (church, extension or "All extensions", period, as-of, prepared for) | 3-line summary | attendance per
+gathering | age network x gender | people by role and status | extensions (admin and super-admin, All only) | events |
+giving (only when included) | prayer counts | attendance line | age x gender columns | signatures | printed-at line.
+Privacy: counts, dates and amounts only. Never a person's name, birth date, phone number or address, never prayer
+request text, and giving only when the report says so. Printed times are Manila time.
+Printing notes: every block avoids a page break inside it, except the long tables (attendance, extensions, events,
+giving), which may flow across pages: their header row repeats and their rows never split. The legend sits under each chart.
+{% endcomment %}{% load static %}<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="robots" content="noindex">
+  <title>Church report: {{ report.filter.label }}, {{ report.period.label }}</title>
+  <style>
+    @page { size: A4; margin: 12mm; }
+    * { box-sizing: border-box; }
+    html { -webkit-print-color-adjust: exact; print-color-adjust: exact; }
+    body {
+      margin: 0; color: #000; background: #fff;
+      font: 10pt/1.3 Arial, Helvetica, "Liberation Sans", sans-serif;
+    }
+    p, h1, h2, dl, dd, ol { margin: 0; }
+
+    /* ---- screen only: a grey desk, the page as a white sheet, and a toolbar ---- */
+    .toolbar { display: none; }
+    @media screen {
+      body { background: #e5e7eb; padding: 16px; }
+      .toolbar {
+        display: flex; flex-wrap: wrap; gap: 12px; align-items: center; justify-content: space-between;
+        max-width: 210mm; margin: 0 auto 12px; font-size: 16px;
+      }
+      .toolbar a, .toolbar button {
+        min-height: 44px; padding: 0 18px; border: 1px solid #111; border-radius: 8px;
+        background: #fff; color: #111; font: inherit; text-decoration: none; cursor: pointer;
+        display: inline-flex; align-items: center;
+      }
+      .toolbar button { background: #111; color: #fff; }
+      .toolbar span { color: #374151; }
+      .sheet { width: 210mm; max-width: 100%; margin: 0 auto; padding: 12mm; background: #fff; box-shadow: 0 1px 6px rgba(0,0,0,.25); }
+    }
+
+    /* ---- header ---- */
+    .head { text-align: center; }
+    .head img { display: block; height: 15mm; width: auto; margin: 0 auto 2mm; }
+    .church { font-weight: 700; font-size: 12pt; letter-spacing: .02em; text-transform: uppercase; }
+    h1 { font-size: 12pt; font-weight: 700; letter-spacing: .06em; text-transform: uppercase; margin-top: 1mm; }
+
+    .meta { display: grid; grid-template-columns: 1fr 1fr; gap: 1.5mm 8mm; margin: 4mm 0 0; font-size: 10pt; }
+    .meta div { display: flex; gap: 2mm; align-items: baseline; border-bottom: .3mm solid #000; padding-bottom: .6mm; }
+    .meta dt { font-weight: 700; white-space: nowrap; }
+
+    /* ---- blocks: nothing splits across pages, except the long tables marked .flow ---- */
+    .block { margin-top: 5mm; break-inside: avoid; page-break-inside: avoid; }
+    .block.flow { break-inside: auto; page-break-inside: auto; }
+    h2 { font-size: 10pt; font-weight: 700; letter-spacing: .05em; text-transform: uppercase; margin-bottom: 1.5mm; break-after: avoid; page-break-after: avoid; }
+    .sub { font-size: 8.5pt; font-style: italic; margin-top: 1mm; }
+    .none { font-style: italic; }
+    .summary p { margin-top: 1mm; }
+    .summary p:first-of-type { margin-top: 0; }
+
+    /* ---- tables ---- */
+    table { width: 100%; border-collapse: collapse; font-size: 9pt; }
+    th, td { border: .3mm solid #000; padding: .6mm 1.6mm; }
+    thead { display: table-header-group; }   /* repeats on page 2 and beyond */
+    tfoot { display: table-row-group; }      /* the totals row prints once, at the end */
+    tr { break-inside: avoid; page-break-inside: avoid; }
+    thead th { font-size: 8pt; font-weight: 700; text-transform: uppercase; text-align: center; }
+    tbody th, tfoot th { text-align: left; font-weight: 400; }
+    td.n, th.n { text-align: right; font-variant-numeric: tabular-nums; white-space: nowrap; }
+    tfoot th, tfoot td { font-weight: 700; border-top: .6mm solid #000; }
+    .pair { display: flex; gap: 8mm; align-items: flex-start; }
+    .pair > div { flex: 1 1 0; min-width: 0; }
+
+    /* ---- signatures ---- */
+    .sign { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 10mm; margin-top: 16mm; break-inside: avoid; page-break-inside: avoid; }
+    .sign div { border-top: .3mm solid #000; padding-top: 1mm; text-align: center; font-size: 9pt; }
+    .foot { margin-top: 6mm; font-size: 8pt; text-align: right; }
+  </style>
+</head>
+<body>
+  <div class="toolbar">
+    <a href="{{ report.dashboard_url }}?{{ report.query }}">Back to the dashboard</a>
+    <span>Choose "Save as PDF" as the destination to keep a copy.</span>
+    <button type="button" onclick="window.print()">Print or save as PDF</button>
+  </div>
+
+  <main class="sheet">
+    <header class="head">
+      <img src="{% static 'images/black-logo.svg' %}" alt="">
+      <p class="church">Jesus Is Lord Church</p>
+      <h1>Church report</h1>
+    </header>
+
+    <dl class="meta">
+      <div><dt>Extension:</dt><dd>{{ report.filter.label }}</dd></div>
+      <div><dt>Period:</dt><dd>{{ report.period.label }}</dd></div>
+      <div><dt>As of:</dt><dd>{% now "j M Y, g:i A" %} (Manila time)</dd></div>
+      <div><dt>Prepared for:</dt><dd>{{ report.prepared_for }}</dd></div>
+      <div><dt>Giving:</dt><dd>{% if report.include_giving %}Included{% else %}Not included{% endif %}</dd></div>
+    </dl>
+
+    <section class="block summary" aria-label="Summary">
+      <h2>Summary</h2>
+      {% for line in report.summary_lines %}<p>{{ line }}</p>{% endfor %}
+    </section>
+
+    {% with stats=report.attendance_stats %}
+    <section class="block flow" aria-label="Attendance per gathering">
+      <h2>Attendance per gathering</h2>
+      {% if stats.count %}
+      <table>
+        <colgroup><col><col style="width: 24mm"><col style="width: 24mm"><col style="width: 24mm"><col style="width: 28mm"></colgroup>
+        <thead>
+          <tr><th scope="col">Date</th><th scope="col">Total</th><th scope="col">Men</th><th scope="col">Women</th><th scope="col">First timers</th></tr>
+        </thead>
+        <tbody>
+          {% for point in stats.points %}
+          <tr>
+            <th scope="row">{{ point.date|date:"D, M j, Y" }}</th>
+            <td class="n">{{ point.present }}</td><td class="n">{{ point.men }}</td><td class="n">{{ point.women }}</td><td class="n">{{ point.first_timers }}</td>
+          </tr>
+          {% endfor %}
+        </tbody>
+        <tfoot>
+          <tr>
+            <th scope="row">Total ({{ stats.count }}), average {{ stats.average|floatformat:"-1" }}</th>
+            <td class="n">{{ stats.total_present }}</td><td class="n">{{ stats.split.men }}</td><td class="n">{{ stats.split.women }}</td><td class="n">{{ stats.first_timers }}</td>
+          </tr>
+        </tfoot>
+      </table>
+      {% if report.attendance_gap %}
+      <p class="sub">{{ report.attendance_gap }} {% if report.attendance_gap == 1 %}person is{% else %}people are{% endif %} in the total but not in Men or Women: no gender or age network was recorded.</p>
+      {% endif %}
+      {% else %}
+      <p class="none">No uploaded attendance sheets in this period.</p>
+      {% endif %}
+    </section>
+    {% endwith %}
+
+    {% with table=report.network_table %}
+    <section class="block" aria-label="Men and women by age group">
+      <h2>Men and women by age group</h2>
+      {% if report.attendance_stats.count %}
+      <table>
+        <thead>
+          <tr>
+            <th scope="col"><span style="position:absolute;left:-9999px">Gender</span></th>
+            {% for column in table.columns %}<th scope="col">{{ column.label }}</th>{% endfor %}
+            <th scope="col">Total</th>
+          </tr>
+        </thead>
+        <tbody>
+          {% for row in table.rows %}
+          <tr>
+            <th scope="row">{{ row.label }}</th>
+            {% for number in row.values %}<td class="n">{{ number }}</td>{% endfor %}
+            <td class="n">{{ row.total }}</td>
+          </tr>
+          {% endfor %}
+        </tbody>
+        <tfoot>
+          <tr>
+            <th scope="row">Total</th>
+            {% for number in table.column_totals %}<td class="n">{{ number }}</td>{% endfor %}
+            <td class="n">{{ table.total }}</td>
+          </tr>
+        </tfoot>
+      </table>
+      <p class="sub">Members, guests and first timers together, every gathering in the period.</p>
+      {% else %}
+      <p class="none">No attendance recorded in this period.</p>
+      {% endif %}
+    </section>
+    {% endwith %}
+
+    {% with people=report.people_stats %}
+    <section class="block" aria-label="People">
+      <h2>People</h2>
+      <div class="pair">
+        <div>
+          <table>
+            <thead><tr><th scope="col">By role</th><th scope="col">People</th></tr></thead>
+            <tbody>
+              {% for row in people.roles %}<tr><th scope="row">{{ row.label }}</th><td class="n">{{ row.count }}</td></tr>
+              {% empty %}<tr><td colspan="2" class="none">No people yet.</td></tr>{% endfor %}
+            </tbody>
+            <tfoot><tr><th scope="row">Total, not archived</th><td class="n">{{ people.total }}</td></tr></tfoot>
+          </table>
+        </div>
+        <div>
+          <table>
+            <thead><tr><th scope="col">By status</th><th scope="col">People</th></tr></thead>
+            <tbody>
+              {% for row in people.statuses %}<tr><th scope="row">{{ row.label }}</th><td class="n">{{ row.count }}</td></tr>
+              {% empty %}<tr><td colspan="2" class="none">No people yet.</td></tr>{% endfor %}
+            </tbody>
+            <tfoot><tr><th scope="row">Joined in this period</th><td class="n">{{ people.new_in_period }}</td></tr></tfoot>
+          </table>
+        </div>
+      </div>
+      <p class="sub">Roles leave out archived people; statuses include them.</p>
+    </section>
+    {% endwith %}
+
+    {% if report.extension_table %}
+    <section class="block flow" aria-label="Extensions">
+      <h2>Extensions</h2>
+      <table>
+        <colgroup><col><col style="width: 24mm"><col style="width: 28mm"><col style="width: 34mm"></colgroup>
+        <thead>
+          <tr><th scope="col">Extension</th><th scope="col">People</th><th scope="col">Gatherings</th><th scope="col">Total present</th></tr>
+        </thead>
+        <tbody>
+          {% for row in report.extension_table %}
+          <tr><th scope="row">{{ row.name }}</th><td class="n">{{ row.people }}</td><td class="n">{{ row.gatherings }}</td><td class="n">{{ row.present }}</td></tr>
+          {% endfor %}
+        </tbody>
+      </table>
+      <p class="sub">People are not archived. Gatherings are the dates with an uploaded sheet in the period.</p>
+    </section>
+    {% endif %}
+
+    <section class="block flow" aria-label="Events">
+      <h2>Events in this period</h2>
+      {% if report.events %}
+      <table>
+        <colgroup><col style="width: 30mm"><col><col style="width: 40mm"><col style="width: 24mm"></colgroup>
+        <thead>
+          <tr><th scope="col">Date</th><th scope="col">Event</th><th scope="col">For</th><th scope="col">Status</th></tr>
+        </thead>
+        <tbody>
+          {% for event in report.events %}
+          <tr>
+            <th scope="row">{{ event.start_at|date:"M j, Y" }}</th>
+            <td>{{ event.title }}</td>
+            <td>{% if event.is_global %}Global{% else %}{{ event.extension }}{% endif %}</td>
+            <td>{% if event.upcoming %}Upcoming{% else %}Past{% endif %}</td>
+          </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+      {% else %}
+      <p class="none">No events in this period.</p>
+      {% endif %}
+    </section>
+
+    {% with giving=report.giving_stats %}
+    {% if giving %}
+    <section class="block flow" aria-label="Giving">
+      <h2>Giving</h2>
+      {% if giving.reports %}
+      <table>
+        <colgroup><col><col style="width: 38mm"><col style="width: 38mm"><col style="width: 38mm"></colgroup>
+        <thead>
+          <tr><th scope="col">Date</th><th scope="col">Tithes</th><th scope="col">Offering</th><th scope="col">Total</th></tr>
+        </thead>
+        <tbody>
+          {% for row in giving.trend %}
+          <tr>
+            <th scope="row">{{ row.date|date:"D, M j, Y" }}</th>
+            <td class="n">&#8369;{{ row.tithes|floatformat:"2g" }}</td>
+            <td class="n">&#8369;{{ row.offering|floatformat:"2g" }}</td>
+            <td class="n">&#8369;{{ row.total|floatformat:"2g" }}</td>
+          </tr>
+          {% endfor %}
+        </tbody>
+        <tfoot>
+          <tr>
+            <th scope="row">Total ({{ giving.reports }} finalized report{{ giving.reports|pluralize }})</th>
+            <td class="n">&#8369;{{ giving.tithes|floatformat:"2g" }}</td>
+            <td class="n">&#8369;{{ giving.offering|floatformat:"2g" }}</td>
+            <td class="n">&#8369;{{ giving.total|floatformat:"2g" }}</td>
+          </tr>
+        </tfoot>
+      </table>
+      <p class="sub">Frozen amounts of finalized reports on uploaded sheets. A date without a finalized report shows &#8369;0.00.</p>
+      {% else %}
+      <p class="none">No giving reports were finalized in this period.</p>
+      {% endif %}
+    </section>
+    {% endif %}
+    {% endwith %}
+
+    {% with prayer=report.prayer %}
+    {% if prayer %}
+    <section class="block" aria-label="Prayer requests">
+      <h2>Prayer requests</h2>
+      <table style="width: 80mm">
+        <tbody>
+          <tr><th scope="row">Open</th><td class="n">{{ prayer.open }}</td></tr>
+          <tr><th scope="row">Completed</th><td class="n">{{ prayer.completed }}</td></tr>
+        </tbody>
+      </table>
+      <p class="sub">Counts only, as of now (not limited to the period).{% if prayer.scope_note %} {{ prayer.scope_note }}{% endif %}</p>
+    </section>
+    {% endif %}
+    {% endwith %}
+
+    <section class="block" aria-label="Attendance chart">
+      <h2>Attendance per gathering, chart</h2>
+      {% include "dashboards/_print_chart_line.html" with chart=report.charts.attendance_line %}
+    </section>
+
+    <section class="block" aria-label="Age group chart">
+      <h2>Men and women by age group, chart</h2>
+      {% include "dashboards/_print_chart_columns.html" with chart=report.charts.attendance_columns %}
+    </section>
+
+    <section class="sign" aria-label="Signatures">
+      <div>Prepared by</div>
+      <div>Noted by</div>
+      <div>Approved by</div>
+    </section>
+
+    <p class="foot">Printed {% now "j M Y, g:i A" %} (Manila time)</p>
+  </main>
+</body>
+</html>

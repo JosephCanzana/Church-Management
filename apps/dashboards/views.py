@@ -9,6 +9,14 @@ the signed-in person's own page. The member home (``home/``) shows the same page
 The extension filter (``?extension=<id>``) is read here for the super-admin and the admin ONLY. The raw text goes to
 the services, which validate it (a bad value means "All extensions"). The coordinator and member views never read it,
 so a forged ``?extension=`` cannot move a coordinator out of their own extension.
+
+The period quick links (``?preset=``, ``start``, ``end``) and the giving switch (``?giving=``) are read for all three
+leader views: they only choose WHICH of the person's own numbers to show, never whose. The raw GET goes to the
+services, which validate it. There is no separate report screen: the overview IS the report on screen.
+
+The A4 print page (``report_print``) is mounted in each leader area through ``area_urls.py``. It hands
+``request.GET`` whole to ``get_report_context``, which validates the period, the extension (a coordinator's is
+always their own) and the giving switch. It is a plain read-only GET: it changes and logs nothing.
 """
 from django.shortcuts import render
 from django.views.decorators.cache import never_cache
@@ -16,17 +24,18 @@ from django.views.decorators.cache import never_cache
 from apps.accounts.decorators import role_required
 from apps.accounts.models import Role
 
-from .services import VERSION_COOKIE, get_dashboard_context, get_personal_context
+from .services import VERSION_COOKIE, get_dashboard_context, get_personal_context, get_report_context
 
 
 def _render(request, template, use_filter=False):
     """Render a role's dashboard template with the shared dashboard context.
 
     ``use_filter`` is True only for the super-admin and admin views: then ``?extension=`` is passed on as raw text.
+    Every leader view passes the GET as ``params`` (period and giving switch only; see the module docstring).
     """
     extension = request.GET.get("extension") if use_filter else None
     dashboard = get_dashboard_context(
-        request.user, request.COOKIES.get(VERSION_COOKIE), request.path, extension=extension
+        request.user, request.COOKIES.get(VERSION_COOKIE), request.path, extension=extension, params=request.GET
     )
     return render(request, template, {"dashboard": dashboard})
 
@@ -70,3 +79,13 @@ def member_home(request):
 def personal_dashboard(request):
     """Personal dashboard for every role (leaders reach it through the Personal tab of the dashboard hub)."""
     return _render_personal(request, "dashboards/personal.html")
+
+
+REPORT_ROLES = (Role.SUPER_ADMIN, Role.ADMIN, Role.COORDINATOR)
+
+
+@never_cache
+@role_required(*REPORT_ROLES)
+def report_print(request):
+    """The standalone A4 report for the browser's print dialog (the same numbers as the overview for that period)."""
+    return render(request, "dashboards/report_print.html", {"report": get_report_context(request.user, request.GET)})

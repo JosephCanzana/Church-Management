@@ -1,0 +1,37 @@
+{% comment %}
+dashboards/_print_chart_line.html
+Attendance line for the A4 print report (report_print.html), drawn from charts.line_chart() output.
+Pass: chart (the prepared dict from services.leader_charts: width, height, plot, points, polyline, y_ticks,
+baseline_y, empty, aria, label_step).
+Standalone like the print page: NO Tailwind and no token classes, only inline attributes and GRAYSCALE hex colors
+(black line, white dots with a black ring, light grey grid) so it stays readable on a black-and-white printer. The
+legend sits under the chart and every value is printed as text above its point (and again in the attendance table
+above), so nothing depends on color. A long period prints every label_step-th date and value only.
+{% endcomment %}{% load l10n %}
+{% if chart.empty %}
+<p style="margin:0;font-style:italic">No attendance recorded in this period.</p>
+{% else %}
+{% localize off %}
+<svg viewBox="0 0 {{ chart.width }} {{ chart.height }}" width="100%" role="img" aria-label="{{ chart.aria }}" style="display:block;height:auto" font-family="Arial, Helvetica, sans-serif" font-size="11">
+  {% for tick in chart.y_ticks %}
+  <line x1="{{ chart.plot.left }}" x2="{{ chart.plot.right }}" y1="{{ tick.y }}" y2="{{ tick.y }}" stroke="#bbbbbb" stroke-width="0.6"/>
+  <text x="{{ chart.plot.left }}" y="{{ tick.y }}" dx="-6" dy="4" text-anchor="end" fill="#000000">{{ tick.label }}</text>
+  {% endfor %}
+  <line x1="{{ chart.plot.left }}" x2="{{ chart.plot.right }}" y1="{{ chart.baseline_y }}" y2="{{ chart.baseline_y }}" stroke="#000000" stroke-width="1"/>
+  {% if chart.points|length > 1 %}<polyline points="{{ chart.polyline }}" fill="none" stroke="#000000" stroke-width="2" stroke-linejoin="round" stroke-linecap="round"/>{% endif %}
+  {% with step=chart.label_step|default:1 %}
+  {% for point in chart.points %}
+  <circle cx="{{ point.x }}" cy="{{ point.y }}" r="3.5" fill="#ffffff" stroke="#000000" stroke-width="2"><title>{{ point.label }}: {{ point.value }}</title></circle>
+  {% if forloop.counter0|divisibleby:step %}
+  <text x="{{ point.x }}" y="{{ point.y }}" dy="-9" text-anchor="middle" fill="#000000" font-weight="700">{{ point.value }}</text>
+  <text x="{{ point.x }}" y="{{ chart.baseline_y }}" dy="16" text-anchor="middle" fill="#000000">{{ point.label }}</text>
+  {% endif %}
+  {% endfor %}
+  {% endwith %}
+</svg>
+{% endlocalize %}
+<p style="margin:2mm 0 0;font-size:8.5pt;display:flex;align-items:center;gap:2mm">
+  <svg width="22" height="10" viewBox="0 0 22 10" aria-hidden="true"><line x1="0" y1="5" x2="22" y2="5" stroke="#000000" stroke-width="2"/><circle cx="11" cy="5" r="3" fill="#ffffff" stroke="#000000" stroke-width="2"/></svg>
+  <span>Total present per gathering</span>
+</p>
+{% endif %}

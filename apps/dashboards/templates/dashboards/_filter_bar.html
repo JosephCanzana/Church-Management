@@ -1,36 +1,80 @@
 {% load people_tags %}
 {% comment %}
 dashboards/_filter_bar.html
-The bar under the dashboard header. Context: dashboard.filter (enabled, extension_id, label, options) and
-dashboard.period (start, end, or None).
-* Admin and super-admin get a GET form with an extension <select> ("All extensions" first) and an Apply button, so it
-  works without JavaScript; Alpine also submits it when the choice changes. A coordinator has no form: the bar only
-  says whose numbers these are (their own extension).
-* "Print report" appears only when the report's print route exists ({% role_url_or_empty %} gives "" until Brick 4
-  adds it) and carries the chosen extension in its querystring. It opens in a new tab.
+The bar under the dashboard header. Context: dashboard.filter (enabled, extension_id, label, options), dashboard.period
+(start, end, or None) and dashboard.period_filter (preset, options, links, start, end, fell_back, include_giving,
+print_query; from services._period_filter).
+* Quick links: one chip per period (Last 8 gatherings = the default view, This month, Last month, Last 3 months, This
+  year). They are plain links, so they work without JavaScript, and each keeps the picked extension and the giving switch.
+* The form below them is the same filter with everything in one place: extension (admin and super-admin only; Alpine
+  submits it as soon as it changes), period (including "Custom dates" with From and To), the giving switch and Apply. It
+  is a GET form, so it works without JavaScript; Alpine only greys out the two date fields unless "Custom dates" is
+  picked (without JavaScript they are always enabled and the server ignores them unless the preset is custom). The hidden
+  giving=0 before the checkbox is how an UNCHECKED box is remembered in the query (the last value wins).
+* A coordinator has no extension picker: the line below only says whose numbers these are (their own extension).
+* "Print report" opens the standalone A4 report in a new tab with pf.print_query, the VALIDATED querystring, never the
+  raw one. It is drawn only when the route resolves ({% role_url_or_empty %} gives "" otherwise). On the default view
+  it prints the last 3 months (the last 8 gatherings is not a date range), and the line next to it says so.
 {% endcomment %}
-<div class="card col-span-full flex flex-wrap items-end gap-x-4 gap-y-3 p-3">
-  {% if dashboard.filter.enabled %}
-  <form method="get" x-data @change="$el.requestSubmit()" class="flex flex-wrap items-end gap-3" aria-label="Dashboard filter">
+{% with pf=dashboard.period_filter %}
+<div class="card col-span-full space-y-3 p-3">
+  <nav aria-label="Period quick links" class="flex flex-wrap items-center gap-2">
+    <span class="text-sm font-semibold uppercase tracking-wide text-txt-secondary">Period</span>
+    {% for link in pf.links %}
+    <a href="?{{ link.query }}"{% if link.active %} aria-current="true"{% endif %}
+       class="rounded-full border px-3 py-1.5 text-base {% if link.active %}border-accent bg-accent/10 font-semibold text-txt-primary{% else %}border-border text-txt-secondary hover:text-txt-primary{% endif %}">{{ link.label }}</a>
+    {% endfor %}
+  </nav>
+
+  {% if pf.fell_back %}
+  <p role="status" class="text-base text-txt-primary">That period was not valid (Custom dates need a start and an end, the end not before the start, at most 366 days), so the dashboard shows the last 8 gatherings.</p>
+  {% endif %}
+
+  <form method="get" x-data="{ preset: '{{ pf.preset }}' }" class="flex flex-wrap items-end gap-x-4 gap-y-3" aria-label="Dashboard filter">
+    {% if dashboard.filter.enabled %}
     <div class="min-w-48">
       <label for="filter-extension" class="label">Extension</label>
-      <select id="filter-extension" name="extension" class="input">
+      <select id="filter-extension" name="extension" class="input" @change="$el.form.requestSubmit()">
         <option value="">All extensions</option>
         {% for option in dashboard.filter.options %}
         <option value="{{ option.id }}"{% if option.id == dashboard.filter.extension_id %} selected{% endif %}>{{ option.name }}</option>
         {% endfor %}
       </select>
     </div>
+    {% endif %}
+    <div class="min-w-44">
+      <label for="filter-period" class="label">Period</label>
+      <select id="filter-period" name="preset" x-model="preset" class="input">
+        {% for code, label in pf.options %}
+        <option value="{{ code }}"{% if code == pf.preset %} selected{% endif %}>{{ label }}</option>
+        {% endfor %}
+      </select>
+    </div>
+    <div>
+      <label for="filter-start" class="label">From</label>
+      <input id="filter-start" type="date" name="start" value="{{ pf.start|date:'Y-m-d' }}" :disabled="preset !== 'custom'" class="input">
+    </div>
+    <div>
+      <label for="filter-end" class="label">To</label>
+      <input id="filter-end" type="date" name="end" value="{{ pf.end|date:'Y-m-d' }}" :disabled="preset !== 'custom'" class="input">
+    </div>
+    <div class="flex items-center gap-2 pb-2">
+      <input type="hidden" name="giving" value="0">
+      <input id="filter-giving" type="checkbox" name="giving" value="1" class="size-5 accent-accent"{% if pf.include_giving %} checked{% endif %}>
+      <label for="filter-giving" class="text-base text-txt-primary">Include giving</label>
+    </div>
     <button type="submit" class="btn btn-secondary">Apply</button>
   </form>
-  {% endif %}
 
-  <p class="min-w-0 flex-1 text-base text-txt-secondary">
-    Showing <span class="font-semibold text-txt-primary">{{ dashboard.filter.label }}</span>{% if dashboard.period %}, {{ dashboard.period.start|date:"M j" }} to {{ dashboard.period.end|date:"M j, Y" }}{% endif %}
-  </p>
-
-  {% role_url_or_empty 'report_print' as print_url %}
-  {% if print_url %}
-  <a href="{{ print_url }}{% if dashboard.filter.extension_id %}?extension={{ dashboard.filter.extension_id }}{% endif %}" target="_blank" rel="noopener" class="btn btn-secondary">Print report</a>
-  {% endif %}
+  <div class="flex flex-wrap items-center gap-x-4 gap-y-2">
+    <p class="min-w-0 flex-1 text-base text-txt-secondary">
+      Showing <span class="font-semibold text-txt-primary">{{ dashboard.filter.label }}</span>{% if dashboard.period %}, {{ dashboard.period.start|date:"M j" }} to {{ dashboard.period.end|date:"M j, Y" }}{% endif %}
+    </p>
+    {% role_url_or_empty 'report_print' as print_url %}
+    {% if print_url %}
+    {% if not pf.preset %}<span class="text-sm text-txt-secondary">Prints the last 3 months. Pick a period to change it.</span>{% endif %}
+    <a href="{{ print_url }}?{{ pf.print_query }}" target="_blank" rel="noopener" class="btn btn-secondary">Print report</a>
+    {% endif %}
+  </div>
 </div>
+{% endwith %}

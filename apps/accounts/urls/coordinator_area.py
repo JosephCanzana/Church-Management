@@ -40,4 +40,5 @@ urlpatterns = [
     path("attendance/", include("apps.attendance.area_urls")),
     path("tithes/", include("apps.tithes.area_urls")),
     path("prayer/", include("apps.prayer.area_urls")),
+      path("", include("apps.dashboards.area_urls"))
 ]

@@ -5,10 +5,11 @@ Pass: span (grid-span classes from the bento grid, optional), chart (prepared di
 Each row is a label and its value as text on one line with the bar under it (so long names get the full width).
 Long names were already shortened by the service; the tooltip (<title>) carries the full name. A bar is never
 the only carrier of the number: the value is always printed on the right.
+When chart.url is set (services.card_links) the title is a link to the page behind the chart, with an arrow.
 {% endcomment %}
 {% load l10n %}
 <section class="card @container p-4 {{ span }}">
-  <h3 class="text-base font-semibold text-txt-primary">{{ chart.title }}</h3>
+  <h3 class="text-base font-semibold text-txt-primary">{% if chart.url %}<a href="{{ chart.url }}" class="rounded underline-offset-2 hover:underline focus-visible:underline">{{ chart.title }}<span aria-hidden="true"> &rarr;</span></a>{% else %}{{ chart.title }}{% endif %}</h3>
   {% if chart.caption %}<p class="text-sm text-txt-secondary">{{ chart.caption }}</p>{% endif %}
   {% if chart.empty %}
   <p class="mt-3 text-base text-txt-secondary">{{ empty_text }}</p>

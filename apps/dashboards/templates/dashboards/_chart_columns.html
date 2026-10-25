@@ -5,10 +5,11 @@ Pass: span (grid-span classes from the bento grid, optional), chart (prepared di
 and empty_text. Each group is one age group; each bar in it is one series (men, women), colored with the
 chart_slot colors and always named in the legend under the chart. Every bar prints its value above it and has a
 <title> tooltip with group, series and value.
+When chart.url is set (services.card_links) the title is a link to the page behind the chart, with an arrow.
 {% endcomment %}
 {% load l10n chart_tags %}
 <section class="card @container p-4 {{ span }}">
-  <h3 class="text-base font-semibold text-txt-primary">{{ chart.title }}</h3>
+  <h3 class="text-base font-semibold text-txt-primary">{% if chart.url %}<a href="{{ chart.url }}" class="rounded underline-offset-2 hover:underline focus-visible:underline">{{ chart.title }}<span aria-hidden="true"> &rarr;</span></a>{% else %}{{ chart.title }}{% endif %}</h3>
   {% if chart.caption %}<p class="text-sm text-txt-secondary">{{ chart.caption }}</p>{% endif %}
   {% if chart.empty %}
   <p class="mt-3 text-base text-txt-secondary">{{ empty_text }}</p>

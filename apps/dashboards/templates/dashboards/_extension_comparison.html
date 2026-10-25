@@ -12,7 +12,7 @@ Silent extensions are listed by name only, up to 10, then "and N more".
 {% include "dashboards/_chart_hbar.html" with span=span_third chart=dashboard.charts.people_bars empty_text="No extensions yet." %}
 {% include "dashboards/_chart_hbar.html" with span=span_third chart=dashboard.charts.attendance_bars empty_text="No uploaded attendance sheets in this period." %}
 <section class="card @container p-4 {{ span_wide }}" aria-labelledby="needs-look-heading">
-  <h3 id="needs-look-heading" class="text-base font-semibold text-txt-primary">Needs a look</h3>
+  <h3 id="needs-look-heading" class="text-base font-semibold text-txt-primary">{% if dashboard.links.extensions %}<a href="{{ dashboard.links.extensions }}" class="underline-offset-2 hover:underline focus-visible:underline">Needs a look<span aria-hidden="true"> &rarr;</span></a>{% else %}Needs a look{% endif %}</h3>
   <p class="mt-2 text-base text-txt-secondary">
     <span class="font-mono text-txt-primary">{{ ext.with_coordinator }}</span> of <span class="font-mono text-txt-primary">{{ ext.total }}</span> extensions have a coordinator who can sign in
     ({{ ext.without_coordinator }} without).

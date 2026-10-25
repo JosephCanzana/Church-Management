@@ -9,7 +9,7 @@ and nowhere else (never in audit_log or notification.data).
 {% with giving=dashboard.giving_stats %}
 {% if giving %}
 <section class="rounded-2xl border border-border bg-surface-alt p-4 {{ span }}" aria-labelledby="giving-heading">
-  <h3 id="giving-heading" class="text-base font-medium text-txt-secondary">Giving</h3>
+  <h3 id="giving-heading" class="text-base font-medium text-txt-secondary">{% if dashboard.links.giving %}<a href="{{ dashboard.links.giving }}" class="underline-offset-2 hover:underline focus-visible:underline">Giving<span aria-hidden="true"> &rarr;</span></a>{% else %}Giving{% endif %}</h3>
   {% if giving.reports %}
   <div class="mt-2 flex flex-wrap items-center gap-x-8 gap-y-3">
     <dl class="flex flex-wrap gap-x-8 gap-y-2 text-base text-txt-secondary">

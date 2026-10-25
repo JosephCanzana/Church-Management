@@ -4,12 +4,15 @@ Line chart (attendance over the last gatherings), drawn as inline SVG from chart
 Pass: span (grid-span classes from the bento grid, optional), chart (a prepared dict from services.leader_charts: width, height, plot, points, polyline, area, y_ticks,
 baseline_y, empty, title, caption, aria) and empty_text (shown when there is nothing to draw).
 Colors are token classes only. Every value is also printed as text above its point, the whole chart has one
-sentence in aria-label, and each point has a <title> tooltip. Narrow screens scroll the chart sideways rather than
+sentence in aria-label, and each point has a <title> tooltip. A long period (the report) sets chart.label_step so
+only every Nth date and value is printed (the others stay in their <title> and in the aria-label); the dashboard
+never sets it, so it prints every point as before. Narrow screens scroll the chart sideways rather than
 shrink the text. {% localize off %} keeps coordinates as plain "12.5" whatever the locale.
+When chart.url is set (services.card_links) the title is a link to the page behind the chart, with an arrow.
 {% endcomment %}
 {% load l10n %}
 <section class="card @container p-4 {{ span }}">
-  <h3 class="text-base font-semibold text-txt-primary">{{ chart.title }}</h3>
+  <h3 class="text-base font-semibold text-txt-primary">{% if chart.url %}<a href="{{ chart.url }}" class="rounded underline-offset-2 hover:underline focus-visible:underline">{{ chart.title }}<span aria-hidden="true"> &rarr;</span></a>{% else %}{{ chart.title }}{% endif %}</h3>
   {% if chart.caption %}<p class="text-sm text-txt-secondary">{{ chart.caption }}</p>{% endif %}
   {% if chart.empty %}
   <p class="mt-3 text-base text-txt-secondary">{{ empty_text }}</p>
@@ -23,11 +26,15 @@ shrink the text. {% localize off %} keeps coordinates as plain "12.5" whatever t
       {% endfor %}
       {% if chart.area %}<path d="{{ chart.area }}" class="fill-accent/10"/>{% endif %}
       {% if chart.points|length > 1 %}<polyline points="{{ chart.polyline }}" fill="none" class="stroke-accent" stroke-width="2.5" stroke-linejoin="round" stroke-linecap="round"/>{% endif %}
+      {% with step=chart.label_step|default:1 %}
       {% for point in chart.points %}
       <circle cx="{{ point.x }}" cy="{{ point.y }}" r="4.5" class="fill-accent stroke-surface" stroke-width="2"><title>{{ point.label }}: {{ point.value }}</title></circle>
+      {% if forloop.counter0|divisibleby:step %}
       <text x="{{ point.x }}" y="{{ point.y }}" dy="-11" text-anchor="middle" class="fill-txt-primary font-mono" font-size="12">{{ point.value }}</text>
       <text x="{{ point.x }}" y="{{ chart.baseline_y }}" dy="20" text-anchor="middle" class="fill-txt-secondary" font-size="12">{{ point.label }}</text>
+      {% endif %}
       {% endfor %}
+      {% endwith %}
     </svg>
     {% endlocalize %}
   </div>

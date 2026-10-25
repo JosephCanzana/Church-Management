@@ -30,13 +30,22 @@ completion ring, streaks, a 7-day check-in strip, the verse, continue reading, t
 upcoming events. It takes no person id from the request: everything is about ``user`` only. ``get_dashboard_context``
 is unchanged, so the leader pages and their tests keep working.
 
+Brick 4 adds the *period* to the overview itself (quick links, custom dates, the giving switch and the tables under
+the charts: ``parse_period``, ``_period_filter``) and the standalone A4 *print report* (``get_report_context``). There is
+no separate report screen: the dashboard IS the report on screen. The print report calls the Brick 1 stats directly and
+never ``get_dashboard_context`` (that one writes today's ``daily_verse`` row; a print page writes and logs nothing).
+
 Privacy: tithe amounts are shown only to leaders, only here, and are never written
 to ``audit_log`` or ``notification.data``.
 """
+import calendar
+import math
 from dataclasses import dataclass
-from datetime import timedelta
+from datetime import date, timedelta
 from decimal import Decimal
+from urllib.parse import urlencode
 
+from django.core.exceptions import PermissionDenied
 from django.db.models import Count, Exists, OuterRef, Q, Sum
 from django.db.models.functions import Coalesce
 from django.urls import NoReverseMatch, reverse
@@ -103,7 +112,7 @@ class Bar:
     pct: int
 
 
-def get_dashboard_context(user, version_code, path, extension=None, start=None, end=None):
+def get_dashboard_context(user, version_code, path, extension=None, start=None, end=None, params=None):
     """Return the ``dashboard`` dict a role template renders.
 
     ``version_code`` is the Bible version cookie (or None) and ``path`` is the
@@ -115,6 +124,11 @@ def get_dashboard_context(user, version_code, path, extension=None, start=None, 
     * ``extension``: the raw ``?extension=`` text. Only admin and super-admin may use it; a bad value means
       "All", a coordinator always gets their own extension (see ``resolve_extension``).
     * ``start`` / ``end``: dates (Manila). With neither, the stats cover the last ``TREND_SHEETS`` gathering dates.
+    * ``params``: the request's ``GET`` (untrusted text), read by leaders only for the period quick links and the
+      giving switch: ``preset`` (one of ``PERIOD_PRESETS``, with ``start`` / ``end`` for ``custom``) and ``giving``
+      (``0`` hides the giving numbers). No ``preset`` means the default view, the last ``TREND_SHEETS``
+      gatherings; a refused one also means the default, and ``period_filter["fell_back"]`` says so. ``extension``
+      stays its own argument because only the admin views may pass it.
 
     New keys (all present for every role; None where the role may not see the data):
     ``filter``, ``period``, ``attendance_stats``, ``people_stats``, ``extension_stats``, ``giving_stats``,
@@ -123,11 +137,24 @@ def get_dashboard_context(user, version_code, path, extension=None, start=None, 
     Brick 2 keys: ``tiles`` (list of ``{"label", "value", "hint"}``), ``charts`` (see ``leader_charts``; both None
     for a member) and ``events_url`` (the calendar page, "" if no events route resolves). The old ``leader``
     block is unchanged and still ignores the filter; the leader pages no longer draw it.
+
+    Brick 4 keys (None for a member): ``period_filter`` (quick links, the period form and the Print report
+    querystring, see ``_period_filter``), ``network_table`` and ``attendance_gap`` (the tables under the charts) and
+    ``links`` (where each card leads, see ``card_links``; tiles and charts carry their own ``url`` too).
     """
     today = timezone.localdate()
     is_leader = user.role in LEADER_ROLES
     chosen = resolve_extension(user, extension) if is_leader else None
     extension_id = chosen.pk if chosen else None
+
+    # The period quick links (leaders only): a valid preset replaces start and end; no preset or a refused one keeps
+    # the default view (the last TREND_SHEETS gatherings).
+    params = params if (is_leader and params is not None) else {}
+    raw_preset = str(params.get("preset") or "").strip()
+    asked = parse_period(raw_preset, params.get("start"), params.get("end"), today) if raw_preset else None
+    if asked is not None and not asked["fell_back"]:
+        start, end = asked["start"], asked["end"]
+    include_giving = _flag(params.get("giving"), default=True)
 
     attendance = attendance_stats(user, extension_id, start, end)
     # The period every other piece uses. By default it is exactly the dates the attendance trend shows.
@@ -138,8 +165,12 @@ def get_dashboard_context(user, version_code, path, extension=None, start=None, 
 
     people = people_stats(user, extension_id, period_start, period_end)
     extensions = extension_stats(user, period_start, period_end)
-    giving = giving_stats(user, extension_id, period_start, period_end)
+    giving = giving_stats(user, extension_id, period_start, period_end) if include_giving else None
     period_given = start is not None or end is not None
+    links = card_links(user)
+    drawn = leader_charts(attendance, people, extensions, giving, period_given, links) if is_leader else None
+    if drawn:
+        drawn["attendance_line"]["label_step"] = _label_step(attendance["count"])   # a year of Sundays is thinned
 
     return {
         "greeting_name": title_case(user.first_name),
@@ -161,8 +192,12 @@ def get_dashboard_context(user, version_code, path, extension=None, start=None, 
         "prayer_summary": prayer_summary(user, extension_id),
         "upcoming_events": upcoming_events(user, 5),
         "events_url": _safe_reverse("events:calendar") or _safe_reverse("events:list") or _safe_reverse("events:index"),
-        "tiles": dashboard_tiles(attendance, people, extensions, period_start) if is_leader else None,
-        "charts": leader_charts(attendance, people, extensions, giving, period_given) if is_leader else None,
+        "tiles": dashboard_tiles(attendance, people, extensions, period_start, links) if is_leader else None,
+        "links": links,
+        "charts": drawn,
+        "period_filter": _period_filter(user, chosen, asked, period_start, period_end, include_giving) if is_leader else None,
+        "network_table": _network_table(attendance["network"]) if attendance else None,
+        "attendance_gap": _attendance_gap(attendance) if attendance else None,
     }
 
 
@@ -249,6 +284,31 @@ def resolve_extension(user, raw_value):
     if not (text.isascii() and text.isdigit()) or int(text) > MAX_DB_ID:
         return None
     return Extension.objects.filter(pk=int(text), archived_at__isnull=True).first()
+
+
+AREA_NAMESPACES = {Role.SUPER_ADMIN: "superadmin", Role.ADMIN: "admin_area", Role.COORDINATOR: "coordinator_area"}
+
+
+def card_links(user):
+    """Return where each dashboard card leads, as ``{"people", "attendance", "giving", "prayer", "events", "extensions"}``.
+
+    Leaders only (None for anyone else). Every value is a URL or "" when that route does not resolve or the role may
+    not use it, so a card without a page simply draws no link. People, attendance sheets, tithes reports and the prayer
+    inbox live in the person's OWN area (the same route names the sidebar uses); the extensions list is reached through
+    the super-admin area by admin and super-admin only (a coordinator has no such page), exactly like the sidebar entry.
+    Links carry no id and no querystring: they lead to the page, and the page does its own scoping.
+    """
+    if user.role not in LEADER_ROLES:
+        return None
+    area = AREA_NAMESPACES[user.role]
+    return {
+        "people": _safe_reverse(f"{area}:user_list"),
+        "attendance": _safe_reverse(f"{area}:sheet_list"),
+        "giving": _safe_reverse(f"{area}:report_list"),
+        "prayer": _safe_reverse(f"{area}:prayer_inbox"),
+        "events": _safe_reverse("events:calendar") or _safe_reverse("events:list") or _safe_reverse("events:index"),
+        "extensions": _safe_reverse("superadmin:extension_list") if user.role in FILTER_ROLES else "",
+    }
 
 
 def _filter_info(user, chosen):
@@ -772,15 +832,18 @@ def upcoming_events(user, limit=5):
 
 
 # ------------------------------------------------- what the leader pages draw (Brick 2)
-def dashboard_tiles(attendance, people, extensions, period_start=None):
+def dashboard_tiles(attendance, people, extensions, period_start=None, links=None):
     """Return the four headline tiles of a leader dashboard as ``{"label", "value", "hint"}`` dicts.
 
     People, the last gathering, average attendance, and either how many extensions reported lately (admin and
     super-admin: ``extensions`` is set) or the first-timers total (a coordinator has no extension comparison).
-    Every number is also text, so no tile depends on color.
+    Every number is also text, so no tile depends on color. ``links`` (``card_links``) gives each tile a ``url``: people
+    to the people list, the gathering and attendance tiles (and first timers) to the attendance sheets, extensions
+    reporting to the extensions list; "" without ``links``.
     """
     if not attendance or not people:
         return []
+    links = links or {}
     count = attendance["count"]
     latest = attendance["latest"]
     joined = people["new_in_period"]
@@ -791,16 +854,19 @@ def dashboard_tiles(attendance, people, extensions, period_start=None):
             "label": "People",
             "value": people["total"],
             "hint": f"{joined} new since {_day_label(period_start)}" if joined is not None and period_start else f"{people['active']} active",
+            "url": links.get("people", ""),
         },
         {
             "label": "Last gathering",
             "value": latest["present"] if latest else "–",
             "hint": latest["label"] if latest else "No uploaded sheets yet",
+            "url": links.get("attendance", ""),
         },
         {
             "label": "Average attendance",
             "value": f"{attendance['average']:g}" if count else "–",
             "hint": f"Over {gatherings}" if count else "No uploaded sheets yet",
+            "url": links.get("attendance", ""),
         },
     ]
     if extensions:
@@ -809,12 +875,14 @@ def dashboard_tiles(attendance, people, extensions, period_start=None):
             "label": "Extensions reporting",
             "value": f"{reporting} of {extensions['total']}",
             "hint": f"Sent a sheet in the last {extensions['silent_days']} days",
+            "url": links.get("extensions", ""),
         })
     else:
         tiles.append({
             "label": "First-timers",
             "value": attendance["first_timers"],
             "hint": f"Over {gatherings}" if count else "No uploaded sheets yet",
+            "url": links.get("attendance", ""),
         })
     return tiles
 
@@ -843,17 +911,20 @@ def _hbar_chart(title, caption, rows, more=0):
     return {**chart, "title": title, "caption": caption, "more": more, "aria": f"{title}: {summary}" if summary else f"{title}: no data"}
 
 
-def leader_charts(attendance, people, extensions, giving, period_given=False):
+def leader_charts(attendance, people, extensions, giving, period_given=False, links=None):
     """Return every leader chart as a prepared dict for the ``_chart_*`` partials (None for a member).
 
     Keys: ``attendance_line``, ``attendance_columns`` (men and women by age network: the newest gathering, or
     every gathering when a period was asked for), ``donut_roles``, ``donut_status``, ``giving_spark`` and, for
     admin and super-admin only, ``people_bars`` and ``attendance_bars`` (None for a coordinator). Each dict is the
     geometry from ``charts.py`` plus ``title``, ``caption`` and ``aria`` (the whole chart as one sentence); the
-    drawn values are always in the dict too, so the partials can print them as text.
+    drawn values are always in the dict too, so the partials can print them as text. ``links`` (``card_links``) adds a
+    ``url`` to each chart (its title then links to the page behind it: attendance charts to the attendance sheets,
+    the donuts to the people list, people per extension to the extensions list); "" without ``links``.
     """
     if attendance is None or people is None:
         return None
+    links = links or {}
     points, count = attendance["points"], attendance["count"]
 
     line = charts.line_chart(attendance["values"], attendance["labels"], CHART_WIDTH, CHART_HEIGHT)
@@ -888,7 +959,8 @@ def leader_charts(attendance, people, extensions, giving, period_given=False):
         spark["items"] = [{"label": row["label"], "display": _peso(row["total"])} for row in giving["trend"]]
         spark["aria"] = "Giving per gathering: " + (", ".join(f"{i['label']} {i['display']}" for i in spark["items"]) or "no reports yet")
 
-    return {
+    line["url"] = columns["url"] = links.get("attendance", "")
+    result = {
         "attendance_line": line,
         "attendance_columns": columns,
         "donut_roles": _donut_chart("People by role", "Not archived", people["roles"]),
@@ -901,6 +973,10 @@ def leader_charts(attendance, people, extensions, giving, period_given=False):
             "Attendance per extension", "Total present in the period. Not changed by the picker.", extensions["attendance_per_extension"]
         ) if extensions else None,
     }
+    for key, target in (("donut_roles", "people"), ("donut_status", "people"), ("people_bars", "extensions"), ("attendance_bars", "attendance")):
+        if result[key] is not None:
+            result[key]["url"] = links.get(target, "")
+    return result
 
 
 # ----------------------------------------------------------------- helpers
@@ -1059,4 +1135,339 @@ def journey_summary(user, overview=None):
         "services": _my_attended_services(user, JOURNEY_SERVICES),
         "goals": goals,
         "url": _safe_reverse("faith:goals"),
+    }
+
+
+# ------------------------------------------------- the report (Brick 4)
+# The period rules shared by the dashboard's quick links and the standalone A4 print page (``report_print.html``,
+# context from ``get_report_context``). The print context reuses the dashboard's key names (``filter``, ``period``,
+# ``attendance_stats``, ``people_stats``, ``extension_stats``, ``giving_stats``, ``charts``).
+PERIOD_PRESETS = (
+    ("this_month", "This month"),
+    ("last_month", "Last month"),
+    ("last_3_months", "Last 3 months"),
+    ("this_year", "This year"),
+    ("custom", "Custom dates"),
+)
+PRESET_CODES = {code for code, _label in PERIOD_PRESETS}
+DEFAULT_PRESET = "last_3_months"
+MAX_PERIOD_DAYS = 366        # a custom period longer than this is "bad" and falls back to the default preset
+MAX_LINE_LABELS = 13         # the line chart prints every date and value up to this many points (13 Sundays = the default 3 months); more are thinned
+EVENTS_LIMIT = 60            # events listed on the report (a bounded fetch; the period is at most a year)
+DASHBOARD_ROUTES = {Role.SUPER_ADMIN: "superadmin", Role.ADMIN: "admin", Role.COORDINATOR: "coordinator"}   # name in ``dashboards:``
+
+
+def _months_ago(day, months):
+    """Return the date ``months`` calendar months before ``day``; the day is clamped (Mar 31 minus 1 month = Feb 28)."""
+    index = day.year * 12 + (day.month - 1) - months
+    year, month = divmod(index, 12)
+    month += 1
+    return date(year, month, min(day.day, calendar.monthrange(year, month)[1]))
+
+
+def _preset_range(preset, today):
+    """Return ``(start, end)`` of a preset. ``today`` is the Manila date.
+
+    This month and this year run up to today; last month is the whole previous calendar month; "last 3 months"
+    is rolling: the day after the same date three months ago, up to today.
+    """
+    if preset == "this_month":
+        return today.replace(day=1), today
+    if preset == "last_month":
+        last_day = today.replace(day=1) - timedelta(days=1)
+        return last_day.replace(day=1), last_day
+    if preset == "this_year":
+        return date(today.year, 1, 1), today
+    return _months_ago(today, 3) + timedelta(days=1), today
+
+
+def _period_label(start, end):
+    """Return the period as text: ``Jul 26 to Oct 25, 2026`` (both years when they differ)."""
+    if start.year == end.year:
+        return f"{start:%b} {start.day} to {end:%b} {end.day}, {end.year}"
+    return f"{start:%b} {start.day}, {start.year} to {end:%b} {end.day}, {end.year}"
+
+
+def _parse_day(raw):
+    """Return a ``date`` from ``YYYY-MM-DD`` text (what ``<input type="date">`` sends), or None for anything else."""
+    text = str(raw or "").strip()
+    if len(text) != 10 or not text.isascii():
+        return None
+    try:
+        return date.fromisoformat(text)
+    except ValueError:
+        return None
+
+
+def parse_period(raw_preset, raw_start, raw_end, today):
+    """Validate the report period and return it as a dict; a bad request never raises.
+
+    ``raw_preset`` is one of ``PERIOD_PRESETS`` (``custom`` also reads ``raw_start`` and ``raw_end``). Anything
+    else falls back to "last 3 months": an unknown preset, a custom period with a missing or unreadable date,
+    an end before the start, or more than ``MAX_PERIOD_DAYS`` days. An empty preset is simply the default.
+
+    Keys: ``preset``, ``start``, ``end`` (dates, Manila), ``label``, ``days`` (inclusive) and ``fell_back``
+    (True only when something WAS asked for and was refused, so the page can say so).
+    """
+    preset = str(raw_preset or "").strip()
+    fell_back = False
+    start = end = None
+    if preset == "custom":
+        start, end = _parse_day(raw_start), _parse_day(raw_end)
+        if start is None or end is None or end < start or (end - start).days + 1 > MAX_PERIOD_DAYS:
+            preset, fell_back = DEFAULT_PRESET, True
+    elif preset not in PRESET_CODES:
+        preset, fell_back = DEFAULT_PRESET, bool(preset)
+    if preset != "custom":
+        start, end = _preset_range(preset, today)
+    return {
+        "preset": preset, "start": start, "end": end, "label": _period_label(start, end),
+        "days": (end - start).days + 1, "fell_back": fell_back,
+    }
+
+
+def _flag(raw, default):
+    """Read a checkbox sent as ``0`` or ``1`` (the form sends a hidden ``0`` first); missing or odd text is ``default``."""
+    text = str(raw or "").strip().lower()
+    if text in ("1", "true", "on", "yes"):
+        return True
+    if text in ("0", "false", "off", "no"):
+        return False
+    return default
+
+
+def _label_step(count):
+    """Return how many points to skip between printed dates on the line chart (1 = print every one)."""
+    return max(1, math.ceil(count / MAX_LINE_LABELS))
+
+
+def _plural(number, word):
+    """Return ``1 gathering`` or ``3 gatherings``."""
+    return f"{number} {word}{'' if number == 1 else 's'}"
+
+
+def _report_query(period, chosen, user, include_giving):
+    """Return the VALIDATED querystring of this report, for the Print button and the "Back" link.
+
+    Built from what was accepted, not from what was sent: a refused custom period becomes the default preset, a
+    bad or forged ``extension`` is dropped, and a coordinator never carries one at all.
+    """
+    pairs = [("preset", period["preset"])]
+    if period["preset"] == "custom":
+        pairs += [("start", period["start"].isoformat()), ("end", period["end"].isoformat())]
+    if chosen is not None and user.role in FILTER_ROLES:
+        pairs.append(("extension", chosen.pk))
+    pairs.append(("giving", "1" if include_giving else "0"))
+    return urlencode(pairs)
+
+
+def _attendance_gap(attendance):
+    """Return how many people are in the total but not in Men or Women (no gender or age network recorded)."""
+    split = attendance["split"]
+    return max(0, attendance["total_present"] - split["men"] - split["women"])
+
+
+def _period_filter(user, chosen, asked, period_start, period_end, include_giving):
+    """Return what the dashboard's period controls draw: quick links, the form values and the Print querystring.
+
+    ``asked`` is ``parse_period`` of the request (None when no preset was sent). Keys: ``preset`` ("" for the default
+    view, else the accepted preset), ``options`` (the select), ``links`` (``{"label", "query", "active"}``: one per
+    preset plus the default view, each KEEPING the picked extension and the giving switch), ``start`` / ``end`` (the
+    two date fields), ``fell_back`` (a preset was sent and refused), ``include_giving`` and ``print_query`` (the
+    VALIDATED querystring of the A4 report: the accepted period, or last 3 months when the dashboard shows the
+    default view, since "the last 8 gatherings" is not a date range).
+    """
+    accepted = asked if (asked is not None and not asked["fell_back"]) else None
+    selected = accepted["preset"] if accepted else ""
+    keep = []
+    if chosen is not None and user.role in FILTER_ROLES:
+        keep.append(("extension", chosen.pk))
+    keep.append(("giving", "1" if include_giving else "0"))
+
+    links = [{"label": "Last 8 gatherings", "query": urlencode(keep), "active": selected == ""}]
+    links += [
+        {"label": label, "query": urlencode([("preset", code)] + keep), "active": selected == code}
+        for code, label in PERIOD_PRESETS if code != "custom"
+    ]
+    today = timezone.localdate()
+    return {
+        "preset": selected,
+        "options": (("", "Last 8 gatherings"),) + PERIOD_PRESETS,
+        "links": links,
+        "start": period_start or today,
+        "end": period_end or today,
+        "fell_back": asked is not None and asked["fell_back"],
+        "include_giving": include_giving,
+        "print_query": _report_query(accepted or parse_period("", None, None, today), chosen, user, include_giving),
+    }
+
+
+def events_in_period(user, start, end, limit=EVENTS_LIMIT):
+    """Return the events the person may see that START between ``start`` and ``end`` (Manila dates), oldest first.
+
+    Scoping is ONLY ``events.permissions.visible_events``; the extension picker does not change it (the extension
+    column says "Global" or the extension). Cancelled events are left out. Each row: ``id``, ``title``,
+    ``start_at``, ``end_at``, ``is_global``, ``extension`` ("" for a global event) and ``upcoming`` (it has not
+    ended yet: ``Coalesce(end_at, start_at) >= now``, the same rule as ``upcoming_events``).
+    """
+    now = timezone.now()
+    rows = (
+        visible_events(user).filter(start_at__date__gte=start, start_at__date__lte=end)
+        .select_related("extension").order_by("start_at", "pk")
+    )
+    # `is_cancelled` is a Python property (see upcoming_events), so cancelled rows are dropped here; the bounded
+    # fetch keeps a long list of cancelled events from being loaded.
+    events = [event for event in rows[: limit * 2] if not event.is_cancelled][:limit]
+    return [
+        {
+            "id": event.pk,
+            "title": event.title,
+            "start_at": event.start_at,
+            "end_at": event.end_at,
+            "is_global": event.extension_id is None,
+            "extension": title_case(event.extension.name) if event.extension_id else "",
+            "upcoming": (event.end_at or event.start_at) >= now,
+        }
+        for event in events
+    ]
+
+
+def extension_table(user, start, end):
+    """Return one row per extension for the print report's extension table (admin and super-admin; None otherwise).
+
+    Rows (name order): ``name``, ``people`` (not archived), ``gatherings`` (distinct dates with an uploaded sheet in
+    the period) and ``present`` (frozen ``total_present``, sheets on one date added together). Scoping is
+    ``_scope_attendance`` like every other number. Like ``extension_stats`` it lists every extension.
+    """
+    if user.role not in FILTER_ROLES:
+        return None
+    live = (
+        Extension.objects.filter(archived_at__isnull=True)
+        .annotate(n=Count("members", filter=~Q(members__status=Status.ARCHIVED.value)))
+        .order_by("name")
+    )
+    sheets = (
+        _scope_attendance(user, None, start, end).values("extension_id")
+        .annotate(present=Coalesce(Sum("total_present"), 0), gatherings=Count("attendance_date", distinct=True))
+        .order_by()
+    )
+    by_extension = {row["extension_id"]: row for row in sheets}
+    return [
+        {
+            "name": title_case(ext.name),
+            "people": ext.n,
+            "gatherings": by_extension.get(ext.pk, {}).get("gatherings", 0),
+            "present": by_extension.get(ext.pk, {}).get("present", 0),
+        }
+        for ext in live
+    ]
+
+
+def _network_table(network):
+    """Return the men and women by age network table with its totals, from ``attendance_stats()["network"]``.
+
+    Keys: ``columns`` (``{"code", "label"}``), ``rows`` (``{"label", "values", "total"}``), ``column_totals`` and
+    ``total``. Everything is a frozen number already; this only adds the column sums. ``total`` is the sum of the
+    rows drawn, so the table always adds up on paper.
+    """
+    columns, rows = network["columns"], network["rows"]
+    return {
+        "columns": columns,
+        "rows": [{"label": row["label"], "values": row["values"], "total": row["total"]} for row in rows],
+        "column_totals": [sum(row["values"][i] for row in rows) for i in range(len(columns))],
+        "total": sum(row["total"] for row in rows),
+    }
+
+
+def _summary_lines(scope_label, period, attendance, people, giving):
+    """Return the three plain-language lines under the report header (attendance, the extremes, people and giving)."""
+    count = attendance["count"]
+    if count:
+        high, low = attendance["highest"], attendance["lowest"]
+        first = (
+            f"{scope_label}, {period['label']}: {_plural(count, 'gathering')} with {attendance['total_present']:,} people "
+            f"counted in total, an average of {attendance['average']:g} per gathering."
+        )
+        second = (
+            f"The biggest gathering was {high['label']} ({high['present']:,}) and the smallest was {low['label']} "
+            f"({low['present']:,}); {_plural(attendance['first_timers'], 'first timer')} came."
+        )
+    else:
+        first = f"{scope_label}, {period['label']}: no uploaded attendance sheets in this period."
+        second = "Attendance and first-timer numbers appear here once sheets are uploaded."
+    third = (
+        f"There are {people['total']:,} people on the roster ({people['active']:,} active) and "
+        f"{people['new_in_period']:,} joined in this period."
+    )
+    if giving is not None:
+        if giving["reports"]:
+            third += (
+                f" {_plural(giving['reports'], 'giving report')} finalized: tithes {giving['tithes_display']}, "
+                f"offering {giving['offering_display']}."
+            )
+        else:
+            third += " No giving reports were finalized in this period."
+    return [first, second, third]
+
+
+def get_report_context(user, params, today=None):
+    """Return the ``report`` dict for the standalone A4 print page (leaders only).
+
+    ``params`` is ``request.GET`` (or any mapping with ``get``); everything in it is untrusted text and is
+    validated here: ``preset`` / ``start`` / ``end`` by ``parse_period``, ``extension`` by ``resolve_extension``
+    (a coordinator always gets their own, admin and super-admin only a real, non-archived one) and ``giving`` by
+    ``_flag`` (default: included). Nothing is written, logged or recounted: every number is the frozen value of
+    an uploaded sheet (``attendance_stats``...), so it equals the dashboard's for the same scope and period.
+
+    Keys shared with the dashboard context: ``filter``, ``period``, ``tiles``, ``charts``, ``attendance_stats``,
+    ``people_stats``, ``extension_stats``, ``giving_stats`` (None when giving is not included). Print-only keys:
+    ``presets``, ``include_giving``, ``query`` (the validated querystring, also the way back to the dashboard),
+    ``dashboard_url``,
+    ``prepared_for`` (role label), ``summary_lines``, ``network_table``, ``attendance_gap``, ``extension_table``
+    (print table; None for a coordinator or when one extension is picked), ``events`` and ``prayer``
+    (open and completed COUNTS and ``scope_note`` only: never request text, never a name).
+    """
+    if user.role not in LEADER_ROLES:
+        raise PermissionDenied   # the views already check the role; this keeps the service safe on its own
+    today = today or timezone.localdate()
+    period = parse_period(params.get("preset"), params.get("start"), params.get("end"), today)
+    start, end = period["start"], period["end"]
+    chosen = resolve_extension(user, params.get("extension"))
+    extension_id = chosen.pk if chosen else None
+    include_giving = _flag(params.get("giving"), default=True)
+
+    attendance = attendance_stats(user, extension_id, start, end)
+    people = people_stats(user, extension_id, start, end)
+    extensions = extension_stats(user, start, end)
+    giving = giving_stats(user, extension_id, start, end) if include_giving else None
+    filter_info = _filter_info(user, chosen)
+
+    drawn = leader_charts(attendance, people, extensions, giving, period_given=True)
+    drawn["attendance_line"]["label_step"] = _label_step(attendance["count"])
+
+    prayer = prayer_summary(user, extension_id)
+    return {
+        "filter": filter_info,
+        "period": period,
+        "presets": PERIOD_PRESETS,
+        "include_giving": include_giving,
+        "query": _report_query(period, chosen, user, include_giving),
+        "prepared_for": dict(Role.choices).get(user.role, ""),
+        "summary_lines": _summary_lines(filter_info["label"], period, attendance, people, giving),
+        "tiles": dashboard_tiles(attendance, people, extensions, start),
+        "charts": drawn,
+        "attendance_stats": attendance,
+        "network_table": _network_table(attendance["network"]),
+        # people in the totals who have no gender or age network yet (so men + women is less than the total)
+        "attendance_gap": _attendance_gap(attendance),
+        "dashboard_url": _safe_reverse(f"dashboards:{DASHBOARD_ROUTES.get(user.role, '')}"),
+        "people_stats": people,
+        "extension_stats": extensions,
+        "extension_table": extension_table(user, start, end) if extensions is not None and chosen is None else None,
+        "events": events_in_period(user, start, end),
+        "giving_stats": giving,
+        "prayer": (
+            None if prayer is None
+            else {"open": prayer["open"], "completed": prayer["completed"], "scope_note": prayer["scope_note"]}
+        ),
     }

@@ -4,15 +4,19 @@ Four small headline tiles for the bento grid of _leader_overview.html: people, l
 extensions reporting (admin and super-admin) or first-timers (coordinator).
 Context: dashboard.tiles, a list of label, value, hint. The <ul> is display: contents, so each <li> is itself a grid
 item (2 per row on a phone, 2 on a tablet, 4 on a wide screen) and the list is still a list for screen readers.
-Every tile is plain text, so nothing depends on color.
+Every tile is plain text, so nothing depends on color. A tile with a url (services.card_links) is one big link to the
+page behind it: People to the people list, the attendance tiles to the attendance sheets, Extensions reporting to the
+extensions list. The padding sits on the link so the whole tile is the touch target.
 {% endcomment %}
 {% if dashboard.tiles %}
 <ul class="contents">
   {% for tile in dashboard.tiles %}
-  <li class="card p-3 col-span-1 md:col-span-3 xl:col-span-3">
-    <p class="truncate text-sm font-semibold uppercase tracking-wide text-txt-secondary">{{ tile.label }}</p>
-    <p class="mt-1 font-mono text-2xl font-semibold text-txt-primary">{{ tile.value }}</p>
-    <p class="truncate text-sm text-txt-secondary">{{ tile.hint }}</p>
+  <li class="card col-span-1 md:col-span-3 xl:col-span-3">
+    {% if tile.url %}<a href="{{ tile.url }}" class="block rounded-[inherit] p-3 transition hover:bg-surface-alt focus-visible:outline focus-visible:outline-2 focus-visible:outline-accent">{% else %}<div class="p-3">{% endif %}
+      <p class="truncate text-sm font-semibold uppercase tracking-wide text-txt-secondary">{{ tile.label }}{% if tile.url %}<span aria-hidden="true"> &rarr;</span>{% endif %}</p>
+      <p class="mt-1 font-mono text-2xl font-semibold text-txt-primary">{{ tile.value }}</p>
+      <p class="truncate text-sm text-txt-secondary">{{ tile.hint }}</p>
+    {% if tile.url %}</a>{% else %}</div>{% endif %}
   </li>
   {% endfor %}
 </ul>

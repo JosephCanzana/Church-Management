@@ -141,8 +141,8 @@ NAV_ITEMS = [
 # Page tabs for each hub. The order here is the order of the tabs.
 SECTION_TABS = {
     # Dashboard hub for leaders: Overview | Personal. Members have no tabs (their home IS the personal page).
-    # Brick 4 adds "Reports" here (one TabItem per role area, exact=False, also=("...report_print",)); it is left
-    # out until its route exists so no dead tab shows.
+    # There is no Reports tab: the period quick links, the tables and the Print report button are part of the
+    # Overview page itself (the A4 print report is a standalone page opened from there).
     "dashboard": [
         TabItem("Overview", "dashboards:superadmin", roles=(SUPER_ADMIN,), exact=True),
         TabItem("Overview", "dashboards:admin", roles=(ADMIN,), exact=True),

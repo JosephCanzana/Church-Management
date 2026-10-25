@@ -1,0 +1,94 @@
+{% comment %}
+dashboards/_attendance_tables.html
+The two tables under the charts of the leader overview, as bento items placed straight into the grid of
+_leader_overview.html: attendance per gathering (date, total, men, women, first timers, with a totals row) and men and
+women by age group (with row and column totals). They are the same frozen numbers the charts draw, written as text.
+Pass: span_wide and span_narrow (grid-span classes). Context: dashboard.attendance_stats, dashboard.network_table and
+dashboard.attendance_gap. Sheets on the same date are added together; drafts and reopened sheets are never in them.
+{% endcomment %}
+{% with stats=dashboard.attendance_stats table=dashboard.network_table %}
+{% if stats %}
+<section class="card p-4 {{ span_wide }}" aria-labelledby="attendance-table-heading">
+  <h3 id="attendance-table-heading" class="text-base font-semibold text-txt-primary">{% if dashboard.links.attendance %}<a href="{{ dashboard.links.attendance }}" class="underline-offset-2 hover:underline focus-visible:underline">Attendance per gathering<span aria-hidden="true"> &rarr;</span></a>{% else %}Attendance per gathering{% endif %}</h3>
+  <p class="text-sm text-txt-secondary">Frozen numbers of uploaded sheets; sheets on the same date are added together.</p>
+  {% if stats.count %}
+  <div class="mt-3 overflow-x-auto">
+    <table class="w-full text-base">
+      <caption class="sr-only">Attendance per gathering</caption>
+      <thead>
+        <tr class="text-sm text-txt-secondary">
+          <th scope="col" class="py-1.5 pr-3 text-left font-semibold">Date</th>
+          <th scope="col" class="px-2 py-1.5 text-right font-semibold">Total</th>
+          <th scope="col" class="px-2 py-1.5 text-right font-semibold">Men</th>
+          <th scope="col" class="px-2 py-1.5 text-right font-semibold">Women</th>
+          <th scope="col" class="py-1.5 pl-2 text-right font-semibold">First timers</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for point in stats.points %}
+        <tr class="border-t border-border">
+          <th scope="row" class="py-1.5 pr-3 text-left font-normal text-txt-primary">{{ point.date|date:"M j, Y" }}</th>
+          <td class="px-2 py-1.5 text-right font-mono text-txt-primary">{{ point.present }}</td>
+          <td class="px-2 py-1.5 text-right font-mono text-txt-primary">{{ point.men }}</td>
+          <td class="px-2 py-1.5 text-right font-mono text-txt-primary">{{ point.women }}</td>
+          <td class="py-1.5 pl-2 text-right font-mono text-txt-primary">{{ point.first_timers }}</td>
+        </tr>
+        {% endfor %}
+      </tbody>
+      <tfoot>
+        <tr class="border-t-2 border-border font-semibold">
+          <th scope="row" class="py-1.5 pr-3 text-left text-txt-primary">Total</th>
+          <td class="px-2 py-1.5 text-right font-mono text-txt-primary">{{ stats.total_present }}</td>
+          <td class="px-2 py-1.5 text-right font-mono text-txt-primary">{{ stats.split.men }}</td>
+          <td class="px-2 py-1.5 text-right font-mono text-txt-primary">{{ stats.split.women }}</td>
+          <td class="py-1.5 pl-2 text-right font-mono text-txt-primary">{{ stats.first_timers }}</td>
+        </tr>
+      </tfoot>
+    </table>
+  </div>
+  {% if dashboard.attendance_gap %}
+  <p class="mt-2 text-sm text-txt-secondary">{{ dashboard.attendance_gap }} {% if dashboard.attendance_gap == 1 %}person is{% else %}people are{% endif %} in the total but not in Men or Women: no gender or age network was recorded.</p>
+  {% endif %}
+  {% else %}
+  <p class="mt-3 text-base text-txt-secondary">No uploaded attendance sheets in this period.</p>
+  {% endif %}
+</section>
+
+<section class="card p-4 {{ span_narrow }}" aria-labelledby="network-table-heading">
+  <h3 id="network-table-heading" class="text-base font-semibold text-txt-primary">{% if dashboard.links.attendance %}<a href="{{ dashboard.links.attendance }}" class="underline-offset-2 hover:underline focus-visible:underline">Men and women by age group<span aria-hidden="true"> &rarr;</span></a>{% else %}Men and women by age group{% endif %}</h3>
+  <p class="text-sm text-txt-secondary">Members, guests and first timers together, every gathering shown above.</p>
+  {% if stats.count %}
+  <div class="mt-3 overflow-x-auto">
+    <table class="w-full text-base">
+      <caption class="sr-only">Men and women by age group</caption>
+      <thead>
+        <tr class="text-sm text-txt-secondary">
+          <th scope="col" class="py-1.5 pr-3 text-left font-semibold"><span class="sr-only">Gender</span></th>
+          {% for column in table.columns %}<th scope="col" class="px-2 py-1.5 text-right font-semibold">{{ column.label }}</th>{% endfor %}
+          <th scope="col" class="py-1.5 pl-2 text-right font-semibold">Total</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for row in table.rows %}
+        <tr class="border-t border-border">
+          <th scope="row" class="py-1.5 pr-3 text-left font-normal text-txt-primary">{{ row.label }}</th>
+          {% for number in row.values %}<td class="px-2 py-1.5 text-right font-mono text-txt-primary">{{ number }}</td>{% endfor %}
+          <td class="py-1.5 pl-2 text-right font-mono text-txt-primary">{{ row.total }}</td>
+        </tr>
+        {% endfor %}
+      </tbody>
+      <tfoot>
+        <tr class="border-t-2 border-border font-semibold">
+          <th scope="row" class="py-1.5 pr-3 text-left text-txt-primary">Total</th>
+          {% for number in table.column_totals %}<td class="px-2 py-1.5 text-right font-mono text-txt-primary">{{ number }}</td>{% endfor %}
+          <td class="py-1.5 pl-2 text-right font-mono text-txt-primary">{{ table.total }}</td>
+        </tr>
+      </tfoot>
+    </table>
+  </div>
+  {% else %}
+  <p class="mt-3 text-base text-txt-secondary">No attendance recorded in this period.</p>
+  {% endif %}
+</section>
+{% endif %}
+{% endwith %}
