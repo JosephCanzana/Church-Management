@@ -194,8 +194,13 @@
       <h2 id="theme-heading" class="mb-8 text-center text-3xl font-bold text-txt-primary sm:text-4xl">Current month theme</h2>
       <div class="grid overflow-hidden rounded-2xl border border-border bg-surface md:grid-cols-[.8fr_1.2fr]">
         <div class="relative flex min-h-56 items-center justify-center overflow-hidden bg-txt-primary p-9 text-center text-surface">
-          <div class="pointer-events-none absolute size-72 rounded-full bg-accent/20 blur-3xl" aria-hidden="true"></div>
-          <div class="relative">
+            {% if theme.cover_url %}
+            <img src="{{ theme.cover_url }}" alt="" loading="lazy" class="absolute inset-0 h-full w-full object-cover">
+            <div class="absolute inset-0 bg-txt-primary/70" aria-hidden="true"></div>
+            {% else %}
+            <div class="pointer-events-none absolute size-72 rounded-full bg-accent/20 blur-3xl" aria-hidden="true"></div>
+            {% endif %}
+            <div class="relative">
             <p class="flex items-center justify-center gap-3 text-sm font-extrabold uppercase tracking-[.22em]"><span class="h-0.5 w-6 bg-highlight" aria-hidden="true"></span>{{ theme.month|date:"F Y" }}</p>
             <p class="mt-3 break-words text-3xl font-black uppercase leading-tight sm:text-4xl">{{ theme.title }}</p>
           </div>

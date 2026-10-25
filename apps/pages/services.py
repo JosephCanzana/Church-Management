@@ -25,6 +25,7 @@ from datetime import date
 from urllib.request import urlopen
 
 from django.core.cache import cache
+from django.urls import reverse
 from django.utils import timezone
 from django.utils.translation import get_language
 from django.templatetags.static import static
@@ -67,14 +68,15 @@ DEFAULT_ABOUT = {
 # Shown when no published theme exists for the current month. It labels its own month,
 # so it never claims to be a month it is not.
 DEFAULT_THEME = {
-    "month": date(2026, 10, 1),
-    "title": "Breakthrough Joy That Strengthens",
+    "month": None,  # or date.today().replace(day=1)
+    "title": "Walking in Faith Together",
     "description": (
-        "This month, we are reminded to find strength and joy in the Lord, even while "
-        "facing challenges. Let us continue to trust God, encourage one another, and "
-        "move forward with faith."
+        "Let us keep trusting God, encouraging one another, and growing in faith "
+        "this month. May His joy be our strength, and may we hold on to hope "
+        "in every season."
     ),
     "url": "#",
+    "cover_url": "",
 }
 
 # Most photos the public page shows per placement (hero carousel, "Come as you are").
@@ -252,17 +254,32 @@ def _about_block(key, default_key):
     return {"title": row.title or default["title"], "body": row.body}
 
 
-def _current_theme():
-    """The published, non-archived theme for the current Manila month, else the default."""
-    from apps.resources.models import MonthlyTheme
+def current_published_theme():
+    """The published, non-archived MonthlyTheme for the current Manila month, or None."""
+    from apps.resources.models import MonthlyTheme  # lazy: keeps imports one-way
 
     first = timezone.localdate().replace(day=1)  # TIME_ZONE is Asia/Manila
-    row = MonthlyTheme.objects.filter(
+    return MonthlyTheme.objects.filter(
         month=first, is_published=True, archived_at__isnull=True
     ).first()
+
+
+def _current_theme():
+    """The current month's theme for the landing page, else the default (labelled with this month)."""
+    row = current_published_theme()
     if row is None:
-        return dict(DEFAULT_THEME)
-    return {"month": row.month, "title": row.title, "description": row.description, "url": None}
+        return {**DEFAULT_THEME, "month": timezone.localdate().replace(day=1)}
+    cover_url = ""
+    if row.has_cover:
+        # ?v= changes when the theme is saved, so a replaced cover shows right away.
+        cover_url = f"{reverse('pages:theme_cover')}?v={int(row.updated_at.timestamp())}"
+    return {
+        "month": row.month,
+        "title": row.title,
+        "description": row.description,
+        "url": None,
+        "cover_url": cover_url,
+    }
 
 
 def _video_dict(video_id, title, thumbnail_url=""):

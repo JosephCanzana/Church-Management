@@ -7,6 +7,7 @@ urlpatterns = [
     path("", views.root_view, name="root"),
     path("welcome/", views.landing_page, name="landing"),  
     path("give/", views.give_view, name="give"),
+    path("theme-cover/", views.theme_cover, name="theme_cover"),
     path("about/", views.about_view, name="about"),
     path(
         "manage/landing/",

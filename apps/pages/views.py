@@ -5,6 +5,13 @@ from django.views.decorators.http import require_GET
 from apps.accounts.decorators import home_url_for, role_required
 from apps.accounts.models import Role
 from apps.pages.services import get_about_context, get_give_context, get_landing_context
+import mimetypes
+
+from django.http import FileResponse, Http404
+from django.views.decorators.cache import cache_control
+from django.views.decorators.http import require_GET
+
+from . import services
 
 
 def _is_site_manager(user):
@@ -65,4 +72,28 @@ def about_view(request):
     """In-app About page at /about/ for every signed-in role (mission, vision, core values)."""
     return render(request, "pages/about.html", get_about_context())
 
+@require_GET
+@cache_control(public=True, max_age=300)
+def theme_cover(request):
+    """Serve the cover of the current month's PUBLISHED theme to anyone (landing page).
+
+    Nothing is copied: the picture stays in private storage and is only reachable here
+    while its month is current, published and not archived, so a draft never leaks.
+    """
+    theme = services.current_published_theme()
+    if theme is None or not theme.has_cover:
+        raise Http404
+    stored = theme.cover_image
+    try:
+        if not stored.storage.exists(stored.name):
+            raise Http404
+        handle = stored.open("rb")
+    except (FileNotFoundError, OSError, ValueError) as error:
+        raise Http404 from error
+    response = FileResponse(
+        handle, content_type=mimetypes.guess_type(stored.name)[0] or "application/octet-stream"
+    )
+    response["Content-Disposition"] = "inline"
+    response["X-Content-Type-Options"] = "nosniff"
+    return response
 
