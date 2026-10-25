@@ -4,6 +4,8 @@ from datetime import date, datetime
 from django import forms
 
 from apps.core.uploads import validate_photo_upload, validate_resource_upload
+import calendar
+from datetime import date
 
 from .models import (
     GeneralResource,
@@ -67,12 +69,52 @@ class ResourceFilterForm(forms.Form):
             widget=forms.Select(attrs={"class": "input"}),
         )
 
+class MonthYearWidget(forms.MultiWidget):
+    """Month and year dropdowns that submit as a single 'YYYY-MM' value."""
+
+    def __init__(self, attrs=None):
+        months = [(m, calendar.month_name[m]) for m in range(1, 13)]
+        super().__init__(
+            [forms.Select(attrs=attrs, choices=months),
+             forms.Select(attrs=attrs, choices=[])],
+            attrs,
+        )
+
+    def decompress(self, value):
+        """Split a stored 'YYYY-MM' string (or a date) into [month, year] for display."""
+        if isinstance(value, date):
+            return [value.month, value.year]
+        if value:
+            try:
+                year, month = str(value).split("-")[:2]
+                return [int(month), int(year)]
+            except ValueError:
+                pass
+        today = date.today()
+        return [today.month, today.year]
+
+    def get_context(self, name, value, attrs):
+        """Build the year list at render time so it never goes stale and always includes the selected year."""
+        this_year = date.today().year
+        selected_year = self.decompress(value)[1]
+        first = min(this_year - 5, selected_year)
+        last = max(this_year + 5, selected_year)
+        self.widgets[1].choices = [(y, y) for y in range(first, last + 1)]
+        return super().get_context(name, value, attrs)
+
+    def value_from_datadict(self, data, files, name):
+        """Combine the two selects into 'YYYY-MM' for clean_month."""
+        month, year = data.get(f"{name}_0"), data.get(f"{name}_1")
+        if month and year and month.isdigit():
+            return f"{year}-{int(month):02d}"
+        return None
+
 
 class MonthlyThemeForm(forms.Form):
-    """Edit monthly theme text while accepting a month-only date value."""
+    """Edit monthly theme text; the month is picked from month/year dropdowns and stored as the 1st of that month."""
     month = forms.CharField(
         label="Month",
-        widget=forms.TextInput(attrs={"class": "input", "type": "month"}),
+        widget=MonthYearWidget(attrs={"class": "input"}),
     )
     title = forms.CharField(
         max_length=255,
@@ -101,14 +143,13 @@ class MonthlyThemeForm(forms.Form):
         self.instance = instance
 
     def clean_month(self):
-        """Convert the browser's YYYY-MM value to the canonical first day."""
+        """Convert the 'YYYY-MM' value from the dropdowns to the canonical first day."""
         value = self.cleaned_data["month"]
         try:
             parsed = datetime.strptime(value, "%Y-%m").date()
         except ValueError as error:
             raise forms.ValidationError("Enter a valid month.") from error
         return date(parsed.year, parsed.month, 1)
-
 
 class _ResourceModelForm(forms.ModelForm):
     """Apply shared token styling to all rendered model fields."""

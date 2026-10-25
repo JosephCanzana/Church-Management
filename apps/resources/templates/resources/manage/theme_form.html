@@ -10,6 +10,7 @@ Context: form (MonthlyThemeForm), theme (existing MonthlyTheme or None), picture
 {% block page_title %}{% if theme %}Edit month{% else %}New month{% endif %}{% endblock %}
 
 {% block content %}
+
 {% url 'resources:theme_list' as list_url %}
 {% if theme %}{% include 'includes/breadcrumb.html' with parent_label='Monthly themes' parent_url=list_url current='Edit month' %}
 {% else %}{% include 'includes/breadcrumb.html' with parent_label='Monthly themes' parent_url=list_url current='New month' %}{% endif %}
