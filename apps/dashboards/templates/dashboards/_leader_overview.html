@@ -9,14 +9,14 @@ container queries (the donut puts its legend beside or under the ring). Span cla
 so the Tailwind build sees them.
 Wide screen, roughly: filter | 4 tiles | line 7 + columns 5 | donut 4 + donut 4 + events 4 | prayer 4 + people 4 +
 attendance 4 | needs-a-look 8 + giving 4 (small and muted) | attendance table 7 + age-group table 5.
-The filter bar holds the period quick links, the period form (custom dates, giving switch) and Print report.
+The filter bar is ONE compact row (period chips, custom dates, extension, giving, Print report); whose numbers and which
+dates are in the heading line above the grid.
 Context: dashboard (tiles, charts, filter, period, prayer_summary, upcoming_events, extension_stats, giving_stats).
 {% endcomment %}
 {% if dashboard.charts %}
 <section aria-labelledby="overview-heading" class="space-y-3">
   <div class="flex flex-wrap items-baseline justify-between gap-2">
-    <h2 id="overview-heading" class="text-lg font-semibold text-txt-primary">Overview</h2>
-    <p class="text-base text-txt-secondary">{{ dashboard.filter.label }}</p>
+    <p class="text-base text-txt-secondary">{{ dashboard.filter.label }}{% if dashboard.period %}, {{ dashboard.period.start|date:"M j" }} to {{ dashboard.period.end|date:"M j, Y" }}{% endif %}</p>
   </div>
 
   <div class="grid grid-flow-dense grid-cols-2 gap-3 md:grid-cols-6 xl:grid-cols-12 xl:gap-4">

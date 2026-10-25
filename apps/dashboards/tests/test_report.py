@@ -414,7 +414,7 @@ class OverviewPeriodTests(ReportBase):
     def test_quick_links_and_the_form_are_on_the_page(self):
         response = self.open(SCREEN[Role.ADMIN], Role.ADMIN, "")
         for text in ("Period quick links", "Last 8 gatherings", "This month", "Last month", "Last 3 months", "This year",
-                     "Custom dates", 'id="filter-period"', 'id="filter-start"', 'id="filter-end"', "Include giving"):
+                     "Custom dates", 'id="filter-start"', 'id="filter-end"', "Giving: on", "Print report"):
             self.assertContains(response, text)
         self.assertContains(response, 'aria-current="true"', count=1)
 
@@ -432,11 +432,39 @@ class OverviewPeriodTests(ReportBase):
         self.assertNotIn("evil", html)
         self.assertNotIn("<script>&", html)
 
-    def test_the_page_remembers_the_giving_switch(self):
+    def test_the_giving_chip_says_its_state_and_flips_it_keeping_the_view(self):
         on = self.open(SCREEN[Role.ADMIN], Role.ADMIN, f"{OCTOBER}&giving=1").content.decode()
         off = self.open(SCREEN[Role.ADMIN], Role.ADMIN, f"{OCTOBER}&giving=0").content.decode()
-        self.assertRegex(on, r'id="filter-giving"[^>]*checked')
-        self.assertNotRegex(off, r'id="filter-giving"[^>]*checked')
+        self.assertIn("Giving: on", on)
+        self.assertIn("Giving: off", off)
+        self.assertIn("?preset=custom&amp;start=2026-10-01&amp;end=2026-10-31&amp;giving=0", on)    # flips off, same dates
+        self.assertIn("?preset=custom&amp;start=2026-10-01&amp;end=2026-10-31&amp;giving=1", off)   # flips back on
+
+    def test_the_giving_chip_and_the_extension_form_keep_the_rest_of_the_view(self):
+        pf = self.overview(extension=str(self.beta.pk), preset="this_month", giving="0")["period_filter"]
+        self.assertEqual(pf["giving_query"], f"preset=this_month&giving=1&extension={self.beta.pk}")
+        self.assertEqual(pf["hidden"], [("preset", "this_month"), ("giving", "0")])
+        default = self.overview()["period_filter"]
+        self.assertEqual(default["hidden"], [("giving", "1")])
+        self.assertEqual(default["giving_query"], "giving=0")
+        custom = self.overview(preset="custom", start="2026-06-01", end="2026-06-30")["period_filter"]
+        self.assertEqual(custom["hidden"], [("preset", "custom"), ("start", "2026-06-01"), ("end", "2026-06-30"), ("giving", "1")])
+
+    def test_the_extension_picker_is_a_form_that_carries_the_period(self):
+        html = self.open(SCREEN[Role.ADMIN], Role.ADMIN, f"{OCTOBER}&giving=0").content.decode()
+        for pair in ('name="preset" value="custom"', 'name="start" value="2026-10-01"', 'name="end" value="2026-10-31"', 'name="giving" value="0"'):
+            self.assertIn(pair, html, pair)
+        self.assertIn('id="filter-extension"', html)
+
+    def test_a_coordinator_has_no_extension_picker_but_keeps_the_rest(self):
+        html = self.open(SCREEN[Role.COORDINATOR], Role.COORDINATOR).content.decode()
+        self.assertNotIn('id="filter-extension"', html)
+        self.assertIn("Custom dates", html)
+
+    def test_whose_numbers_and_which_dates_are_in_the_heading_not_in_the_bar(self):
+        html = self.open(SCREEN[Role.ADMIN], Role.ADMIN, OCTOBER).content.decode()
+        self.assertIn("All extensions, Oct 1 to Oct 31, 2026", html)
+        self.assertNotIn("Showing", html)
 
     def test_giving_off_hides_the_giving_numbers_on_the_overview(self):
         self.assertContains(self.open(SCREEN[Role.ADMIN], Role.ADMIN, f"{OCTOBER}&giving=1"), "₱4,471.50")

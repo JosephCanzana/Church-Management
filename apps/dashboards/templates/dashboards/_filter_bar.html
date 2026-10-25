@@ -1,80 +1,79 @@
 {% load people_tags %}
 {% comment %}
 dashboards/_filter_bar.html
-The bar under the dashboard header. Context: dashboard.filter (enabled, extension_id, label, options), dashboard.period
-(start, end, or None) and dashboard.period_filter (preset, options, links, start, end, fell_back, include_giving,
-print_query; from services._period_filter).
-* Quick links: one chip per period (Last 8 gatherings = the default view, This month, Last month, Last 3 months, This
-  year). They are plain links, so they work without JavaScript, and each keeps the picked extension and the giving switch.
-* The form below them is the same filter with everything in one place: extension (admin and super-admin only; Alpine
-  submits it as soon as it changes), period (including "Custom dates" with From and To), the giving switch and Apply. It
-  is a GET form, so it works without JavaScript; Alpine only greys out the two date fields unless "Custom dates" is
-  picked (without JavaScript they are always enabled and the server ignores them unless the preset is custom). The hidden
-  giving=0 before the checkbox is how an UNCHECKED box is remembered in the query (the last value wins).
-* A coordinator has no extension picker: the line below only says whose numbers these are (their own extension).
-* "Print report" opens the standalone A4 report in a new tab with pf.print_query, the VALIDATED querystring, never the
-  raw one. It is drawn only when the route resolves ({% role_url_or_empty %} gives "" otherwise). On the default view
-  it prints the last 3 months (the last 8 gatherings is not a date range), and the line next to it says so.
+The filter toolbar under the Overview heading: ONE compact row (it wraps on a phone), about 3.5rem tall.
+Context: dashboard.filter (enabled, extension_id, label, options), dashboard.period_filter (preset, links, start, end,
+fell_back, include_giving, giving_query, hidden, print_query; from services._period_filter).
+Left to right:
+* Period chips: Last 8 gatherings (the default view), This month, Last month, Last 3 months, This year. Plain links, so
+  they work without JavaScript; each keeps the picked extension and the giving switch. On a phone they scroll sideways in
+  one line (so the bar stays two short rows instead of five); Custom dates sits OUTSIDE the scroller on purpose, because
+  its popover would be clipped inside an overflow container.
+* Custom dates: a <details> chip that opens a small panel (From, To, Show). Native <details>, so it works without
+  JavaScript; Alpine only closes it on an outside click or Escape. The Show button sends preset=custom (a submit button's
+  own name and value are sent when it is the one clicked), plus the picked extension and giving switch as hidden fields.
+* Extension picker (admin and super-admin only): a tiny GET form whose <select> submits as soon as it changes (Alpine) and
+  carries the current period and giving switch as hidden fields (pf.hidden); "Go" is the no-JavaScript fallback.
+* Giving chip: a link that flips giving=0/1 for the same view. The word says the state ("Giving: on"), never color alone.
+* Print report: opens the standalone A4 report in a new tab with pf.print_query, the VALIDATED querystring, never the raw
+  one; drawn only when the route resolves ({% role_url_or_empty %} gives "" otherwise). On the default view it prints the
+  last 3 months (the last 8 gatherings is not a date range); the button's title says so.
+A refused period shows one line under the row. Whose numbers and which dates are in the Overview heading line, not here.
 {% endcomment %}
 {% with pf=dashboard.period_filter %}
-<div class="card col-span-full space-y-3 p-3">
-  <nav aria-label="Period quick links" class="flex flex-wrap items-center gap-2">
-    <span class="text-sm font-semibold uppercase tracking-wide text-txt-secondary">Period</span>
-    {% for link in pf.links %}
-    <a href="?{{ link.query }}"{% if link.active %} aria-current="true"{% endif %}
-       class="rounded-full border px-3 py-1.5 text-base {% if link.active %}border-accent bg-accent/10 font-semibold text-txt-primary{% else %}border-border text-txt-secondary hover:text-txt-primary{% endif %}">{{ link.label }}</a>
-    {% endfor %}
-  </nav>
+<div class="col-span-full">
+  <div class="card flex flex-wrap items-center gap-x-2 gap-y-2 p-2">
+    <div class="flex w-full min-w-0 items-center gap-1.5 md:w-auto">
+    <nav aria-label="Period quick links" class="flex min-w-0 flex-1 flex-nowrap items-center gap-1.5 overflow-x-auto [scrollbar-width:none] md:flex-none">
+      {% for link in pf.links %}
+      <a href="?{{ link.query }}"{% if link.active %} aria-current="true"{% endif %}
+         class="inline-flex min-h-10 shrink-0 items-center whitespace-nowrap rounded-full border px-3 text-sm {% if link.active %}border-accent bg-accent/10 font-semibold text-txt-primary{% else %}border-border text-txt-secondary hover:text-txt-primary{% endif %}">{{ link.label }}</a>
+      {% endfor %}
+    </nav>
+
+      <details class="relative shrink-0" x-data @click.outside="$el.removeAttribute('open')" @keydown.escape="$el.removeAttribute('open')">
+        <summary class="inline-flex min-h-10 cursor-pointer list-none items-center gap-1 rounded-full border px-3 text-sm [&::-webkit-details-marker]:hidden {% if pf.preset == 'custom' %}border-accent bg-accent/10 font-semibold text-txt-primary{% else %}border-border text-txt-secondary hover:text-txt-primary{% endif %}">Custom dates<span aria-hidden="true">&#9662;</span></summary>
+        <form method="get" aria-label="Custom dates" class="card absolute right-0 z-20 mt-2 flex w-80 max-w-[calc(100vw-2rem)] flex-col gap-3 p-3 shadow-lg">
+          {% if dashboard.filter.extension_id and dashboard.filter.enabled %}<input type="hidden" name="extension" value="{{ dashboard.filter.extension_id }}">{% endif %}
+          <input type="hidden" name="giving" value="{% if pf.include_giving %}1{% else %}0{% endif %}">
+          <div class="grid grid-cols-2 gap-2">
+            <div><label for="filter-start" class="label">From</label><input id="filter-start" type="date" name="start" value="{{ pf.start|date:'Y-m-d' }}" class="input"></div>
+            <div><label for="filter-end" class="label">To</label><input id="filter-end" type="date" name="end" value="{{ pf.end|date:'Y-m-d' }}" class="input"></div>
+          </div>
+          <button type="submit" name="preset" value="custom" class="btn btn-secondary">Show these dates</button>
+        </form>
+      </details>
+    </div>
+
+    <div class="flex w-full items-center gap-2 md:ml-auto md:w-auto">
+      {% if dashboard.filter.enabled %}
+      <form method="get" x-data aria-label="Extension" class="flex min-w-0 flex-1 items-center gap-1.5 md:flex-none">
+        {% for name, value in pf.hidden %}<input type="hidden" name="{{ name }}" value="{{ value }}">{% endfor %}
+        <label for="filter-extension" class="sr-only">Extension</label>
+        <select id="filter-extension" name="extension" class="input !min-h-10 !w-full min-w-0 !py-1 text-sm md:!w-auto md:min-w-40" @change="$el.form.requestSubmit()">
+          <option value="">All extensions</option>
+          {% for option in dashboard.filter.options %}
+          <option value="{{ option.id }}"{% if option.id == dashboard.filter.extension_id %} selected{% endif %}>{{ option.name }}</option>
+          {% endfor %}
+        </select>
+        <noscript><button type="submit" class="btn btn-secondary">Go</button></noscript>
+      </form>
+      {% endif %}
+
+      <a href="?{{ pf.giving_query }}" title="{% if pf.include_giving %}Hide giving{% else %}Show giving{% endif %}"
+         class="inline-flex min-h-10 shrink-0 items-center gap-1.5 whitespace-nowrap rounded-full border border-border px-3 text-sm text-txt-secondary hover:text-txt-primary">
+        <span aria-hidden="true">{% if pf.include_giving %}&#10003;{% else %}&#9675;{% endif %}</span>Giving: {% if pf.include_giving %}on{% else %}off{% endif %}
+      </a>
+
+      {% role_url_or_empty 'report_print' as print_url %}
+      {% if print_url %}
+      <a href="{{ print_url }}?{{ pf.print_query }}" target="_blank" rel="noopener" class="btn btn-secondary !min-h-10 shrink-0 !px-3 text-sm"{% if not pf.preset %} title="Prints the last 3 months. Pick a period to change it."{% endif %}>Print<span class="sr-only md:not-sr-only">&nbsp;report</span></a>
+      {% endif %}
+    </div>
+  </div>
 
   {% if pf.fell_back %}
-  <p role="status" class="text-base text-txt-primary">That period was not valid (Custom dates need a start and an end, the end not before the start, at most 366 days), so the dashboard shows the last 8 gatherings.</p>
+  <p role="status" class="mt-2 px-1 text-sm text-txt-primary">That period was not valid (Custom dates need a start and an end, the end not before the start, at most 366 days), so the dashboard shows the last 8 gatherings.</p>
   {% endif %}
-
-  <form method="get" x-data="{ preset: '{{ pf.preset }}' }" class="flex flex-wrap items-end gap-x-4 gap-y-3" aria-label="Dashboard filter">
-    {% if dashboard.filter.enabled %}
-    <div class="min-w-48">
-      <label for="filter-extension" class="label">Extension</label>
-      <select id="filter-extension" name="extension" class="input" @change="$el.form.requestSubmit()">
-        <option value="">All extensions</option>
-        {% for option in dashboard.filter.options %}
-        <option value="{{ option.id }}"{% if option.id == dashboard.filter.extension_id %} selected{% endif %}>{{ option.name }}</option>
-        {% endfor %}
-      </select>
-    </div>
-    {% endif %}
-    <div class="min-w-44">
-      <label for="filter-period" class="label">Period</label>
-      <select id="filter-period" name="preset" x-model="preset" class="input">
-        {% for code, label in pf.options %}
-        <option value="{{ code }}"{% if code == pf.preset %} selected{% endif %}>{{ label }}</option>
-        {% endfor %}
-      </select>
-    </div>
-    <div>
-      <label for="filter-start" class="label">From</label>
-      <input id="filter-start" type="date" name="start" value="{{ pf.start|date:'Y-m-d' }}" :disabled="preset !== 'custom'" class="input">
-    </div>
-    <div>
-      <label for="filter-end" class="label">To</label>
-      <input id="filter-end" type="date" name="end" value="{{ pf.end|date:'Y-m-d' }}" :disabled="preset !== 'custom'" class="input">
-    </div>
-    <div class="flex items-center gap-2 pb-2">
-      <input type="hidden" name="giving" value="0">
-      <input id="filter-giving" type="checkbox" name="giving" value="1" class="size-5 accent-accent"{% if pf.include_giving %} checked{% endif %}>
-      <label for="filter-giving" class="text-base text-txt-primary">Include giving</label>
-    </div>
-    <button type="submit" class="btn btn-secondary">Apply</button>
-  </form>
-
-  <div class="flex flex-wrap items-center gap-x-4 gap-y-2">
-    <p class="min-w-0 flex-1 text-base text-txt-secondary">
-      Showing <span class="font-semibold text-txt-primary">{{ dashboard.filter.label }}</span>{% if dashboard.period %}, {{ dashboard.period.start|date:"M j" }} to {{ dashboard.period.end|date:"M j, Y" }}{% endif %}
-    </p>
-    {% role_url_or_empty 'report_print' as print_url %}
-    {% if print_url %}
-    {% if not pf.preset %}<span class="text-sm text-txt-secondary">Prints the last 3 months. Pick a period to change it.</span>{% endif %}
-    <a href="{{ print_url }}?{{ pf.print_query }}" target="_blank" rel="noopener" class="btn btn-secondary">Print report</a>
-    {% endif %}
-  </div>
 </div>
 {% endwith %}

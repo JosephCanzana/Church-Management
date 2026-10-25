@@ -1271,11 +1271,13 @@ def _period_filter(user, chosen, asked, period_start, period_end, include_giving
     """Return what the dashboard's period controls draw: quick links, the form values and the Print querystring.
 
     ``asked`` is ``parse_period`` of the request (None when no preset was sent). Keys: ``preset`` ("" for the default
-    view, else the accepted preset), ``options`` (the select), ``links`` (``{"label", "query", "active"}``: one per
-    preset plus the default view, each KEEPING the picked extension and the giving switch), ``start`` / ``end`` (the
-    two date fields), ``fell_back`` (a preset was sent and refused), ``include_giving`` and ``print_query`` (the
-    VALIDATED querystring of the A4 report: the accepted period, or last 3 months when the dashboard shows the
-    default view, since "the last 8 gatherings" is not a date range).
+    view, else the accepted preset), ``links`` (``{"label", "query", "active"}``: one per preset plus the default view,
+    each KEEPING the picked extension and the giving switch; "Custom dates" is not a link, it opens the From and To
+    fields), ``start`` / ``end`` (those two fields), ``fell_back`` (a preset was sent and refused), ``include_giving``,
+    ``giving_query`` (the querystring of the same view with the giving switch FLIPPED: the giving chip is a link),
+    ``hidden`` (``(name, value)`` pairs that carry the current period and giving switch through the extension picker's
+    form) and ``print_query`` (the VALIDATED querystring of the A4 report: the accepted period, or last 3 months when
+    the dashboard shows the default view, since "the last 8 gatherings" is not a date range).
     """
     accepted = asked if (asked is not None and not asked["fell_back"]) else None
     selected = accepted["preset"] if accepted else ""
@@ -1290,14 +1292,27 @@ def _period_filter(user, chosen, asked, period_start, period_end, include_giving
         for code, label in PERIOD_PRESETS if code != "custom"
     ]
     today = timezone.localdate()
+
+    def state(giving):
+        """The current period (as accepted) and a giving switch value, as ``(name, value)`` pairs."""
+        pairs = []
+        if selected:
+            pairs.append(("preset", selected))
+            if selected == "custom":
+                pairs += [("start", accepted["start"].isoformat()), ("end", accepted["end"].isoformat())]
+        pairs.append(("giving", "1" if giving else "0"))
+        return pairs
+
+    extension_pair = [("extension", chosen.pk)] if (chosen is not None and user.role in FILTER_ROLES) else []
     return {
         "preset": selected,
-        "options": (("", "Last 8 gatherings"),) + PERIOD_PRESETS,
         "links": links,
         "start": period_start or today,
         "end": period_end or today,
         "fell_back": asked is not None and asked["fell_back"],
         "include_giving": include_giving,
+        "giving_query": urlencode(state(not include_giving) + extension_pair),
+        "hidden": state(include_giving),
         "print_query": _report_query(accepted or parse_period("", None, None, today), chosen, user, include_giving),
     }
 
