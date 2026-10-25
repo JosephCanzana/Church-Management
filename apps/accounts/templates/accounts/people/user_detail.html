@@ -4,6 +4,8 @@
 
 {% block title %}{{ person.full_name }}{% endblock %}
 {% block page_title %}{{ person.full_name }}{% endblock %}
+{# Full width: base_app.html caps <main> at max-w-6xl, this page lets it fill the screen. #}
+{% block main_class %}w-full flex-1 px-4 py-6 sm:px-6 lg:px-8 2xl:px-12{% if mobile_nav_style == 'bottom' %} pb-[calc(5rem+env(safe-area-inset-bottom))] sm:pb-6{% endif %}{% endblock %}
 
 {% block content %}
 {% person_actions person as can %}
@@ -115,7 +117,8 @@
 </div>
 {% endif %}
 
-<div class="mt-6 grid gap-6 lg:grid-cols-2">
+<div class="mt-6 grid items-start gap-6 {% if attendance_overview %}lg:grid-cols-[minmax(0,1fr)_minmax(0,1.4fr)] 2xl:grid-cols-[minmax(0,1fr)_minmax(0,2fr)]{% else %}lg:grid-cols-2{% endif %}">
+  <div class="grid content-start gap-6 {% if not attendance_overview %}lg:col-span-2 lg:grid-cols-2{% endif %}">
   <section class="card" aria-labelledby="details-heading">
     <h2 id="details-heading" class="text-base font-semibold">Details</h2>
     <dl class="mt-3 grid grid-cols-[auto_1fr] gap-x-6 gap-y-2 text-sm">
@@ -156,6 +159,11 @@
       <dd>{% if person.person_type != 'member_account' %}No account, no password{% elif person.must_change_password %}Must be changed at next login{% else %}Set by the person{% endif %}</dd>
     </dl>
   </section>
+  </div>
+
+  {% if attendance_overview %}
+  {% include "accounts/people/_attendance_panel.html" with ov=attendance_overview %}
+  {% endif %}
 </div>
 
 {% if special_roles %}

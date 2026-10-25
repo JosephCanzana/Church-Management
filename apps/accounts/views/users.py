@@ -24,6 +24,7 @@ from django.db.models.functions import Lower
 from django.http import QueryDict
 from django.shortcuts import redirect, render
 from django.urls import reverse
+from django.utils.module_loading import import_string
 from django.views.decorators.cache import never_cache
 from django.views.decorators.http import require_http_methods, require_POST
 
@@ -481,6 +482,26 @@ def user_edit(request, pk):
 
 
 # ----------------------------------------------------------------- detail
+#: Loaded by dotted path: `accounts` never imports `attendance` (the same idea as the string include
+#: that mounts the attendance routes).
+ATTENDANCE_OVERVIEW = "apps.attendance.person_overview.person_attendance_overview"
+
+
+def _attendance_overview(person):
+    """Attendance totals, strip and missed services for the detail page, or None (no panel).
+
+    Read-only; the caller already limited who can open this person (`_person_or_none`). A failure
+    here is logged and only the panel is left out, so the rest of the page keeps working.
+    """
+    if person.extension_id is None:
+        return None
+    try:
+        return import_string(ATTENDANCE_OVERVIEW)(person)
+    except Exception:
+        logger.exception("Attendance overview failed for person %s", person.pk)
+        return None
+
+
 def _render_detail(request, person, secrets=None):
     """The detail page, optionally with the show-once dialog."""
     attach_special_roles([person])      # the tags under the heading
@@ -502,6 +523,7 @@ def _render_detail(request, person, secrets=None):
             and can_assign_special_roles(request.user, person.extension_id)
         ),
         "address": _address_text(person),
+        "attendance_overview": _attendance_overview(person),
         "is_self": person.pk == request.user.pk,
         "secrets": secrets,
         "submit_token": new_submission_token(),

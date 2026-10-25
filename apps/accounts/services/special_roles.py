@@ -194,12 +194,6 @@ def assign_special_role(actor, request, person, role_code):
                 f"{title_case(extension.name)} already has {used} of {max_count} for {role.name}. "
                 "Remove someone first, or ask an admin to raise the limit."
             )
-        used = UserSpecialRole.objects.filter(extension=extension, role=role).count()
-        if used >= limit.max_count:
-            raise ServiceError(
-                f"{title_case(extension.name)} already has {used} of {limit.max_count} for {role.name}. "
-                "Remove someone first, or ask an admin to raise the limit."
-            )
         UserSpecialRole.objects.create(user=locked, role=role, extension=extension, granted_by=actor)
         log_action(
             "special_role.assign", actor=actor, request=request,
