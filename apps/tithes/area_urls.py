@@ -20,6 +20,10 @@ urlpatterns = [
     path("households/members/<int:pk>/end/", views.household_member_end, name="household_member_end"),
     # Start a report for an attendance sheet (POST).
     path("sheets/<int:sheet_pk>/start/", views.report_create, name="report_create"),
+    # Close a sheet as "no tithes and offering" (POST): nothing was collected at that service.
+    path("sheets/<int:sheet_pk>/no-tithes/", views.report_no_tithes, name="report_no_tithes"),
+    # A coordinator asks an admin to close a sheet as "no tithes and offering" (POST); the approval finalizes it.
+    path("sheets/<int:sheet_pk>/no-tithes/request/", views.report_no_tithes_request, name="report_no_tithes_request"),
     # One report: the workspace while it is an editable draft, the review otherwise.
     path("<int:pk>/", views.report_detail, name="report_detail"),
     path("<int:pk>/review/", views.report_review, name="report_review"),

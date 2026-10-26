@@ -5,7 +5,7 @@ title, page_title, main_class (full width), content.
 
 Layout (desktop): a slim bar on top, then two panes that fill the screen.
   left   (~30%)  Numbers: a compact balance check, the offering, the bills and coins breakdown.
-                 The bypass request and Finalize open as modals from buttons in the top bar. A button in the middle pane hides this pane.
+                 Finalize and the bypass request are NOT here: the top bar has one "Review & finalize" link to the review page, where they live. A button in the middle pane hides this pane.
   middle (flex)  Givers: everyone who can give, grouped by household (a household name sits above its members).
                  Each row has its amount field on the right. Search filters the list as you type; from 3 letters it
                  also asks the server for members who are not listed.
@@ -20,8 +20,7 @@ Saving uses plain POST forms (full page load), so toasts and inline errors keep 
 
 Context (tithes.views.report_detail), as before: report, sheet, sheet_url (None for a special member), totals (live
 Totals), difference_abs, denominations (value, count, line), is_admin, open_request, last_request, can_see_request,
-locked_for_you, can_finalize, finalize_ready, has_approved, can_request, can_withdraw, can_decide, finalize_token,
-request_token, decision_token.
+locked_for_you, can_edit. (The finalize and bypass flags and tokens are used by report_review.html now.)
 ws_config (read by the script below): offering, tithes, denoms, counts, searchUrl, present, taken.
 Needed by this template (the view must supply it):
   groups   Ordered list of household groups. Each group: name, is_household (False for the "Individuals" group),
@@ -215,15 +214,8 @@ Targets are 44px and text 16px or larger.
          x-text="label()">{% if totals.difference == 0 %}Balanced{% elif totals.difference < 0 %}Short by &#8369;{{ difference_abs|floatformat:"2g" }}{% else %}Over by &#8369;{{ difference_abs|floatformat:"2g" }}{% endif %}</p>
 
       <div class="flex flex-wrap items-center gap-2">
-        {# Review sits at the same address as the workspace plus review/ (the route is <id>/review/). #}
-        {% if totals.difference != 0 or open_request or last_request %}
-        <button type="button" class="btn btn-secondary min-h-[44px] text-base" x-on:click="$store.ui.openModal('bypass')">Bypass request</button>
-        {% endif %}
-        <a class="btn btn-secondary min-h-[44px] text-base" href="{{ request.path }}review/">Review</a>
-        {% if can_finalize %}
-        <button type="button" class="btn btn-primary min-h-[44px] text-base"
-                x-on:click="$store.ui.openModal('finalize')">Finalize</button>
-        {% endif %}
+        {# Finalize, the bypass request and "No tithes" now live on the review page (the route is <id>/review/). #}
+        <a class="btn btn-primary min-h-[44px] text-base" href="{{ request.path }}review/">Review &amp; finalize</a>
       </div>
     </div>
   </section>
@@ -551,21 +543,5 @@ Targets are 44px and text 16px or larger.
   </div>
   {% endmodal %}
 
-  {# Bypass request: the existing panel (request, withdraw, decide) now opens from the top bar. #}
-  {% if totals.difference != 0 or open_request or last_request %}
-  {% modal "bypass" title="Bypass request" %}
-  {% include 'tithes/_bypass_panel.html' %}
-  {% endmodal %}
-  {% endif %}
-
-  {# Finalize: moved out of the Numbers pane. Opens from the Finalize button in the top bar. #}
-  {% if can_finalize %}
-  {% modal "finalize" title="Finalize report" %}
-  <div class="space-y-3">
-    <p class="text-base text-txt-secondary">Save the numbers first. Finalizing freezes them.</p>
-    {% include 'tithes/_finalize_form.html' %}
-  </div>
-  {% endmodal %}
-  {% endif %}
 </div>
 {% endblock %}

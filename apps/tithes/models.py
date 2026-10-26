@@ -252,7 +252,10 @@ class TitheHouseholdMember(models.Model):
 
 
 class TitheBypassRequest(TimestampedModel):
-    """A coordinator's request to finalize a report whose breakdown does not match the Total.
+    """A coordinator's FINALIZE REQUEST: ask an admin to approve finalizing this report.
+
+    (The name "bypass" is historical. A coordinator can no longer finalize on their own: EVERY finalize needs an
+    approved request, whether the bills and coins match the Total or not. `difference` is 0 for a balanced report.)
 
     Tied to the exact `difference` at the time of the request: if the difference changes, the request
     is voided. An approval is used once. The message and the decision note live ONLY here, never in
@@ -276,7 +279,7 @@ class TitheBypassRequest(TimestampedModel):
         on_delete=models.SET_NULL, related_name="+",
     )
     message = models.TextField()
-    difference = models.DecimalField(max_digits=12, decimal_places=2)   # signed, as requested
+    difference = models.DecimalField(max_digits=12, decimal_places=2)   # signed, as requested (0 = balanced)
     status = models.CharField(max_length=10, choices=Status.choices, default=Status.PENDING)
     decided_by = models.ForeignKey(
         settings.AUTH_USER_MODEL, null=True, blank=True,
@@ -297,8 +300,6 @@ class TitheBypassRequest(TimestampedModel):
                 condition=Q(status__in=["pending", "approved", "rejected", "withdrawn", "voided", "used"]),
                 name="tithes_bypass_status_valid",
             ),
-            # Nothing to bypass when the difference is zero.
-            models.CheckConstraint(condition=~Q(difference=0), name="tithes_bypass_difference_nonzero"),
             models.CheckConstraint(condition=~Q(message=""), name="tithes_bypass_message_required"),
             # A decision has a time; a pending request has none. (`decided_by` may be NULL if purged.)
             models.CheckConstraint(

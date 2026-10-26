@@ -164,8 +164,10 @@ def _sheet_link(request, sheet):
         return None
 
 
-def report_action(anchor=""):
+def report_action(anchor="", to="report_detail"):
     """Decorator for the POST-only views that act on one report: load it, run the view, report refusals.
+
+    `to` is the page the person returns to (the finalize actions use `report_review`, where they live).
 
     The decorated function takes `(request, report)`, calls ONE service and adds its own success message,
     then returns None (the person goes back to the report, at `anchor`) or a response of its own.
@@ -188,8 +190,8 @@ def report_action(anchor=""):
             else:
                 if response is not None:
                     return response
-            return _to(request, "report_detail", pk=report.pk) if not anchor else redirect(
-                _url(request, "report_detail", report.pk) + anchor
+            return _to(request, to, pk=report.pk) if not anchor else redirect(
+                _url(request, to, report.pk) + anchor
             )
 
         return tithes_screen(require_http_methods(["POST"])(wrapped))
@@ -226,6 +228,18 @@ def _decorate_sheet(sheet, user):
     sheet.report = report
     sheet.can_open = bool(report and permissions.can_view(user, report))
     sheet.can_start = report is None and permissions.can_create(user, sheet)
+    # "No tithes & offering": only on a sheet that has no report yet (an empty draft has it in its workspace).
+    # A coordinator cannot close a sheet in one step: they start the report and ask an admin (finalize request).
+    sheet.can_no_tithes = (
+        report is None and permissions.can_mark_no_tithes(user, sheet)
+        and not permissions.needs_finalize_approval(user)
+    )
+    # A coordinator asks instead (one step: starts the report and files the request; an admin's approval finalizes it).
+    sheet.can_request_no_tithes = (
+        report is None and permissions.can_mark_no_tithes(user, sheet)
+        and permissions.needs_finalize_approval(user)
+    )
+    sheet.no_tithes = bool(report and services.is_no_tithes(report))
     return sheet
 
 
@@ -303,6 +317,58 @@ def report_create(request, sheet_pk):
     return _to(request, "report_detail", pk=report.pk)
 
 
+@tithes_screen
+@require_http_methods(["POST"])
+def report_no_tithes(request, sheet_pk):
+    """Close a sheet as "no tithes and offering" (POST), from the list or from an empty draft's workspace.
+
+    Creates the report when the sheet has none. The service decides who may (coordinator, admin) and refuses
+    when anything was already entered; a double press gets the "finalized and locked" message.
+    """
+    sheet = _listable_sheets(request.user).filter(pk=sheet_pk).first()
+    if sheet is None:
+        messages.info(request, "That sheet no longer exists.")
+        return _to(request, "report_list")
+    existing = TithesOffering.objects.for_user(request.user).filter(attendance_id=sheet.pk).first()
+    back = _to(request, "report_review", pk=existing.pk) if existing else _to(request, "report_list")
+    try:
+        report = services.finalize_no_tithes(request.user, sheet, request=request)
+    except ServiceError as exc:
+        messages.error(request, str(exc))
+        return back
+    except PermissionDenied:
+        messages.error(request, "You cannot close this sheet as no tithes and offering.")
+        return back
+    messages.success(request, "Marked as no tithes and offering. The report is finalized.")
+    return _to(request, "report_review", pk=report.pk)
+
+
+@tithes_screen
+@require_http_methods(["POST"])
+def report_no_tithes_request(request, sheet_pk):
+    """A coordinator asks an admin to close a sheet as "no tithes and offering" (POST), in one step.
+
+    Starts the report when the sheet has none and files the request; the draft then locks until an admin decides.
+    Approving it finalizes the report. The person lands on the review page, which shows "waiting for an admin".
+    """
+    sheet = _listable_sheets(request.user).filter(pk=sheet_pk).first()
+    if sheet is None:
+        messages.info(request, "That sheet no longer exists.")
+        return _to(request, "report_list")
+    existing = TithesOffering.objects.for_user(request.user).filter(attendance_id=sheet.pk).first()
+    back = _to(request, "report_review", pk=existing.pk) if existing else _to(request, "report_list")
+    try:
+        bypass_request = services.request_no_tithes(request.user, sheet, request=request)
+    except ServiceError as exc:
+        messages.error(request, str(exc))
+        return back
+    except PermissionDenied:
+        messages.error(request, "You cannot ask for no tithes and offering on this sheet.")
+        return back
+    messages.success(request, "Request sent to the admins. The report is finalized as soon as an admin approves it.")
+    return _to(request, "report_review", pk=bypass_request.tithes_offering_id)
+
+
 # ============================================================================ the report pages
 def _report_context(request, report):
     """Everything the workspace and the review share: numbers, rows, flags and one-time tokens.
@@ -334,9 +400,11 @@ def _report_context(request, report):
         open_request and open_request.status == TitheBypassRequest.Status.APPROVED
         and open_request.difference == totals.difference
     )
-    can_request = may_request and draft and not totals.balanced and not totals.is_empty and open_request is None
+    # Every coordinator finalize needs an admin's approval, balanced or not, so a request is always possible.
+    can_request = may_request and draft and open_request is None
     can_withdraw = may_request and open_request is not None
     can_reopen = permissions.can_reopen(user, report)
+    no_tithes = services.is_no_tithes(report)
     return {
         "report": report,
         "sheet": report.attendance,
@@ -354,12 +422,19 @@ def _report_context(request, report):
         "locked_for_you": draft and open_request is not None and not is_admin,
         "can_edit": permissions.can_edit_draft(user, report),
         "can_finalize": can_finalize,
-        "finalize_ready": totals.balanced or approved or is_admin,
+        "finalize_ready": not permissions.needs_finalize_approval(user) or approved,
+        "empty": totals.is_empty,
         "has_approved": approved,
         "can_request": can_request,
         "can_withdraw": can_withdraw,
         "can_decide": can_decide,
         "can_reopen": can_reopen,
+        # "No tithes & offering": a finalized report with nothing recorded, and the button on an empty draft.
+        "no_tithes": no_tithes,
+        "can_no_tithes": (
+            draft and can_finalize and totals.is_empty
+            and (not permissions.needs_finalize_approval(user) or approved)
+        ),
         # Brick 4: the "Print or save as PDF" button on the review page (opens the A4 page in a new tab).
         "can_print": permissions.can_print(user, report),
         "finalize_token": new_submission_token() if can_finalize else "",
@@ -451,6 +526,7 @@ def report_print(request, pk):
         "sheet": report.attendance,
         "is_draft": draft,
         "totals": totals,
+        "no_tithes": services.is_no_tithes(report),
         "difference_abs": abs(totals.difference),
         "rows": _print_rows(report),
         "denominations": denominations,
@@ -551,9 +627,9 @@ def _own_request(report, request_id):
     return request_id
 
 
-@report_action("#bypass")
+@report_action("#finalize", to="report_review")
 def bypass_request(request, report):
-    """The coordinator files a bypass request with a required message."""
+    """The coordinator sends a finalize request (the message is required only when the numbers do not balance)."""
     form = RequestForm(request.POST)
     if not form.is_valid():
         return _form_error(request, form)
@@ -567,7 +643,7 @@ def bypass_request(request, report):
         messages.success(request, "Request sent to the admins. The draft is locked until it is decided or withdrawn.")
 
 
-@report_action("#bypass")
+@report_action("#finalize", to="report_review")
 def bypass_withdraw(request, report):
     """The coordinator takes back an open request (this unlocks the draft)."""
     form = WithdrawForm(request.POST)
@@ -577,7 +653,7 @@ def bypass_withdraw(request, report):
     messages.success(request, "Request withdrawn. The draft is unlocked.")
 
 
-@report_action("#bypass")
+@report_action("#finalize", to="report_review")
 def bypass_decide(request, report):
     """An admin approves or rejects a pending request, with an optional note."""
     form = DecisionForm(request.POST)
@@ -592,15 +668,17 @@ def bypass_decide(request, report):
         messages.info(request, "That decision was already recorded.")
     elif result.voided:
         messages.warning(request, "The numbers changed after the request was sent, so it was voided. Nothing was decided.")
+    elif result.finalized:
+        messages.success(request, "Request approved. The report is finalized as no tithes and offering.")
     elif data["decision"] == "approve":
         messages.success(request, "Request approved. The coordinator can now finalize once.")
     else:
         messages.success(request, "Request rejected.")
 
 
-@report_action()
+@report_action(to="report_review")
 def report_finalize(request, report):
-    """Freeze the report (balanced, with an approved request, or an admin's typed reason)."""
+    """Freeze the report: an admin on their own (with a typed reason for a mismatch), a coordinator with an approved request."""
     form = FinalizeForm(request.POST)
     if not form.is_valid():
         return _form_error(request, form)

@@ -1,6 +1,6 @@
 <!--
 tithes/report_review.html
-Read-only review of a report: a finalized one, or a draft that is locked for this person. Extends base_app.html and
+Review of a report, and for a draft the place to finalize it: a finalized one (read-only), or a draft (Finalize, the finalize request and "No tithes" are in _finalize_panel.html). Extends base_app.html and
 fills: title, page_title, content.
 Context (tithes.views.report_review): report, sheet, sheet_url, totals (frozen when finalized, live for a draft),
 difference_abs, entries, denominations, is_draft, is_admin, open_request, last_request, can_see_request,
@@ -11,8 +11,8 @@ A finalized report shows its FROZEN numbers, exactly as stored.
 {% extends 'base_app.html' %}
 {% load ui_tags people_tags %}
 
-{% block title %}Review: {{ sheet.label }}{% endblock %}
-{% block page_title %}Review{% endblock %}
+{% block title %}{% if is_draft %}Review and finalize{% else %}Review{% endif %}: {{ sheet.label }}{% endblock %}
+{% block page_title %}{% if is_draft %}Review and finalize{% else %}Review{% endif %}{% endblock %}
 
 {% block content %}
 {% role_url 'report_list' as list_url %}
@@ -51,12 +51,19 @@ A finalized report shows its FROZEN numbers, exactly as stored.
       <div class="rounded-lg border border-border p-3"><p class="font-mono text-2xl font-semibold tabular-nums text-txt-primary">&#8369;{{ totals.total|floatformat:"2g" }}</p><p class="text-sm text-txt-secondary">Total</p></div>
     </div>
 
+    {% if no_tithes %}
+    <div role="status" class="rounded-xl border border-border p-4">
+      <p class="font-mono text-lg font-semibold text-txt-primary">No tithes and offering</p>
+      <p class="text-sm text-txt-secondary">Nothing was collected at this service.</p>
+    </div>
+    {% else %}
     <div role="status" class="rounded-xl border p-4 {% if totals.difference == 0 %}border-border{% else %}border-warning{% endif %}">
       <p class="font-mono text-lg font-semibold text-txt-primary">
         {% if totals.difference == 0 %}Balanced{% elif totals.difference < 0 %}Short by &#8369;{{ difference_abs|floatformat:"2g" }}{% else %}Over by &#8369;{{ difference_abs|floatformat:"2g" }}{% endif %}
       </p>
       <p class="text-sm text-txt-secondary">Bills and coins (&#8369;{{ totals.breakdown_total|floatformat:"2g" }}) compared with the Total.</p>
     </div>
+    {% endif %}
 
     {% if can_print %}
       <a class="btn" href="{% role_url 'report_print' report.pk %}" target="_blank" rel="noopener">Print or save as PDF</a>
@@ -76,15 +83,10 @@ A finalized report shows its FROZEN numbers, exactly as stored.
   </section>
 
 
-  {% if is_draft and can_finalize %}
-  <section class="card space-y-3" aria-label="Finalize">
-    <h2 class="text-lg font-semibold text-txt-primary">Finalize</h2>
-    {% include 'tithes/_finalize_form.html' %}
-  </section>
-  {% endif %}
+  {# One card for everything about finalizing: Finalize, the finalize request, the admin's decision, "No tithes". #}
+  {% if is_draft and can_finalize %}{% include 'tithes/_finalize_panel.html' %}{% endif %}
 
-  {% if is_draft %}{% include 'tithes/_bypass_panel.html' %}{% endif %}
-
+  {% if not no_tithes %}
   <section class="card p-0" aria-labelledby="entries-title">
     <h2 id="entries-title" class="px-5 pt-5 text-lg font-semibold text-txt-primary">Tithes <span class="text-base font-normal text-txt-secondary">({{ entries|length }})</span></h2>
     {% if entries %}
@@ -142,5 +144,6 @@ A finalized report shows its FROZEN numbers, exactly as stored.
       </table>
     </div>
   </section>
+  {% endif %}
 </div>
 {% endblock %}

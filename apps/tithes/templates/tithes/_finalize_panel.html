@@ -1,0 +1,137 @@
+{% comment %}
+tithes/_finalize_panel.html
+THE finalize card of the review page: one place for Finalize, the finalize request (formerly "bypass request"),
+the admin's decision and "No tithes & offering". It replaces _finalize_form.html and _bypass_panel.html.
+Include only for a draft the person can finalize (`is_draft and can_finalize`). Context (tithes.views._report_context):
+report, sheet, totals, empty, is_admin, finalize_ready, has_approved, open_request, last_request, can_see_request,
+locked_for_you, can_request, can_withdraw, can_decide, finalize_token, request_token, decision_token.
+How it reads, by person:
+  admin / super-admin   Approve / Reject first when a coordinator's request is pending (on an empty report "Approve and
+                        finalize" is the only button: no second "No tithes" button while a request waits); then Finalize
+                        (with a reason when the numbers do not match), or "No tithes & offering" when empty and no request waits.
+  coordinator           no approved request yet: the request form (message required only for a mismatch);
+                        pending: "waiting" and Withdraw; approved: Finalize unlocks, once. On an EMPTY report the form
+                        is a "no tithes" request and the admin's approval finalizes the report at once.
+The message and the decision note are shown only when can_see_request. Nothing here writes an amount anywhere.
+{% endcomment %}{% load people_tags %}
+<section id="finalize" class="card space-y-4" aria-label="Finalize">
+  <h2 class="text-lg font-semibold text-txt-primary">Finalize</h2>
+
+  {% if can_edit %}
+  <p class="text-base text-txt-secondary">Save your changes in the workspace first. Finalizing freezes what is saved.</p>
+  {% endif %}
+
+  {% if locked_for_you %}
+  <p class="rounded-lg border border-warning px-3 py-2 text-base text-txt-primary" role="status">
+    This draft is locked while a finalize request is open. Only an admin can change it until the request is decided or withdrawn.
+  </p>
+  {% endif %}
+
+  {% if last_request and can_see_request %}
+  <div class="rounded-lg border border-border p-3 text-base">
+    <p class="text-txt-primary">
+      Latest request: <span class="font-semibold">{{ last_request.get_status_display }}</span>
+      &middot; {% if last_request.difference == 0 %}balanced at the time{% else %}difference at the time <span class="font-mono">&#8369;{{ last_request.difference|floatformat:"2g" }}</span>{% endif %}
+    </p>
+    <p class="mt-1 whitespace-pre-line text-txt-secondary">{{ last_request.message }}</p>
+    {% if last_request.decision_note %}
+    <p class="mt-2 text-sm text-txt-secondary">Decision note:</p>
+    <p class="whitespace-pre-line text-txt-primary">{{ last_request.decision_note }}</p>
+    {% endif %}
+  </div>
+  {% endif %}
+
+  {% if can_decide %}
+  <form method="post" action="{% role_url 'bypass_decide' report.pk %}" class="space-y-3 border-t border-border pt-4"
+        {% if empty %}data-confirm="Approving finalizes this report as no tithes and offering, with zeros. Only an admin can reopen it. The coordinator is notified."
+        data-confirm-title="Approve and finalize?" data-confirm-text="Confirm"{% else %}data-confirm="Record your decision on this request? The coordinator is notified." data-confirm-title="Decide request" data-confirm-text="Confirm"{% endif %}>
+    {% csrf_token %}
+    <input type="hidden" name="submit_token" value="{{ decision_token }}">
+    <input type="hidden" name="request_id" value="{{ open_request.pk }}">
+    <p class="text-base font-medium text-txt-primary">
+      {% if empty %}A coordinator says no tithes and no offering were collected at this service. Approving finalizes the report with zeros.
+      {% else %}A coordinator is asking to finalize this report.{% endif %}
+    </p>
+    <div>
+      <label class="label" for="decision-note">Note (optional)</label>
+      <textarea id="decision-note" name="note" rows="2" maxlength="500" class="input"></textarea>
+      <p class="field-help">Only the coordinator and admins can read it.</p>
+    </div>
+    <div class="flex flex-wrap gap-3">
+      <button type="submit" name="decision" value="approve" class="btn btn-primary min-h-[44px] text-base">{% if empty %}Approve and finalize{% else %}Approve{% endif %}</button>
+      <button type="submit" name="decision" value="reject" class="btn btn-secondary min-h-[44px] text-base">Reject</button>
+    </div>
+  </form>
+  {% endif %}
+
+  {# ---- the one Finalize action: an admin on their own, a coordinator once an admin approved ---- #}
+  {% if finalize_ready %}
+    {% if empty %}
+    {% if not can_decide %}
+    <form method="post" action="{% role_url 'report_no_tithes' sheet.pk %}" class="space-y-3"
+          data-confirm="No tithes and no offering were collected at this service. The report is finalized with zeros, and only an admin can reopen it."
+          data-confirm-title="No tithes and offering?" data-confirm-text="Yes, none collected">
+      {% csrf_token %}
+      <p class="text-base text-txt-secondary">Nothing is recorded on this report, so it can only be closed as no tithes and offering.</p>
+      <button type="submit" class="btn btn-primary min-h-[44px] text-base">Finalize as no tithes &amp; offering</button>
+    </form>
+    {% endif %}
+    {% else %}
+    <form method="post" action="{% role_url 'report_finalize' report.pk %}" class="space-y-3"
+          data-confirm="Finalize this report? The numbers are frozen and only an admin can reopen it."
+          data-confirm-title="Finalize report" data-confirm-text="Finalize">
+      {% csrf_token %}
+      <input type="hidden" name="submit_token" value="{{ finalize_token }}">
+      {% if has_approved %}
+      <p class="text-base text-txt-primary" role="status">An admin approved your request. You can finalize once.</p>
+      {% elif can_decide %}
+      <p class="text-base text-txt-secondary">Or finalize it yourself now. That closes the coordinator's request.</p>
+      {% endif %}
+      {% if is_admin and not totals.balanced and not has_approved %}
+      <div>
+        <label class="label" for="bypass_reason">Reason to finalize anyway</label>
+        <textarea id="bypass_reason" name="bypass_reason" rows="2" maxlength="500" class="input"></textarea>
+        <p class="field-help">Saved on the report. Needed because the bills and coins do not match the Total.</p>
+      </div>
+      {% endif %}
+      <button type="submit" class="btn btn-primary min-h-[44px] text-base">
+        {% if is_admin and not totals.balanced and not has_approved %}Finalize with a reason{% else %}Finalize report{% endif %}
+      </button>
+    </form>
+    {% endif %}
+
+  {# ---- coordinator, nothing approved yet: ask an admin ---- #}
+  {% elif can_request %}
+  <form method="post" action="{% role_url 'bypass_request' report.pk %}" class="space-y-3">
+    {% csrf_token %}
+    <input type="hidden" name="submit_token" value="{{ request_token }}">
+    <p class="text-base text-txt-secondary">
+      {% if empty %}Nothing was collected? Ask an admin to approve closing this service as no tithes and offering.
+      {% else %}An admin must approve before this report can be finalized. Send a request; Finalize unlocks here once it is approved.{% endif %}
+    </p>
+    <div>
+      <label class="label" for="finalize-message">
+        {% if totals.balanced %}Note for the admin (optional){% else %}Why do the bills and coins not match the Total?{% endif %}
+      </label>
+      <textarea id="finalize-message" name="message" rows="3" maxlength="500" class="input" {% if not totals.balanced %}required{% endif %}></textarea>
+      <p class="field-help">An admin reads this. The draft is locked for everyone else until it is decided or withdrawn.</p>
+    </div>
+    <button type="submit" class="btn btn-primary min-h-[44px] text-base">
+      {% if empty %}Request: no tithes &amp; offering{% else %}Request to finalize{% endif %}
+    </button>
+  </form>
+
+  {% elif open_request %}
+  <p class="text-base text-txt-primary" role="status">Waiting for an admin to decide on your request. Finalize unlocks here once it is approved.</p>
+  {% endif %}
+
+  {% if can_withdraw %}
+  <form method="post" action="{% role_url 'bypass_withdraw' report.pk %}"
+        data-confirm="Withdraw this request? The draft is unlocked again." data-confirm-title="Withdraw request" data-confirm-text="Withdraw">
+    {% csrf_token %}
+    <input type="hidden" name="request_id" value="{{ open_request.pk }}">
+    <button type="submit" class="btn btn-secondary min-h-[44px] text-base">Withdraw request</button>
+  </form>
+  {% endif %}
+
+</section>

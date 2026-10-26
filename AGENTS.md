@@ -849,6 +849,7 @@ Code: `apps/tithes/` (`models.py`, `permissions.py`, `services.py`, `views.py`, 
 | Approve / reject a request | No | No | Yes |
 | Finalize | No | Yes (balanced, or with an approved request) | Yes (may bypass directly with a reason) |
 | Reopen | No | No | Yes |
+| Mark "No tithes & offering" | No | Yes (own extension) | Yes |
 | Manage households | No | Yes | Yes |
 | Print | Drafts only | Yes | Yes |
 | My tithes (own history) | Yes | Yes | Yes |
@@ -883,6 +884,25 @@ rejects; if the difference changed meanwhile the request is VOIDED and nothing i
 uses the approval once. Any draft edit that changes the difference voids an open request (`_after_edit`).
 `reopen_report` (admin only) clears every frozen field; entries, offering and breakdown stay.
 
+### No tithes & offering
+
+For a service where nothing was collected. `finalize_no_tithes(actor, sheet)` (`services.py`) finalizes a report
+with `tithers_count` 0 and every amount 0 (difference 0). **No new column or migration:** a finalized report with
+no tithers and a Total of 0 IS a "no tithes" report (`is_no_tithes(report)` reads the frozen values), and
+`finalize_report` still refuses an empty report, so only this button can make one.
+- Who: `permissions.can_mark_no_tithes(actor, sheet)` for a sheet with no report yet (coordinator of the extension,
+  admin, super-admin; never a special member, never an archived sheet); an existing draft goes through `can_finalize`.
+- One transaction: find or create the report (the sheet row is locked first, like `create_report`), lock the report,
+  require a draft, REFUSE when anything is already entered (offering, tithe or bills and coins), freeze zeros, void
+  any stale open bypass request, log `tithes.finalize` with `no_tithes: True` (no amounts). No one-time token: a second
+  press hits "finalized and locked".
+- Screens: a "No tithes" button (with a confirm dialog) on a sheet row that has no report (`report_list.html`) and in the
+  workspace of an empty draft (`can_no_tithes`). Route `sheets/<id>/no-tithes/` (`report_no_tithes`, POST, in `area_urls.py`).
+  The review and print pages say "No tithes and offering" instead of the tithers and bills-and-coins tables; the list
+  shows "No tithes" instead of an amount.
+- An admin reopens it like any finalized report; it becomes an empty draft again. My tithes and the dashboards need no
+  change (no entries; the trend adds 0 for that date).
+
 ### Screens and routes
 
 One set of views serves four places (`superadmin`, `admin_area`, `coordinator_area`, and `tithes` for special
@@ -893,6 +913,7 @@ service re-check.
 - `""` list, `requests/` pending requests, `households/...`, `sheets/<id>/start/`
 - `<id>/` workspace (editable draft) or review, `<id>/review/`, `<id>/print/`
 - JSON helpers `<id>/givers/`, `<id>/givers/prefill/`
+- `sheets/<id>/no-tithes/` (POST): close a sheet as "no tithes and offering"
 - POST actions: `offering/`, `breakdown/`, `entries/add|update|remove/`, `bypass/request|withdraw|decide/`,
   `finalize/`, `reopen/`
 - `mine/` ONLY in `tithes/urls.py` as `tithes:mine` (see My tithes)

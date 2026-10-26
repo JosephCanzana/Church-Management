@@ -2,7 +2,7 @@
 tithes/report_list.html
 Sheets with the state of their tithes report, shared by every role that may open tithes.
 Extends base_app.html and fills: title, page_title, content.
-Context (tithes.views.report_list): form (filters), page (each sheet carries report, can_open, can_start, bypass_open),
+Context (tithes.views.report_list): form (filters), page (each sheet carries report, can_open, can_start, can_no_tithes, can_request_no_tithes, bypass_open),
 total, querystring, show_extension, active_filters, can_households, pending_count.
 Links go through role_url so the same file serves superadmin, admin_area, coordinator_area and tithes.
 -->
@@ -26,7 +26,7 @@ Links go through role_url so the same file serves superadmin, admin_area, coordi
     {% if pending_count %}
     <a class="btn btn-highlight" href="{% role_url 'pending_requests' %}">
       {% include 'includes/icon.html' with name='clipboard-document-check' class='size-5' %}
-      {{ pending_count }} bypass request{{ pending_count|pluralize }} waiting
+      {{ pending_count }} finalize request{{ pending_count|pluralize }} waiting
     </a>
     {% endif %}
     
@@ -71,9 +71,13 @@ Links go through role_url so the same file serves superadmin, admin_area, coordi
       </p>
     </div>
     {% include 'tithes/_report_badge.html' with report=sheet.report locked=sheet.bypass_open %}
-    {% if sheet.bypass_open %}<span class="text-sm text-txt-secondary">Bypass request open</span>{% endif %}
+    {% if sheet.bypass_open %}<span class="text-sm text-txt-secondary">Finalize request open</span>{% endif %}
     {% if sheet.report.status == 'finalized' %}
+    {% if sheet.no_tithes %}
+    <p class="min-w-[7rem] text-right text-base font-medium text-txt-secondary">No tithes</p>
+    {% else %}
     <p class="min-w-[7rem] text-right font-mono text-lg font-semibold tabular-nums text-txt-primary">&#8369;{{ sheet.report.total_amount|floatformat:"2g" }}</p>
+    {% endif %}
     {% endif %}
     {% if sheet.can_open %}
     <a class="btn btn-secondary min-h-[44px]" href="{% role_url 'report_detail' sheet.report.pk %}">Open</a>
@@ -81,6 +85,24 @@ Links go through role_url so the same file serves superadmin, admin_area, coordi
     <form method="post" action="{% role_url 'report_create' sheet.pk %}">
       {% csrf_token %}
       <button type="submit" class="btn btn-primary min-h-[44px]">Start report</button>
+    </form>
+    {% endif %}
+    {% if sheet.can_request_no_tithes %}
+    {# Coordinator: one step. Starts the report and asks an admin; the approval finalizes it. #}
+    <form method="post" action="{% role_url 'report_no_tithes_request' sheet.pk %}"
+          data-confirm="This sends a request to the admins to close this service as no tithes and offering. The report is finalized as soon as an admin approves it."
+          data-confirm-title="Request no tithes and offering?" data-confirm-text="Send request">
+      {% csrf_token %}
+      <button type="submit" class="btn btn-secondary min-h-[44px]">Request no tithes</button>
+    </form>
+    {% endif %}
+    {% if sheet.can_no_tithes %}
+    {# For a service where nothing was collected: finalizes at once with zeros. #}
+    <form method="post" action="{% role_url 'report_no_tithes' sheet.pk %}"
+          data-confirm="Use this only when no tithes and no offering were collected at this service. The report is finalized with zeros, and only an admin can reopen it."
+          data-confirm-title="No tithes and offering?" data-confirm-text="Yes, none collected">
+      {% csrf_token %}
+      <button type="submit" class="btn btn-secondary min-h-[44px]">No tithes</button>
     </form>
     {% endif %}
   </li>

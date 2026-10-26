@@ -16,9 +16,12 @@ Permission table (S = special member, C = coordinator, A = admin or super-admin)
   view / edit the draft                 S drafts | C own extension | A any
                                         a draft is LOCKED for S and C while a bypass request is open
                                         (pending or approved); only A can still edit it
-  request a bypass / withdraw it        C only (own extension, draft) | S no | A no
+  request to finalize / withdraw it     C only (own extension, draft) | S no | A no
+                                        (a coordinator can finalize ONLY with an approved request, balanced or not)
   approve or reject a request           A only (draft)
-  finalize                              C own extension | A any (an admin may also bypass directly) | S no
+  finalize                              C own extension, with an approved request | A any (an admin may also give a reason
+                                        to finalize a mismatch directly) | S no
+  mark "no tithes & offering"           C own extension | A any | S no (same people as finalize; never an archived sheet)
   reopen a finalized report             A only
   manage households                     C own extension | A any | S no
   print or save as PDF                  any report the person can open (a special member: drafts)
@@ -127,18 +130,41 @@ def can_review(actor, report):
     return can_view(actor, report) and _sheet_is_open(report)
 
 
+def needs_finalize_approval(actor):
+    """True when `actor` may finalize only with an APPROVED finalize request (everyone except an admin or super-admin).
+
+    The ONE place that says an admin finalizes on their own and a coordinator never does. The service enforces it
+    on the locked row; the screens use it to decide which button to show.
+    """
+    return actor.role not in _ADMINS
+
+
 def can_finalize(actor, report):
     """May `actor` finalize this draft? The coordinator of the sheet's extension, or an admin or super-admin.
 
     Never a special member. The open-request lock does not apply: a coordinator finalizes with an
-    approved request. Whether the breakdown balances, or an approved request exists, or an admin gave a
-    reason to bypass directly, is checked by the service.
+    approved request (`needs_finalize_approval`). Whether an approved request exists, whether the breakdown
+    balances, or an admin gave a reason to finalize a mismatch directly, is checked by the service.
     """
     if not _signed_in(actor) or report.status != TithesOffering.Status.DRAFT or not _sheet_is_open(report):
         return False
     if actor.role in _ADMINS:
         return True
     return actor.role == Role.COORDINATOR and _own_extension(actor, report.attendance.extension_id)
+
+
+def can_mark_no_tithes(actor, sheet):
+    """May `actor` close a SHEET as "no tithes and offering" (a service where nothing was collected)?
+
+    Same people as `can_finalize`: the coordinator of the sheet's extension, or an admin or super-admin.
+    Never a special member (the seat starts and fills reports; it does not close them) and never an archived
+    sheet. Takes the SHEET because the report may not exist yet; the service uses `can_finalize` once it does.
+    """
+    if not _signed_in(actor) or sheet is None or sheet.status == Attendance.Status.ARCHIVED:
+        return False
+    if actor.role in _ADMINS:
+        return True
+    return actor.role == Role.COORDINATOR and _own_extension(actor, sheet.extension_id)
 
 
 def can_reopen(actor, report):
@@ -152,10 +178,10 @@ def can_reopen(actor, report):
 
 
 def can_request_bypass(actor, report):
-    """May `actor` file a bypass request on this draft, or withdraw one? ONLY the coordinator of the extension.
+    """May `actor` file a finalize request on this draft, or withdraw one? ONLY the coordinator of the extension.
 
-    Not an admin (they decide, or bypass directly) and not a special member. Whether the report really
-    has a difference, or already has an open request, is the service's check.
+    Not an admin (they decide, or finalize directly) and not a special member. Whether the report is empty
+    or already has an open request is the service's check.
     """
     return (
         _signed_in(actor)

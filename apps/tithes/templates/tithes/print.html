@@ -124,6 +124,11 @@ unreliable across browsers). The toolbar and the grey desk are screen-only.
       {% endif %}
     </dl>
 
+    {% if no_tithes %}
+    <p class="note" style="margin-top: 6mm; font-size: 10.5pt; font-style: normal; text-align: center;">
+      No tithes and offering were collected for this service.
+    </p>
+    {% else %}
     <div class="cols">
       <section class="names" aria-label="Tithers">
         <table>
@@ -179,6 +184,7 @@ unreliable across browsers). The toolbar and the grey desk are screen-only.
         {% endif %}
       </section>
     </div>
+    {% endif %}
 
     <section class="sign" aria-label="Signatures">
       <div>Prepared by</div>

@@ -75,11 +75,13 @@ class EntryRemoveForm(forms.Form):
 
 
 class RequestForm(forms.Form):
-    """The coordinator's bypass request: a required message and the one-time token."""
+    """The coordinator's finalize request: a message and the one-time token.
 
-    message = forms.CharField(max_length=MESSAGE_MAX_LENGTH, error_messages={
-        "required": "Write a message to explain the difference.",
-    })
+    The message is optional HERE on purpose: `services.request_bypass` requires it only when the bills and coins
+    do not match the Total (a balanced report gets a default message), so the rule lives in one place.
+    """
+
+    message = forms.CharField(required=False, max_length=MESSAGE_MAX_LENGTH)
     submit_token = forms.CharField(required=False)
 
 

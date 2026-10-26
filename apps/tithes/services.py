@@ -9,7 +9,7 @@ re-checks permission on the LOCKED row, so a stale copy held by a slow second de
 Actions that must not run twice (finalize, reopen, request a bypass, decide a request) take a one-time
 form token and consume it INSIDE their transaction; a refusal rolls the token back with everything else.
 
-AUDIT: only finalize, reopen and the four bypass actions are written to `audit_log`, with ids, counts and
+AUDIT: only finalize (also for "no tithes & offering"), reopen and the four bypass actions are written to `audit_log`, with ids, counts and
 a `balanced` flag. Entries, the offering, the breakdown and households are working data and are NOT audited.
 PRIVACY: no tithe amount, bypass message, decision note or bypass reason ever reaches `audit_log` or
 `notification.data`. The message and the note live only on the request row.
@@ -37,8 +37,8 @@ from .models import (
     TitheBypassRequest, TitheEntry, TitheEntryGiver, TitheHousehold, TitheHouseholdMember, TithesOffering,
 )
 from .permissions import (
-    can_create, can_decide_bypass, can_edit_draft, can_finalize, can_manage_households, can_reopen,
-    can_request_bypass, can_view, has_open_bypass_request, require,
+    can_create, can_decide_bypass, can_edit_draft, can_finalize, can_manage_households, can_mark_no_tithes,
+    can_reopen, can_request_bypass, can_view, has_open_bypass_request, needs_finalize_approval, require,
 )
 
 #: Bills and coins on the paper form, largest first.
@@ -51,6 +51,9 @@ MESSAGE_MAX_LENGTH = 500
 NOTE_MAX_LENGTH = 500
 REASON_MAX_LENGTH = 500
 NAME_MAX_LENGTH = 150
+#: Stored as the message of a finalize request that needs no explanation (the numbers balance).
+DEFAULT_BALANCED_MESSAGE = "The numbers are balanced. Ready to finalize."
+DEFAULT_EMPTY_MESSAGE = "No tithes and offering were collected at this service."
 
 #: Only these two person types can give a tithe (a guest is promoted first).
 GIVER_TYPES = (PersonType.MEMBER_ACCOUNT, PersonType.MEMBER_RECORD)
@@ -123,6 +126,19 @@ def build_totals(report):
     return Totals(
         tithers=found["n"], tithes=tithes, offering=offering, total=total,
         breakdown_total=breakdown_total, difference=breakdown_total - total,
+    )
+
+
+def is_no_tithes(report):
+    """True for a FINALIZED report that recorded nothing: no tithers and a Total of 0 ("no tithes & offering").
+
+    Needs no extra column: `finalize_no_tithes` freezes exactly these numbers, and `finalize_report` refuses
+    an empty report, so a finalized report with a Total of 0 can only come from that button. Reads the frozen
+    values (never a recount), so it is safe on a list page.
+    """
+    return (
+        report.status == TithesOffering.Status.FINALIZED
+        and not report.total_amount and not report.tithers_count
     )
 
 
@@ -607,9 +623,18 @@ def _mismatch_message(report, totals, actor):
     )
     if report.bypass_requests.filter(status=TitheBypassRequest.Status.PENDING).exists():
         return f"{how} A bypass request on this report is still waiting for a decision."
-    if actor.role in ADMIN_ROLES:
-        return f"{how} Fix the numbers, or give a reason to finalize anyway."
-    return f"{how} Fix the numbers, or send a bypass request to an admin."
+    return f"{how} Fix the numbers, or give a reason to finalize anyway."
+
+
+def _approval_message(report, totals):
+    """The refusal for a coordinator who tries to finalize without an approved request."""
+    if report.bypass_requests.filter(status=TitheBypassRequest.Status.PENDING).exists():
+        return "Your finalize request is still waiting for an admin's decision."
+    text = "An admin must approve before you can finalize. Send a finalize request first."
+    if not totals.balanced:
+        gap = f"\u20b1{abs(totals.difference):,.2f}"
+        text = f"The bills and coins are {gap} {'short of' if totals.difference < 0 else 'over'} the Total. {text}"
+    return text
 
 
 def finalize_report(actor, report_id, *, token, bypass_reason="", request=None):
@@ -619,11 +644,11 @@ def finalize_report(actor, report_id, *, token, bypass_reason="", request=None):
     this order, so a refusal leaves the report untouched (and gives the token back):
       1. consume the form's one-time `token` (a replay returns `duplicate=True` and does nothing);
       2. lock the report row; require a draft on a sheet that is not archived, and `can_finalize`;
-      3. refuse an empty report (Total and breakdown both 0), then `build_totals`;
-      4. when the difference is not 0, one of: (a) an APPROVED request whose stored difference equals the live
-         one (it becomes `used`: an approval works once), or (b) the actor is an admin or super-admin and gives a
-         non-empty `bypass_reason` (stored with `bypassed_by`); otherwise refuse, saying how much it is short or
-         over. A reason typed by anyone else, or on a balanced report, is ignored;
+      3. refuse an empty report (Total and breakdown both 0; that is "No tithes & offering"), then `build_totals`;
+      4. approval: a coordinator ALWAYS needs an APPROVED finalize request whose stored difference equals the live
+         one (balanced or not; it becomes `used`: an approval works once). An admin or super-admin needs nothing
+         when the report balances; for a mismatch they need that approval OR a non-empty `bypass_reason` (stored
+         with `bypassed_by`). Otherwise refuse. A reason typed by anyone else, or on a balanced report, is ignored;
       5. write the frozen numbers, `finalized_by`, `finalized_at` and the status; any other open request dies;
       6. log `tithes.finalize` with the tither count and a `balanced` flag only (no amounts, no reason).
     """
@@ -637,19 +662,24 @@ def finalize_report(actor, report_id, *, token, bypass_reason="", request=None):
 
         totals = build_totals(locked)
         if totals.is_empty:
-            raise ServiceError("There is nothing to finalize yet. Enter the offering and the tithes first.")
+            raise ServiceError(
+                "There is nothing to finalize yet. Enter the offering and the tithes first, "
+                "or use \"No tithes & offering\" if nothing was collected."
+            )
         if totals.total > MAX_MONEY:
             raise ServiceError("The Total is too large to save.")
 
         approved, direct_reason = None, ""
-        if not totals.balanced:
+        if needs_finalize_approval(actor) or not totals.balanced:
             approved = (
                 locked.bypass_requests.select_for_update()
                 .filter(status=TitheBypassRequest.Status.APPROVED, difference=totals.difference).first()
             )
             if approved is None:
+                if needs_finalize_approval(actor):
+                    raise ServiceError(_approval_message(locked, totals))
                 reason = (bypass_reason or "").strip()
-                if actor.role not in ADMIN_ROLES or not reason:
+                if not reason:
                     raise ServiceError(_mismatch_message(locked, totals, actor))
                 if len(reason) > REASON_MAX_LENGTH:
                     raise ServiceError(f"The reason can have at most {REASON_MAX_LENGTH} characters.")
@@ -691,6 +721,98 @@ def finalize_report(actor, report_id, *, token, bypass_reason="", request=None):
             },
         )
     return FinalizeResult(report=locked)
+
+
+def _freeze_no_tithes(locked, actor, request, *, approved=None):
+    """Write the frozen zeros of a "no tithes & offering" report. Call inside `transaction.atomic()` on the LOCKED draft.
+
+    Shared by `finalize_no_tithes` (an admin presses the button, or a coordinator uses an approved request) and by
+    `decide_bypass` (an admin approves a no-tithes request, which finalizes at once). The caller has already checked
+    permission, that the report is an empty draft, and any approval. `approved` is the request being used: it becomes
+    `used`. Any other open request is voided. Logs `tithes.finalize` with `no_tithes: True` (no amounts).
+    """
+    zero = Decimal(0).quantize(CENT)
+    locked.offering_amount = zero
+    locked.tithers_count = 0
+    locked.tithes_total = locked.total_amount = locked.breakdown_total = locked.difference = zero
+    locked.finalized_by = actor
+    locked.finalized_at = timezone.now()
+    locked.status = TithesOffering.Status.FINALIZED
+    locked.save(update_fields=[
+        "offering_amount", "tithers_count", "tithes_total", "total_amount", "breakdown_total",
+        "difference", "finalized_by", "finalized_at", "status",
+    ])
+    if approved is not None:
+        approved.status = TitheBypassRequest.Status.USED
+        _save(approved, "status")
+    for leftover in locked.bypass_requests.select_for_update().filter(status__in=TitheBypassRequest.OPEN_STATUSES):
+        leftover.status = TitheBypassRequest.Status.VOIDED
+        _save(leftover, "status")
+    _log(
+        FINALIZE_ACTION, actor, request, locked,
+        before={"status": TithesOffering.Status.DRAFT},
+        after={"status": TithesOffering.Status.FINALIZED, "tithers_count": 0, "balanced": True, "no_tithes": True},
+    )
+
+
+def finalize_no_tithes(actor, sheet, *, request=None):
+    """Close a service where nothing was collected: a finalized report with no tithers and a Total of 0.
+
+    `sheet` is the attendance sheet (or its id). Works whether or not the sheet already has a report: when
+    there is none it is created here, in the same transaction, so a refusal leaves no half-made report.
+    An admin or super-admin closes a sheet on their own. A coordinator (`needs_finalize_approval`) needs an APPROVED
+    finalize request on an empty report, so they start the report first and ask; a sheet with no report cannot be
+    closed by a coordinator in one step. Never a special member and never on an archived sheet.
+
+    ONE transaction: (1) find or create the report; (2) lock the report row and its sheet; require a draft;
+    (3) refuse when anything was already entered (an offering, a tithe or bills and coins), so the button can
+    never hide real money; (3b) a coordinator needs the approved request, which becomes `used`; (4) freeze zeros
+    (tithers 0, every amount 0, difference 0), `finalized_by` and `finalized_at`; void any stale open request; (5) log `tithes.finalize` with `no_tithes: True` (no amounts).
+    A second press finds a finalized report and gets the usual "finalized and locked" refusal, so it needs no
+    one-time token. An admin can reopen the report like any other finalized report. Returns the report.
+    """
+    sheet_id = _pk(sheet)
+    with transaction.atomic():
+        report = TithesOffering.objects.filter(attendance_id=sheet_id).first()
+        if report is None:
+            # Same order as `create_report`: lock the sheet, re-check, then create.
+            locked_sheet = Attendance.objects.select_for_update().filter(pk=sheet_id).first()
+            if locked_sheet is None:
+                raise ServiceError("This attendance sheet no longer exists.")
+            if locked_sheet.status == Attendance.Status.ARCHIVED:
+                raise ServiceError("This sheet is archived, so it cannot get a tithes report.")
+            require(can_mark_no_tithes, actor, locked_sheet)
+            if needs_finalize_approval(actor):
+                raise ServiceError(
+                    "Start the report first, then send a finalize request. "
+                    "An admin must approve before it can be closed as no tithes and offering."
+                )
+            report = (
+                TithesOffering.objects.filter(attendance=locked_sheet).first()
+                or TithesOffering.objects.create(attendance=locked_sheet, created_by=actor)
+            )
+        locked = _lock_report(report.pk)
+        require(can_view, actor, locked)
+        _refuse_unless_draft(locked)
+        require(can_finalize, actor, locked)
+
+        totals = build_totals(locked)
+        if not totals.is_empty:
+            raise ServiceError(
+                "This report already has an offering, tithes or bills and coins. "
+                "Remove them first, or finalize the report normally."
+            )
+        approved = None
+        if needs_finalize_approval(actor):
+            approved = (
+                locked.bypass_requests.select_for_update()
+                .filter(status=TitheBypassRequest.Status.APPROVED, difference=totals.difference).first()
+            )
+            if approved is None:
+                raise ServiceError(_approval_message(locked, totals))
+
+        _freeze_no_tithes(locked, actor, request, approved=approved)
+    return locked
 
 
 @dataclass
@@ -754,11 +876,13 @@ class BypassDecisionResult:
 
     `voided` is True when the difference had changed since the request was filed: the request was closed as
     voided instead of decided (a result, not an error, so the voiding is kept). `duplicate` is a replay.
+    `finalized` is True when the approval also finalized the report (a "no tithes" request on an empty report).
     """
 
     bypass_request: TitheBypassRequest = None
     duplicate: bool = False
     voided: bool = False
+    finalized: bool = False
 
 
 def _lock_request(request_id):
@@ -767,11 +891,11 @@ def _lock_request(request_id):
         TitheBypassRequest.objects.filter(pk=request_id).values_list("tithes_offering_id", flat=True).first()
     )
     if report_id is None:
-        raise ServiceError("That bypass request no longer exists.")
+        raise ServiceError("That finalize request no longer exists.")
     report = _lock_report(report_id)
     bypass_request = TitheBypassRequest.objects.select_for_update().filter(pk=request_id).first()
     if bypass_request is None:
-        raise ServiceError("That bypass request no longer exists.")
+        raise ServiceError("That finalize request no longer exists.")
     return report, bypass_request
 
 
@@ -785,13 +909,54 @@ def _tell(user_ids, kind, actor, report, bypass_request, push):
         )
 
 
-def request_bypass(actor, report_id, *, message, token, request=None):
-    """The coordinator asks an admin to let a mismatched report be finalized. Returns a `BypassRequestResult`.
+def _file_request(locked, actor, message, request):
+    """Create a finalize request on a LOCKED draft and tell the admins. Call inside `transaction.atomic()`.
 
-    Coordinator of the sheet's extension only (`can_request_bypass`), on a draft whose difference is not 0,
-    with no open request. The message is required and at most 500 characters; it is stored on the request row
-    only. The request is tied to the difference as it is now. Admins and super-admins who can sign in get a
-    generic notice with a link. Logs `tithes.bypass_request` with ids only.
+    The caller has already checked permission (`can_request_bypass`) and that the report is an open draft. Here: the
+    message is required only for a mismatch (a balanced report, or an empty one, gets a default text when blank), at
+    most 500 characters; one open request at a time; the request is tied to the difference as it is now (0 =
+    balanced). Logs `tithes.bypass_request` with ids only. The admins' notice says THAT a request waits, never what.
+    """
+    totals = build_totals(locked)
+    message = (message or "").strip()
+    if not message:
+        if not totals.balanced:
+            raise ServiceError("Write a message to explain the difference.")
+        message = DEFAULT_EMPTY_MESSAGE if totals.is_empty else DEFAULT_BALANCED_MESSAGE
+    if len(message) > MESSAGE_MAX_LENGTH:
+        raise ServiceError(f"The message can have at most {MESSAGE_MAX_LENGTH} characters.")
+    if has_open_bypass_request(locked):
+        raise ServiceError("This report already has an open finalize request.")
+
+    bypass_request = TitheBypassRequest.objects.create(
+        tithes_offering=locked, requested_by=actor, message=message, difference=totals.difference,
+    )
+    _log(
+        REQUEST_ACTION, actor, request, locked,
+        after={"bypass_request_id": bypass_request.pk, "status": bypass_request.status},
+    )
+    admins = [u.pk for u in User.objects.filter(role__in=ADMIN_ROLES).exclude(pk=actor.pk) if u.can_sign_in]
+    _tell(
+        admins, NOTIFY_REQUESTED, actor, locked, bypass_request,
+        {
+            "title": "A tithes report needs a decision",
+            "body": (
+                "A no tithes and offering request is waiting for review." if totals.is_empty
+                else "A finalize request is waiting for review."
+            ),
+            "url": _report_url(locked),
+        },
+    )
+    return bypass_request
+
+
+def request_bypass(actor, report_id, *, message, token, request=None):
+    """The coordinator asks an admin to approve finalizing this report. Returns a `BypassRequestResult`.
+
+    (Called a "finalize request" on screen; "bypass" is the historical name of the table and the audit actions.)
+    Coordinator of the sheet's extension only (`can_request_bypass`), on a draft with no open request, whether the
+    numbers balance or not; see `_file_request` for the message and difference rules. When the report is EMPTY this
+    is a "no tithes" request: the admin's approval finalizes it at once (`decide_bypass`).
     """
     with transaction.atomic():
         if not consume_submission_token(token):
@@ -803,37 +968,43 @@ def request_bypass(actor, report_id, *, message, token, request=None):
         require(can_view, actor, locked)
         _refuse_unless_draft(locked)
         require(can_request_bypass, actor, locked)
-
-        message = (message or "").strip()
-        if not message:
-            raise ServiceError("Write a message to explain the difference.")
-        if len(message) > MESSAGE_MAX_LENGTH:
-            raise ServiceError(f"The message can have at most {MESSAGE_MAX_LENGTH} characters.")
-        totals = build_totals(locked)
-        if totals.balanced:
-            raise ServiceError("The bills and coins match the Total, so there is nothing to bypass.")
-        if has_open_bypass_request(locked):
-            raise ServiceError("This report already has an open bypass request.")
-
-        bypass_request = TitheBypassRequest.objects.create(
-            tithes_offering=locked, requested_by=actor, message=message, difference=totals.difference,
-        )
-        _log(
-            REQUEST_ACTION, actor, request, locked,
-            after={"bypass_request_id": bypass_request.pk, "status": bypass_request.status},
-        )
-        admins = [
-            u.pk for u in User.objects.filter(role__in=ADMIN_ROLES).exclude(pk=actor.pk) if u.can_sign_in
-        ]
-        _tell(
-            admins, NOTIFY_REQUESTED, actor, locked, bypass_request,
-            {
-                "title": "A tithes report needs a decision",
-                "body": "A bypass request is waiting for review.",
-                "url": _report_url(locked),
-            },
-        )
+        bypass_request = _file_request(locked, actor, message, request)
     return BypassRequestResult(bypass_request=bypass_request)
+
+
+def request_no_tithes(actor, sheet, *, request=None):
+    """The coordinator asks, in ONE step, to close a sheet as "no tithes and offering". Returns the request.
+
+    Works whether or not the sheet already has a report: when there is none it is created here, in the same
+    transaction (so a refusal leaves no half-made report). Coordinator of the sheet's extension only
+    (`can_create` and `can_request_bypass`); an admin uses `finalize_no_tithes` instead. Refused when anything is
+    already entered on the report (an offering, a tithe or bills and coins). The admin's approval finalizes the report
+    at once. No one-time token: a second press finds the open request and is refused with a friendly message.
+    """
+    sheet_id = _pk(sheet)
+    with transaction.atomic():
+        report = TithesOffering.objects.filter(attendance_id=sheet_id).first()
+        if report is None:
+            locked_sheet = Attendance.objects.select_for_update().filter(pk=sheet_id).first()
+            if locked_sheet is None:
+                raise ServiceError("This attendance sheet no longer exists.")
+            if locked_sheet.status == Attendance.Status.ARCHIVED:
+                raise ServiceError("This sheet is archived, so it cannot get a tithes report.")
+            require(can_create, actor, locked_sheet)
+            report = (
+                TithesOffering.objects.filter(attendance=locked_sheet).first()
+                or TithesOffering.objects.create(attendance=locked_sheet, created_by=actor)
+            )
+        locked = _lock_report(report.pk)
+        require(can_view, actor, locked)
+        _refuse_unless_draft(locked)
+        require(can_request_bypass, actor, locked)
+        if not build_totals(locked).is_empty:
+            raise ServiceError(
+                "This report already has an offering, tithes or bills and coins, so it is not a no tithes report."
+            )
+        bypass_request = _file_request(locked, actor, "", request)
+    return bypass_request
 
 
 def withdraw_bypass(actor, request_id, *, request=None):
@@ -847,7 +1018,7 @@ def withdraw_bypass(actor, request_id, *, request=None):
         require(can_view, actor, report)
         _refuse_unless_draft(report)
         if bypass_request.status not in TitheBypassRequest.OPEN_STATUSES:
-            raise ServiceError("This bypass request is no longer open.")
+            raise ServiceError("This finalize request is no longer open.")
         require(can_request_bypass, actor, report)
         bypass_request.status = TitheBypassRequest.Status.WITHDRAWN
         _save(bypass_request, "status")
@@ -866,6 +1037,11 @@ def decide_bypass(actor, request_id, *, approve, note, token, request=None):
     says `voided=True` (nothing is raised, or the voiding would roll back). The optional `note` (at most 500
     characters) lives only on the request row. Logs `tithes.bypass_approve` or `tithes.bypass_reject` with ids
     only, and tells the requester (never the actor) with a generic notice.
+
+    APPROVING a request on an EMPTY report (a "no tithes" request) finalizes the report in the same transaction:
+    the report is frozen with zeros (`_freeze_no_tithes`, `finalized_by` is the admin who approved), the request
+    becomes `used`, and `finalized=True` is returned. Any other approved request waits for the coordinator to press
+    Finalize.
     """
     with transaction.atomic():
         if not consume_submission_token(token):
@@ -877,7 +1053,7 @@ def decide_bypass(actor, request_id, *, approve, note, token, request=None):
         _refuse_unless_draft(report)
         require(can_decide_bypass, actor, report)
         if bypass_request.status != TitheBypassRequest.Status.PENDING:
-            raise ServiceError("This bypass request has already been decided or is no longer open.")
+            raise ServiceError("This finalize request has already been decided or is no longer open.")
         note = (note or "").strip()
         if len(note) > NOTE_MAX_LENGTH:
             raise ServiceError(f"The note can have at most {NOTE_MAX_LENGTH} characters.")
@@ -897,17 +1073,20 @@ def decide_bypass(actor, request_id, *, approve, note, token, request=None):
             APPROVE_ACTION if approved else REJECT_ACTION, actor, request, report,
             after={"bypass_request_id": bypass_request.pk, "status": bypass_request.status},
         )
+        auto_finalized = approved and build_totals(report).is_empty
+        if auto_finalized:
+            _freeze_no_tithes(report, actor, request, approved=bypass_request)
         requester = User.objects.filter(pk=bypass_request.requested_by_id).first()
         if requester is not None and requester.can_sign_in and requester.pk != actor.pk:
             _tell(
                 [requester.pk], NOTIFY_APPROVED if approved else NOTIFY_REJECTED, actor, report, bypass_request,
                 {
-                    "title": "Your bypass request was decided",
-                    "body": "Open the report to see the decision.",
+                    "title": "Your no tithes request was approved" if auto_finalized else "Your finalize request was decided",
+                    "body": "The report is finalized." if auto_finalized else "Open the report to see the decision.",
                     "url": _report_url(report),
                 },
             )
-    return BypassDecisionResult(bypass_request=bypass_request)
+    return BypassDecisionResult(bypass_request=bypass_request, finalized=bool(auto_finalized))
 
 
 # ============================================================================ my tithes
