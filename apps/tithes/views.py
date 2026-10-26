@@ -18,6 +18,8 @@ PRIVACY: nothing here writes an amount, a bypass message or a decision note anyw
 """
 from functools import wraps
 
+from django.utils import timezone
+from apps.core import weeks as week_tools
 from django.contrib import messages
 from django.contrib.auth.decorators import login_required
 from django.core.exceptions import ObjectDoesNotExist, PermissionDenied
@@ -51,7 +53,7 @@ HOUSEHOLD_TEMPLATE = "tithes/household_list.html"
 PENDING_TEMPLATE = "tithes/pending_requests.html"
 PRINT_TEMPLATE = "tithes/print.html"
 MINE_TEMPLATE = "tithes/mine.html"
-MINE_PAGE_SIZE = 25
+MINE_PAGE_SIZE = 6
 
 ADMIN_ROLES = (Role.SUPER_ADMIN, Role.ADMIN)
 
@@ -848,5 +850,8 @@ def my_tithes(request):
     shared envelope is shown, never split.
     """
     entries = services.member_tithe_history(request.user)
-    page = Paginator(entries, MINE_PAGE_SIZE).get_page(request.GET.get("page"))
-    return render(request, MINE_TEMPLATE, {"page": page, "total": len(entries), "querystring": ""})
+    view = week_tools.month_view(
+        entries, request.GET.get("month"), timezone.localdate(), amount_key="amount",
+    )
+    page = Paginator(view["weeks"], MINE_PAGE_SIZE).get_page(request.GET.get("page"))
+    return render(request, MINE_TEMPLATE, {"page": page, **view})

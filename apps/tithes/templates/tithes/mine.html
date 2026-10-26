@@ -1,49 +1,69 @@
 <!--
 tithes/mine.html
-"My tithes": the signed-in person's own giving history (finalized reports only), newest first, 25 per page.
-Blocks filled: title, content. Context expected (tithes.views.my_tithes): page, total, querystring.
-Each page.object_list entry: report_id, entry_id, date, label, extension, amount, shared_with (a list of other
-names on the same envelope), role ("giver" or "co_giver"). The amount is the FULL envelope, never split.
+"My tithes": the signed-in person's own giving history (finalized reports only). A month filter drives both the month
+boxes and the list; the list is grouped by week (Sunday to Friday), newest week first, and with no filter it shows ALL
+history (paginated). Extends base_app.html and fills: title, page_title, content.
+Context (tithes.views.my_tithes, from apps.core.weeks.month_view): page, total, has_any, month, selected, months, boxes,
+querystring. Each entry in page.object_list is a week {start, end, entries, count, amount}; each week entry is
+{report_id, entry_id, date, label, extension, amount, shared_with (a list of other names on the same envelope),
+role ("giver" or "co_giver")}. The amount is the FULL envelope, never split, so a week total adds full envelopes.
 Privacy: only the person's own envelopes; other people appear only as names printed on a shared envelope.
 -->
-{% extends "base_app.html" %}{% load static %}
+{% extends 'base_app.html' %}
+
 {% block title %}My tithes{% endblock %}
+{% block page_title %}My tithes{% endblock %}
+
 {% block content %}
-<section class="stack">
-  <header>
-    <h1 class="text-xl font-semibold">My tithes</h1>
-    <p class="text-sm opacity-80">
-      Tithes you gave, or shared with someone, in finalized reports. A shared envelope shows its full amount.
-    </p>
-  </header>
+<div class="mb-4">
+  <h2 class="text-xl font-semibold tracking-tight text-txt-primary">
+    Tithes I gave <span class="text-base font-normal text-txt-secondary">({{ total }}{% if month %} in {{ month|date:"F Y" }}{% endif %})</span>
+  </h2>
+  <p class="mt-1 text-sm text-txt-secondary">
+    Tithes you gave, or shared with someone, in finalized reports. A shared envelope shows its full amount. Weeks run Sunday to Friday.
+  </p>
+</div>
 
-  {% if page.object_list %}
-  <ul class="stack" role="list">
-    {% for entry in page.object_list %}
-    <li class="card">
-      <div class="flex items-baseline justify-between gap-3">
-        <div>
-          <p class="font-medium">{{ entry.date|date:"F j, Y" }}</p>
-          <p class="text-sm opacity-80">{{ entry.label }}, {{ entry.extension }}</p>
+{% if has_any %}
+{% include 'includes/month_filter.html' %}
+{% include 'includes/month_boxes.html' with boxes=boxes money=1 %}
+{% endif %}
+
+{% if page.object_list %}
+<div class="mt-6 space-y-6">
+  {% for week in page.object_list %}
+  <section aria-labelledby="week-{{ week.start|date:'Ymd' }}">
+    <div class="mb-2 flex items-baseline justify-between gap-3 px-1">
+      <h3 id="week-{{ week.start|date:'Ymd' }}" class="text-sm font-semibold text-txt-primary">
+        {{ week.start|date:"M j" }} &ndash; {{ week.end|date:"M j, Y" }}
+      </h3>
+      <p class="font-mono text-sm font-semibold text-txt-primary">&#8369;{{ week.amount|floatformat:"2g" }}</p>
+    </div>
+    <ul class="divide-y divide-border overflow-hidden rounded-xl border border-border bg-surface">
+      {% for entry in week.entries %}
+      <li class="flex min-h-[44px] flex-wrap items-center gap-x-4 gap-y-1 px-4 py-3">
+        <div class="min-w-0 flex-1">
+          <p class="truncate text-base font-semibold text-txt-primary">{{ entry.label }}</p>
+          <p class="text-sm text-txt-secondary">{{ entry.date|date:"l, j F" }} &middot; {{ entry.extension }}</p>
+          {% if entry.shared_with %}
+          <p class="text-sm text-txt-secondary">Shared with {{ entry.shared_with|join:", " }}</p>
+          {% endif %}
         </div>
-        <p class="font-mono font-semibold">&#8369;{{ entry.amount|floatformat:"2g" }}</p>
-      </div>
-      {% if entry.shared_with %}
-      <p class="text-sm opacity-80">Shared with {{ entry.shared_with|join:", " }}</p>
-      {% endif %}
-    </li>
-    {% endfor %}
-  </ul>
-
-  {% if page.has_other_pages %}
-  <nav class="flex justify-between gap-3" aria-label="Pages">
-    {% if page.has_previous %}<a href="?page={{ page.previous_page_number }}">Newer</a>{% else %}<span></span>{% endif %}
-    <span class="text-sm">Page {{ page.number }} of {{ page.paginator.num_pages }}</span>
-    {% if page.has_next %}<a href="?page={{ page.next_page_number }}">Older</a>{% else %}<span></span>{% endif %}
-  </nav>
-  {% endif %}
-  {% else %}
-  <p class="card">Nothing here yet. Your tithes appear after a report is finalized.</p>
-  {% endif %}
-</section>
+        <p class="font-mono text-base font-semibold text-txt-primary">&#8369;{{ entry.amount|floatformat:"2g" }}</p>
+      </li>
+      {% endfor %}
+    </ul>
+  </section>
+  {% endfor %}
+</div>
+{% include 'includes/pagination.html' with page=page querystring=querystring %}
+{% elif has_any %}
+<div class="card mt-6 text-center">
+  <p class="text-base text-txt-primary">No tithes recorded in {{ month|date:"F Y" }}.</p>
+</div>
+{% else %}
+<div class="card text-center">
+  <p class="text-base text-txt-primary">Nothing here yet. Your tithes appear after a report is finalized.</p>
+</div>
+{% endif %}
 {% endblock %}

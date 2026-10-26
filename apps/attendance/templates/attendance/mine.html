@@ -1,8 +1,10 @@
 <!--
 attendance/mine.html
-"My attendance": the signed-in person's own past services, newest first. Identical for all four roles.
-Extends base_app.html and fills: title, page_title, content.
-Context (attendance.views.my_attendance): page, total, querystring. Each entry in page.object_list is
+"My attendance": the signed-in person's own past services. A month filter drives both the month boxes and the list; the
+list is grouped by week (Sunday to Friday), newest week first, and with no filter it shows ALL history (paginated).
+Identical for all four roles. Extends base_app.html and fills: title, page_title, content.
+Context (attendance.views.my_attendance, from apps.core.weeks.month_view): page, total, has_any, month, selected, months,
+boxes, querystring. Each entry in page.object_list is a week {start, end, entries, count}; each week entry is
 {sheet_id, date, label, extension, kind} where kind is "present" or "first_visit".
 Shows nothing about anyone else: no names, counts, drafts, birth dates or phone numbers.
 -->
@@ -14,28 +16,49 @@ Shows nothing about anyone else: no names, counts, drafts, birth dates or phone 
 {% block content %}
 <div class="mb-4">
   <h2 class="text-xl font-semibold tracking-tight text-txt-primary">
-    Services I attended <span class="text-base font-normal text-txt-secondary">({{ total }})</span>
+    Services I attended <span class="text-base font-normal text-txt-secondary">({{ total }}{% if month %} in {{ month|date:"F Y" }}{% endif %})</span>
   </h2>
-  <p class="mt-1 text-sm text-txt-secondary">Only services whose attendance sheet has been uploaded are listed.</p>
+  <p class="mt-1 text-sm text-txt-secondary">Only services whose attendance sheet has been uploaded are listed. Weeks run Sunday to Friday.</p>
 </div>
 
+{% if has_any %}
+{% include 'includes/month_filter.html' %}
+{% include 'includes/month_boxes.html' with boxes=boxes %}
+{% endif %}
+
 {% if page.object_list %}
-<ul class="divide-y divide-border overflow-hidden rounded-xl border border-border bg-surface">
-  {% for entry in page.object_list %}
-  <li class="flex min-h-[44px] flex-wrap items-center gap-x-4 gap-y-1 px-4 py-3">
-    <div class="min-w-0 flex-1">
-      <p class="truncate text-base font-semibold text-txt-primary">{{ entry.label }}</p>
-      <p class="text-sm text-txt-secondary">{{ entry.date|date:"l, j F Y" }} &middot; {{ entry.extension }}</p>
+<div class="mt-6 space-y-6">
+  {% for week in page.object_list %}
+  <section aria-labelledby="week-{{ week.start|date:'Ymd' }}">
+    <div class="mb-2 flex items-baseline justify-between gap-3 px-1">
+      <h3 id="week-{{ week.start|date:'Ymd' }}" class="text-sm font-semibold text-txt-primary">
+        {{ week.start|date:"M j" }} &ndash; {{ week.end|date:"M j, Y" }}
+      </h3>
+      <p class="text-sm text-txt-secondary">{{ week.count }} service{{ week.count|pluralize }}</p>
     </div>
-    {% if entry.kind == 'first_visit' %}
-    <span class="rounded-full border border-accent px-2.5 py-0.5 text-sm text-txt-primary">First visit</span>
-    {% else %}
-    <span class="rounded-full border border-success px-2.5 py-0.5 text-sm text-success">Present</span>
-    {% endif %}
-  </li>
+    <ul class="divide-y divide-border overflow-hidden rounded-xl border border-border bg-surface">
+      {% for entry in week.entries %}
+      <li class="flex min-h-[44px] flex-wrap items-center gap-x-4 gap-y-1 px-4 py-3">
+        <div class="min-w-0 flex-1">
+          <p class="truncate text-base font-semibold text-txt-primary">{{ entry.label }}</p>
+          <p class="text-sm text-txt-secondary">{{ entry.date|date:"l, j F" }} &middot; {{ entry.extension }}</p>
+        </div>
+        {% if entry.kind == 'first_visit' %}
+        <span class="rounded-full border border-accent px-2.5 py-0.5 text-sm text-txt-primary">First visit</span>
+        {% else %}
+        <span class="rounded-full border border-success px-2.5 py-0.5 text-sm text-success">Present</span>
+        {% endif %}
+      </li>
+      {% endfor %}
+    </ul>
+  </section>
   {% endfor %}
-</ul>
+</div>
 {% include 'includes/pagination.html' with page=page querystring=querystring %}
+{% elif has_any %}
+<div class="card mt-6 text-center">
+  <p class="text-base text-txt-primary">No attendance recorded in {{ month|date:"F Y" }}.</p>
+</div>
 {% else %}
 <div class="card text-center">
   <p class="text-base text-txt-primary">No attendance has been recorded for you yet.</p>

@@ -1,0 +1,46 @@
+{% comment %}
+includes/month_boxes.html
+One month as boxes, one box per day, a row per week (Sunday to Friday; Saturday only when the month has a Saturday row).
+No JavaScript, no library. Colors are tokens only. Every box has a title and aria-label, and the legend is written in words.
+Usage: {% include 'includes/month_boxes.html' with boxes=boxes %}   (add money=1 for tithes, to print pesos)
+Context: boxes from apps.core.weeks.month_boxes: month, headers, columns, rows, count, amount. A row cell is None
+(a day outside the month) or {date, count, amount, first_visit}.
+{% endcomment %}
+<div class="card">
+  <div class="flex flex-wrap items-baseline justify-between gap-2">
+    <h2 class="text-base font-semibold text-txt-primary">{{ boxes.month|date:"F Y" }}</h2>
+    <p class="text-sm font-semibold text-txt-primary">
+      {% if money %}&#8369;{{ boxes.amount|floatformat:"2g" }} given{% else %}{{ boxes.count }} service{{ boxes.count|pluralize }} attended{% endif %}
+    </p>
+  </div>
+
+  <div class="mt-4 grid gap-1.5 sm:gap-2" style="grid-template-columns: repeat({{ boxes.columns }}, minmax(0, 1fr));">
+    {% for header in boxes.headers %}
+    <p class="text-center text-xs font-medium text-txt-secondary">{{ header }}</p>
+    {% endfor %}
+    {% for row in boxes.rows %}
+    {% for cell in row %}
+    {% if cell %}
+    <div class="flex aspect-square min-w-0 flex-col justify-between overflow-hidden rounded-lg p-1 sm:p-1.5
+      {% if cell.count %}{% if cell.first_visit %}bg-highlight text-on-highlight{% else %}bg-accent text-on-accent{% endif %}{% else %}border border-border bg-surface text-txt-muted{% endif %}"
+         title="{{ cell.date|date:'l, F j' }}: {% if cell.count %}{% if money %}gave &#8369;{{ cell.amount|floatformat:'2g' }}{% else %}attended {{ cell.count }} service{{ cell.count|pluralize }}{% if cell.first_visit %} (first visit){% endif %}{% endif %}{% else %}nothing recorded{% endif %}"
+         aria-label="{{ cell.date|date:'l, F j' }}: {% if cell.count %}{% if money %}gave pesos {{ cell.amount }}{% else %}attended {{ cell.count }} service{{ cell.count|pluralize }}{% if cell.first_visit %}, first visit{% endif %}{% endif %}{% else %}nothing recorded{% endif %}">
+      <span class="text-[11px] leading-none">{{ cell.date.day }}</span>
+      {% if cell.count %}
+      <span class="truncate text-[11px] font-semibold leading-none">
+        {% if money %}&#8369;{{ cell.amount|floatformat:"0g" }}{% elif cell.count > 1 %}&times;{{ cell.count }}{% else %}&#10003;{% endif %}
+      </span>
+      {% endif %}
+    </div>
+    {% else %}
+    <div aria-hidden="true"></div>
+    {% endif %}
+    {% endfor %}
+    {% endfor %}
+  </div>
+
+  <p class="mt-4 text-xs text-txt-secondary">
+    {% if money %}Filled box: you gave tithes that day.{% else %}Blue box: you attended. Gold box: your first visit.{% endif %}
+    Empty box: nothing recorded.
+  </p>
+</div>

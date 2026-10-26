@@ -23,6 +23,8 @@ back to the sheet, which then shows the truth (a locked sheet opens on the revie
 """
 from functools import wraps
 
+from django.utils import timezone
+from apps.core import weeks as week_tools
 from django.contrib import messages
 from django.contrib.auth.decorators import login_required
 from django.core.exceptions import PermissionDenied
@@ -49,7 +51,7 @@ CONVERT_RESULT_TEMPLATE = "attendance/convert_result.html"
 MINE_TEMPLATE = "attendance/mine.html"
 MINE_PAGE_SIZE = 25
 
-PAGE_SIZE = 25
+MINE_PAGE_SIZE = 6
 
 LIST_TEMPLATE = "attendance/sheet_list.html"
 FORM_TEMPLATE = "attendance/sheet_form.html"
@@ -964,5 +966,6 @@ def my_attendance(request):
     sign in at all. Uploaded sheets only (`services.member_attendance_history`).
     """
     entries = services.member_attendance_history(request.user)
-    page = Paginator(entries, MINE_PAGE_SIZE).get_page(request.GET.get("page"))
-    return render(request, MINE_TEMPLATE, {"page": page, "total": len(entries), "querystring": ""})
+    view = week_tools.month_view(entries, request.GET.get("month"), timezone.localdate())
+    page = Paginator(view["weeks"], MINE_PAGE_SIZE).get_page(request.GET.get("page"))
+    return render(request, MINE_TEMPLATE, {"page": page, **view})

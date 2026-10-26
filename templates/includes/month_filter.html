@@ -1,0 +1,21 @@
+{% comment %}
+includes/month_filter.html
+Month filter for a personal history page. It filters BOTH the month boxes and the list below them.
+Usage: {% include 'includes/month_filter.html' %}
+Context (apps.core.weeks.month_view): months (list of {value, label}), selected ("YYYY-MM" or ""). "All time" shows the
+whole history in the list and the current month in the boxes. Changing the select submits the form (Alpine); the
+Apply button is the fallback.
+{% endcomment %}
+<form method="get" class="mb-4 flex flex-wrap items-end gap-3" x-data x-on:change="$el.requestSubmit()">
+  <div class="w-full sm:w-56">
+    <label for="month-filter" class="label">Month</label>
+    <select id="month-filter" name="month" class="input">
+      <option value="">All time</option>
+      {% for choice in months %}
+      <option value="{{ choice.value }}"{% if choice.value == selected %} selected{% endif %}>{{ choice.label|date:"F Y" }}</option>
+      {% endfor %}
+    </select>
+  </div>
+  <button type="submit" class="btn btn-secondary">Apply</button>
+  {% if selected %}<a href="{{ request.path }}" class="btn btn-ghost">Show all</a>{% endif %}
+</form>
