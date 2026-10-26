@@ -1,8 +1,8 @@
 <!--
 prayer/inbox_detail.html
-One prayer request with its replies and a reply form. Replying marks the request replied (there is no Done button).
+One prayer request with its replies, a reply form and a Mark as done button (sends the default reply, confirm dialog).
 Blocks: page_title, content. Context: item, sender (already masked), replies, form (PrayerReplyForm),
-back_url, reply_url. Never reads item.user.
+back_url, reply_url, complete_url, can_complete. Never reads item.user.
 -->
 {% extends "base_app.html" %}
 {% block page_title %}Prayer request{% endblock %}
@@ -42,5 +42,12 @@ back_url, reply_url. Never reads item.user.
     {% for error in form.body.errors %}<p class="text-sm text-txt-primary" role="alert">{{ error }}</p>{% endfor %}
     <button type="submit" class="btn btn-primary">Send reply</button>
   </form>
+
+  {% if can_complete %}
+  <form method="post" action="{{ complete_url }}" data-confirm="Mark this request as done? A short default reply will be sent to the sender.">
+    {% csrf_token %}
+    <button type="submit" class="btn btn-secondary">Mark as done</button>
+  </form>
+  {% endif %}
 </div>
 {% endblock %}

@@ -13,4 +13,5 @@ urlpatterns = [
     path("", views.inbox, name="prayer_inbox"),
     path("<int:pk>/", views.inbox_detail, name="prayer_detail"),
     path("<int:pk>/reply/", views.inbox_reply, name="prayer_reply"),
+    path("<int:pk>/done/", views.inbox_complete, name="prayer_complete"),
 ]

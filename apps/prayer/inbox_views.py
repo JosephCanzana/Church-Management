@@ -101,13 +101,15 @@ def _detail_context(request, found, form):
                     for r in found.replies.all()],
         "back_url": _url(request, "prayer_inbox"),
         "reply_url": _url(request, "prayer_reply", found.pk),
+        "complete_url": _url(request, "prayer_complete", found.pk),
+        "can_complete": found.status == PrayerRequest.Status.OPEN,
     }
 
 
 @inbox_screen
 @require_http_methods(["GET"])
 def inbox_detail(request, pk):
-    """One request with its replies and the reply form."""
+    """One request with its replies, the reply form and the Mark as done button."""
     found = _open(request, pk)
     if found is None:
         return _gone(request)
@@ -132,3 +134,15 @@ def inbox_reply(request, pk):
             return redirect(_url(request, "prayer_detail", pk))
     return render(request, "prayer/inbox_detail.html", _detail_context(request, found, form))
 
+
+
+@inbox_screen
+@require_http_methods(["POST"])
+def inbox_complete(request, pk):
+    """Mark the request done: the service sends the default reply. Repeating it is harmless."""
+    try:
+        changed = services.mark_done(request.user, pk)
+    except (ServiceError, PermissionDenied):
+        return _gone(request)
+    messages.success(request, "Marked as done. A default reply was sent." if changed else "This request was already replied to.")
+    return redirect(_url(request, "prayer_detail", pk))

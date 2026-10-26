@@ -1,4 +1,4 @@
-"""prayer.services: sending and replying to prayer requests (a reply also closes the request).
+"""prayer.services: sending and replying to prayer requests (a reply also closes the request; "mark as done" sends a default reply).
 
 Every function is atomic, re-checks permission on the locked row, writes ONE audit row (ids only) and
 creates its bell items in the same transaction. PRIVACY (AGENTS.md): prayer text, reply text and sender
@@ -25,6 +25,7 @@ NOTIFY_REQUEST = "prayer_request"
 NOTIFY_REPLIED = "prayer_replied"
 
 MAX_BODY = 2000
+DEFAULT_REPLY = "We have prayed for your request. God bless you."  # sent by "Mark as done"
 MAX_PER_DAY = 5
 
 
@@ -95,19 +96,34 @@ def _locked_request(actor, request_id):
     return found
 
 
+def _add_reply(actor, found, text, is_default=False):
+    """Store the reply on the locked request, mark it replied, write the audit row and tell the sender (no text)."""
+    reply = PrayerReply.objects.create(prayer_request=found, replier=actor, body=text)
+    if found.status == PrayerRequest.Status.OPEN:
+        found.status = PrayerRequest.Status.REPLIED
+        found.save(update_fields=["status", "updated_at"])
+    log_action(
+        actor=actor, action="prayer.reply", entity_type="prayer_request", entity_id=found.pk,
+        after={"reply_id": reply.pk, "is_default": is_default},
+    )
+    notify(found.user_id, NOTIFY_REPLIED, actor=actor, entity_type="prayer_request", entity_id=found.pk)
+    return reply
+
+
 def reply_to_request(actor, request_id, body):
     """Add a reply, mark the request replied (the final state) and tell the sender (no text)."""
     text = _clean(body)
     with transaction.atomic():
         found = _locked_request(actor, request_id)
-        reply = PrayerReply.objects.create(prayer_request=found, replier=actor, body=text)
-        if found.status == PrayerRequest.Status.OPEN:
-            found.status = PrayerRequest.Status.REPLIED
-            found.save(update_fields=["status", "updated_at"])
-        log_action(
-            actor=actor, action="prayer.reply", entity_type="prayer_request", entity_id=found.pk,
-            after={"reply_id": reply.pk},
-        )
-        notify(found.user_id, NOTIFY_REPLIED, actor=actor, entity_type="prayer_request", entity_id=found.pk)
-    return reply
+        return _add_reply(actor, found, text)
 
+
+def mark_done(actor, request_id):
+    """"Mark as done": send the default reply and mark the request replied. Returns False (nothing changes) if it
+    was already replied, so a double tap never sends the default text twice."""
+    with transaction.atomic():
+        found = _locked_request(actor, request_id)
+        if found.status != PrayerRequest.Status.OPEN:
+            return False
+        _add_reply(actor, found, DEFAULT_REPLY, is_default=True)
+    return True
