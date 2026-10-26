@@ -767,11 +767,9 @@ def prayer_summary(user, extension_id=None):
     """Return the prayer card numbers for the people who handle prayer (None for everyone else).
 
     Scoping is ONLY ``PrayerRequest.objects.inbox_for(user)`` (archived never listed). ``open`` counts requests
-    not yet completed (open and replied), ``completed`` the rest, and ``latest`` lists the newest
-    ``PRAYER_LATEST`` unfinished ones as ``{"id", "label", "status", "status_label", "created_at", "extension"}``.
-    ``label`` comes from ``sender_label`` (anonymous stays anonymous); the request text and ``user_id`` are never
-    returned. When an admin or super-admin filters to an extension whose coordinator can sign in, the inbox
-    holds none of its requests (that coordinator handles them), so ``scope_note`` explains it instead.
+    still waiting for a reply, ``replied`` the ones that have one, and ``latest`` lists the newest
+    ``PRAYER_LATEST`` open ones as ``{"id", "label", "status", "status_label", "created_at", "extension"}``.
+    ...(keep the rest of the docstring as it is)
     """
     if not can_use_inbox(user):
         return None
@@ -783,11 +781,11 @@ def prayer_summary(user, extension_id=None):
         if has_coordinator.exists():
             scope_note = PRAYER_SCOPE_NOTE
 
-    unfinished = inbox.exclude(status=PrayerRequest.Status.COMPLETED)
-    newest = unfinished.select_related("user", "extension").order_by("-created_at", "-pk")[:PRAYER_LATEST]
+    waiting = inbox.filter(status=PrayerRequest.Status.OPEN)
+    newest = waiting.select_related("user", "extension").order_by("-created_at", "-pk")[:PRAYER_LATEST]
     return {
-        "open": unfinished.count(),
-        "completed": inbox.filter(status=PrayerRequest.Status.COMPLETED).count(),
+        "open": waiting.count(),
+        "replied": inbox.filter(status=PrayerRequest.Status.REPLIED).count(),
         "latest": [
             {
                 "id": req.pk,

@@ -1,7 +1,7 @@
 {% load people_tags %}
 {% comment %}
 dashboards/_prayer_card.html
-Prayer inbox at a glance. Pass span (bento grid classes). Context: dashboard.prayer_summary (open, completed, latest, scope_note), or None for people
+Prayer inbox at a glance. Pass span (bento grid classes). Context: dashboard.prayer_summary (open, replied, latest, scope_note), or None for people
 who do not handle prayer (nothing is drawn then).
 * latest rows show only "label" (already anonymous when the request is anonymous), the extension, the status and the
   date. The request text and the sender's id are never in the context, so they cannot be printed here.
@@ -20,7 +20,7 @@ who do not handle prayer (nothing is drawn then).
   {% if summary.scope_note %}
   <p class="mt-3 text-base text-txt-secondary" role="note">{{ summary.scope_note }}</p>
   {% else %}
-  <p class="mt-1 text-base text-txt-secondary"><span class="font-mono text-2xl font-semibold text-txt-primary">{{ summary.open }}</span> open &middot; <span class="font-mono">{{ summary.completed }}</span> completed</p>
+  <p class="mt-1 text-base text-txt-secondary"><span class="font-mono text-2xl font-semibold text-txt-primary">{{ summary.open }}</span> open &middot; <span class="font-mono">{{ summary.replied }}</span> replied</p>
   {% if summary.latest %}
   <ul class="mt-3 divide-y divide-border">
     {% for item in summary.latest %}

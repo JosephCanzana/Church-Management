@@ -622,7 +622,7 @@ class PrintPageTests(ReportBase):
     def test_prayer_is_counts_only(self):
         """Even if the prayer summary carries rows, the report forwards only open, completed and the scope note."""
         loaded = {
-            "open": 4, "completed": 9, "scope_note": "",
+            "open": 4, "replied": 9, "scope_note": "",
             "latest": [{"id": 1, "label": "SECRET NAME", "status": "open", "status_label": "Open",
                         "created_at": None, "extension": "Alpha"}],
         }
@@ -630,11 +630,11 @@ class PrintPageTests(ReportBase):
             response = self.open(PRINT[Role.ADMIN], Role.ADMIN)
             self.assertNotContains(response, "SECRET NAME")
             context = self.context(Role.ADMIN)
-        self.assertEqual(context["prayer"], {"open": 4, "completed": 9, "scope_note": ""})
+        self.assertEqual(context["prayer"], {"open": 4, "replied": 9, "scope_note": ""})
         self.assertNotIn("SECRET NAME", repr(context))
 
     def test_prayer_scope_note_is_printed(self):
-        loaded = {"open": 0, "completed": 0, "latest": [], "scope_note": services.PRAYER_SCOPE_NOTE}
+        loaded = {"open": 0, "replied": 0, "latest": [], "scope_note": services.PRAYER_SCOPE_NOTE}
         with mock.patch.object(services, "prayer_summary", return_value=loaded):
             self.assertIn("coordinator handles its prayer requests", self.html())
 

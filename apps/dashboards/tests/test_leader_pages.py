@@ -206,7 +206,7 @@ class PrayerCardTests(LeaderPageBase):
 
     def summary(self, **extra):
         data = {
-            "open": 2, "completed": 1, "scope_note": "",
+            "open": 2, "replied": 1, "scope_note": "",
             "latest": [
                 {"id": 1, "label": "Row Label One", "status": "open", "status_label": "Open",
                  "created_at": timezone.now(), "extension": "Alpha"},
