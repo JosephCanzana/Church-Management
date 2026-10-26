@@ -30,7 +30,7 @@ buddies, prayer requests, events, resources, notifications and audit logging.
     completion of ended goals (see Faith).
   - Buddy (bricks 6 to 9): requests and partnerships, messages with nudge and "prayed", and the partner's goals
     (see Buddy).
-  - Prayer (brick 5): member send form and the role-scoped inbox with replies and completion (see Prayer).
+  - Prayer (brick 5): member send form and the role-scoped inbox with replies (see Prayer).
   - Dashboards: one page per role (super-admin, admin, coordinator, member) with the verse of the day, continue
     reading, quick links, streaks and today's goals and, for leaders, counts and charts (see Dashboards).
   - Attendance (bricks 1 to 14): gender and age networks, model changes, permissions and scoping, draft services,
@@ -141,7 +141,7 @@ moving or reorganizing app code.
 | `attendance` | `attendance`, `attendance_member`, `attendance_first_timer` | Sheets, draft services (ticks, first timers, search), summary, upload (freeze counts, update `last_attended_at`), reopen (admin) |
 | `tithes` | `tithes_offering`, `tithe_entry`, `tithe_entry_giver`, `tithe_household`, `tithe_household_member`, `tithes_bypass_request` | Entries and co-givers, live totals, denomination count, finalize and bypass flow, reopen, households, print page, "My tithes" (see Tithes) |
 | `buddy` | `user_buddy`, `buddy_request`, `buddy_note` | Request/accept (transactional one-partner check), messages, nudges and "prayed" notes (`messaging.py`), end partnership, view partner goals, `close_stale_end_requests` |
-| `prayer` | `prayer_request`, `prayer_reply` | Send, inbox (coordinator scope, anonymous masking), reply, complete. There is no delete route |
+| `prayer` | `prayer_request`, `prayer_reply` | Send, inbox (coordinator scope, anonymous masking), reply (a reply closes the request). There is no delete route |
 | `notifications` | `notification`, `notification_preference`, `notification_rule` | `notify()`, bell + list, preferences, the admin-alert receiver (`notifications/listeners.py`, applies `notification_rule` to `action_logged`), `cleanup_notifications` |
 
 Before adding a model, put it in the app whose data it shares a lifecycle
@@ -1120,13 +1120,13 @@ templates in `templates/buddy/`, `static/js/buddy_chat.js`, tests in `tests/`). 
   listed.
 - `permissions.sender_label(request, viewer)` is used by every template: anonymous reads "Anonymous" for everyone, "You
   (anonymous)" for the sender. `user_id` is stored but never rendered.
-- Services (`send_prayer_request`, `reply_to_request`, `complete_request`) are atomic, re-check on the locked row, and answer
-  "no longer exists" for both a missing and an out-of-reach request. Audit: `prayer.send`, `prayer.reply`, `prayer.complete`,
+- Status is `open` -> `replied` (final) or `archived`. A reply is the last step: there is no "completed" status and no mark-as-done.
+- Services (`send_prayer_request`, `reply_to_request`) are atomic, re-check on the locked row, and answer
+  "no longer exists" for both a missing and an out-of-reach request. Audit: `prayer.send`, `prayer.reply`,
   ids only. Notifications `prayer_request` (to the extension's coordinators, else admins) and `prayer_replied` (to the sender)
   carry no text and no name.
 - Routes: member `/prayer/` (`prayer:list`, `prayer:send`). The inbox is written once in `prayer/area_urls.py`, mounted at
-  `/coordinator/prayer/`, `/admin/prayer/`, `/superadmin/prayer/` (names `prayer_inbox`, `prayer_detail`, `prayer_reply`,
-  `prayer_complete`). No delete route.
+  `/coordinator/prayer/`, `/admin/prayer/`, `/superadmin/prayer/` (names `prayer_inbox`, `prayer_detail`, `prayer_reply`). No delete route.
 - Navigation: members keep "Prayer"; coordinator, admin and super-admin get "Prayer inbox" in Manage.
 
 ## Bible

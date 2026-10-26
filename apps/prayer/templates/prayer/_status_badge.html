@@ -1,12 +1,10 @@
 <!--
 prayer/_status_badge.html
 A small text label for a prayer request's status (text, so meaning never depends on colour alone).
-Context: status (open, replied, completed). Include example: include this file with status=item.status.
+Context: status (open, replied). Include example: include this file with status=item.status.
 -->
 {% if status == "open" %}
 <span class="rounded-full bg-highlight px-2 py-0.5 text-xs font-medium text-on-highlight">Open</span>
 {% elif status == "replied" %}
 <span class="rounded-full border border-border bg-surface px-2 py-0.5 text-xs font-medium text-txt-primary">Replied</span>
-{% else %}
-<span class="rounded-full border border-border bg-surface px-2 py-0.5 text-xs text-txt-secondary">Completed</span>
 {% endif %}

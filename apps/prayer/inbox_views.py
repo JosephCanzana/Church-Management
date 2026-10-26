@@ -33,7 +33,6 @@ AREA_ROLES = {
 TABS = (
     (PrayerRequest.Status.OPEN, "Open"),
     (PrayerRequest.Status.REPLIED, "Replied"),
-    (PrayerRequest.Status.COMPLETED, "Completed"),
 )
 
 
@@ -74,7 +73,7 @@ def _open(request, pk):
 @inbox_screen
 @require_http_methods(["GET"])
 def inbox(request):
-    """The inbox with status tabs (Open, Replied, Completed) and pagination."""
+    """The inbox with status tabs (Open, Replied) and pagination."""
     status = request.GET.get("status")
     if status not in {value for value, _label in TABS}:
         status = PrayerRequest.Status.OPEN
@@ -102,15 +101,13 @@ def _detail_context(request, found, form):
                     for r in found.replies.all()],
         "back_url": _url(request, "prayer_inbox"),
         "reply_url": _url(request, "prayer_reply", found.pk),
-        "complete_url": _url(request, "prayer_complete", found.pk),
-        "can_complete": found.status != PrayerRequest.Status.COMPLETED,
     }
 
 
 @inbox_screen
 @require_http_methods(["GET"])
 def inbox_detail(request, pk):
-    """One request with its replies, the reply form and the Done button."""
+    """One request with its replies and the reply form."""
     found = _open(request, pk)
     if found is None:
         return _gone(request)
@@ -135,14 +132,3 @@ def inbox_reply(request, pk):
             return redirect(_url(request, "prayer_detail", pk))
     return render(request, "prayer/inbox_detail.html", _detail_context(request, found, form))
 
-
-@inbox_screen
-@require_http_methods(["POST"])
-def inbox_complete(request, pk):
-    """Mark the request done. Repeating it is harmless (the service is idempotent)."""
-    try:
-        changed = services.complete_request(request.user, pk)
-    except (ServiceError, PermissionDenied):
-        return _gone(request)
-    messages.success(request, "Marked as done." if changed else "This request was already done.")
-    return redirect(_url(request, "prayer_detail", pk))

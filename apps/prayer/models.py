@@ -51,10 +51,11 @@ class PrayerRequestQuerySet(models.QuerySet):
 
 
 class PrayerRequest(ArchivableModel):
+    """A reply is the last step: OPEN until someone replies, then REPLIED (there is no separate "done")."""
+
     class Status(models.TextChoices):
         OPEN = "open", "Open"
         REPLIED = "replied", "Replied"
-        COMPLETED = "completed", "Completed"
         ARCHIVED = "archived", "Archived"
 
     user = models.ForeignKey(USER, on_delete=models.CASCADE, related_name="prayer_requests")
@@ -70,7 +71,6 @@ class PrayerRequest(ArchivableModel):
     status = models.CharField(max_length=10, choices=Status.choices, default=Status.OPEN)
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
-    completed_at = models.DateTimeField(null=True, blank=True)
 
     objects = PrayerRequestQuerySet.as_manager()
 

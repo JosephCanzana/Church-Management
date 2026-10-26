@@ -1,4 +1,4 @@
-"""prayer.services: sending, replying to and completing prayer requests.
+"""prayer.services: sending and replying to prayer requests (a reply also closes the request).
 
 Every function is atomic, re-checks permission on the locked row, writes ONE audit row (ids only) and
 creates its bell items in the same transaction. PRIVACY (AGENTS.md): prayer text, reply text and sender
@@ -96,7 +96,7 @@ def _locked_request(actor, request_id):
 
 
 def reply_to_request(actor, request_id, body):
-    """Add a reply, mark the request replied (unless already completed) and tell the sender (no text)."""
+    """Add a reply, mark the request replied (the final state) and tell the sender (no text)."""
     text = _clean(body)
     with transaction.atomic():
         found = _locked_request(actor, request_id)
@@ -111,15 +111,3 @@ def reply_to_request(actor, request_id, body):
         notify(found.user_id, NOTIFY_REPLIED, actor=actor, entity_type="prayer_request", entity_id=found.pk)
     return reply
 
-
-def complete_request(actor, request_id):
-    """Mark a request completed. Idempotent: a second call changes nothing and returns False."""
-    with transaction.atomic():
-        found = _locked_request(actor, request_id)
-        if found.status == PrayerRequest.Status.COMPLETED:
-            return False
-        found.status = PrayerRequest.Status.COMPLETED
-        found.completed_at = timezone.now()
-        found.save(update_fields=["status", "completed_at", "updated_at"])
-        log_action(actor=actor, action="prayer.complete", entity_type="prayer_request", entity_id=found.pk)
-    return True
