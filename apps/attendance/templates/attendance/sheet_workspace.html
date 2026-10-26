@@ -304,22 +304,7 @@ Partials: _choice_chips.html, _age_hint.html, _status_badge.html, _convert_butto
           {{ summary.incomplete }} need{% if summary.incomplete == 1 %}s{% endif %} info
         </button>
         {% endif %}
-        {% if can_review %}<a class="btn btn-secondary min-h-[44px] text-base" href="{% role_url 'sheet_review' sheet.pk %}">Review</a>{% endif %}
-        {# Upload: saves the reviewed draft as the locked record. Asks in the confirmation modal; disabled, with the reason, until it can go. #}
-        {% if can_upload %}
-        <form method="post" action="{% role_url 'sheet_upload' sheet.pk %}" data-ws="upload" class="flex flex-wrap items-center gap-2"
-              data-ask-title="Upload this sheet?"
-              data-ask-text="{{ summary.total_present }} present will be saved as the final record and the sheet is locked. An admin can reopen it to correct it."
-              data-ask-detail="{{ sheet.label }}, {{ sheet.attendance_date|date:'j M Y' }}" data-ask-confirm="Upload">
-          {% csrf_token %}
-          <input type="hidden" name="submit_token" value="{{ submit_token }}">
-          <button type="submit" class="btn btn-primary min-h-[44px] text-base"{% if upload_blocker %} disabled aria-describedby="upload-blocker"{% endif %}>
-            {% include 'includes/icon.html' with name='clipboard-document-check' class='size-5' %}
-            Upload
-          </button>
-          {% if upload_blocker %}<span id="upload-blocker" class="max-w-xs text-sm text-txt-secondary">{{ upload_blocker }}</span>{% endif %}
-        </form>
-        {% endif %}
+        {% if can_review %}<a class="btn btn-primary min-h-[44px] text-base" href="{% role_url 'sheet_review' sheet.pk %}">Review and submit</a>{% endif %}
       </div>
     </div>
     <p x-show="busy" class="shrink-0 text-sm text-txt-secondary" role="status" style="display:none">Saving</p>
@@ -545,11 +530,7 @@ Partials: _choice_chips.html, _age_hint.html, _status_badge.html, _convert_butto
           {% endif %}
 
           <div class="flex flex-wrap items-center gap-2">
-            {% if can_convert and not visitor.promoted %}
-            {% include 'attendance/_convert_button.html' with ft=visitor %}
-            {% elif visitor.promoted %}
-            <span class="text-sm text-txt-secondary">Member record</span>
-            {% endif %}
+            {% if visitor.promoted %}<span class="text-sm text-txt-secondary">Member record</span>{% endif %}
             <form method="post" action="{% role_url 'sheet_first_timer_remove' sheet.pk %}" data-ws="remove-first-timer"
                     data-ask-title="{% if visitor.promoted %}Take off the sheet?{% else %}Remove this first timer?{% endif %}"
                     data-ask-text="{% if visitor.promoted %}This visit is deleted, including their first visit in the member's history. The member record stays.{% else %}This first timer and the details you typed will be removed from the sheet.{% endif %}"

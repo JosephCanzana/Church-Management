@@ -3,9 +3,11 @@ attendance/print.html
 Standalone A4 attendance sheet for the browser's print dialog ("Save as PDF" is a print destination).
 It does NOT extend base_app.html: black text on white whatever the person's light or dark mode, no external
 fonts, no Tailwind. The layout copies the paper sheet: one numbered list, a tick in the gender and age-network
-column, an FT column, then the summary and the age-network legend.
+column, a G (guest) and an FT column, then the summary and the age-network legend.
+The sheet fills the whole A4 page: the summary and signatures sit at the bottom of the page, and the
+rows are a little taller than before.
 Context (attendance.views.sheet_print): sheet, summary, table, rows, heads, back_url.
-Privacy: names, where each person belongs, gender and age network only. Never a birth date, phone number or address.
+Privacy: names, gender and age network only. Never a birth date, phone number or address.
 Printing notes: thead repeats on every page and rows never split (no page numbers: CSS page counters are
 unreliable across browsers). The toolbar is screen-only.
 {% endcomment %}{% load static ui_tags people_tags %}<!DOCTYPE html>
@@ -23,7 +25,11 @@ unreliable across browsers). The toolbar is screen-only.
       margin: 0; color: #000; background: #fff;
       font: 10pt/1.25 Arial, Helvetica, "Liberation Sans", sans-serif;
     }
-    p, h1, dl, dd { margin: 0; }
+    p, h1, h2, dl, dd { margin: 0; }
+
+    /* ---- the sheet fills the page: header on top, grid in the middle, summary pinned to the bottom ---- */
+    .sheet { display: flex; flex-direction: column; min-height: 270mm; }
+    .sheet .grow { flex: 1 0 auto; }
 
     /* ---- screen only: a grey desk, the page as a white sheet, and a toolbar ---- */
     .toolbar { display: none; }
@@ -40,56 +46,64 @@ unreliable across browsers). The toolbar is screen-only.
       }
       .toolbar button { background: #111; color: #fff; }
       .toolbar span { color: #374151; }
-      .sheet { width: 210mm; max-width: 100%; margin: 0 auto; padding: 12mm; background: #fff; box-shadow: 0 1px 6px rgba(0,0,0,.25); }
+      .sheet { width: 210mm; max-width: 100%; min-height: 297mm; margin: 0 auto; padding: 12mm; background: #fff; box-shadow: 0 1px 6px rgba(0,0,0,.25); }
     }
 
     /* ---- header ---- */
-    .head { text-align: center; }
-    .head img { display: block; height: 15mm; width: auto; margin: 0 auto 2mm; }
-    .church { font-weight: 700; font-size: 12pt; letter-spacing: .02em; text-transform: uppercase; }
-    .place { text-transform: uppercase; font-size: 10pt; }
-    h1 { font-size: 12pt; font-weight: 700; letter-spacing: .06em; text-transform: uppercase; margin-top: 1mm; }
+    .head { text-align: center; padding-bottom: 3mm; border-bottom: .6mm solid #000; }
+    .head img { display: block; height: 16mm; width: auto; margin: 0 auto 2mm; }
+    .church { font-weight: 700; font-size: 13pt; letter-spacing: .03em; text-transform: uppercase; }
+    .place { text-transform: uppercase; font-size: 10pt; letter-spacing: .02em; }
+    h1 { font-size: 12pt; font-weight: 700; letter-spacing: .18em; text-transform: uppercase; margin-top: 2mm; }
 
-    .meta { display: grid; grid-template-columns: 1fr 1fr; gap: 1.5mm 8mm; margin: 4mm 0 3mm; font-size: 10pt; }
-    .meta div { display: flex; gap: 2mm; align-items: baseline; border-bottom: .3mm solid #000; padding-bottom: .6mm; }
+    .meta { display: grid; grid-template-columns: 1fr 1fr; gap: 2mm 10mm; margin: 4mm 0 4mm; font-size: 10pt; }
+    .meta div { display: flex; gap: 2mm; align-items: baseline; border-bottom: .3mm solid #000; padding-bottom: .8mm; }
     .meta dt { font-weight: 700; white-space: nowrap; }
     .draft { font-weight: 700; letter-spacing: .04em; }
 
     /* ---- the grid ---- */
     table.grid { width: 100%; border-collapse: collapse; table-layout: fixed; }
-    .grid th, .grid td { border: .3mm solid #000; padding: 0 1mm; }
+    .grid th, .grid td { border: .3mm solid #000; padding: 0 1.5mm; }
     .grid thead { display: table-header-group; }   /* repeats on page 2 and beyond */
     .grid tr { break-inside: avoid; page-break-inside: avoid; }
-    .grid thead th { font-size: 7.5pt; font-weight: 700; text-align: center; text-transform: uppercase; height: 5mm; padding: 0; }
-    .grid tbody td { height: 6.2mm; font-size: 9.5pt; vertical-align: middle; }
-    .grid td.num { text-align: right; padding-right: 1.2mm; }
+    .grid thead th { font-size: 7.5pt; font-weight: 700; text-align: center; text-transform: uppercase; height: 5.5mm; padding: 0; background: #e6e6e6; }
+    .grid tbody td { height: 6.6mm; font-size: 10pt; vertical-align: middle; }
+    .grid tbody tr:nth-child(even) td { background: #f3f3f3; }
+    .grid td.num { text-align: right; padding-right: 1.5mm; font-variant-numeric: tabular-nums; }
     .grid td.name { text-align: left; }
-    .grid td.belongs { font-size: 8pt; }
     .grid td.tick { text-align: center; font-size: 11pt; font-weight: 700; padding: 0;
       font-family: "Segoe UI Symbol", "DejaVu Sans", "Noto Sans Symbols", Arial, sans-serif; }
     .miss { font-size: 8pt; font-style: italic; }
-    .empty { text-align: center; font-style: italic; height: 10mm; }
-    .grid .sep { border-left-width: .6mm; }        /* heavier line between men, women and FT */
+    .empty { text-align: center; font-style: italic; height: 12mm; }
+    .grid .sep { border-left-width: .7mm; }        /* heavier line between men, women, G and FT */
 
-    /* ---- summary and legend ---- */
-    .below { display: flex; gap: 10mm; align-items: flex-start; margin-top: 6mm; break-inside: avoid; page-break-inside: avoid; }
-    .sum-wrap { width: 108mm; }
+    /* ---- summary and legend: pinned to the bottom of the page ---- */
+    .below { display: flex; gap: 10mm; align-items: flex-start; margin-top: auto; padding-top: 6mm; break-inside: avoid; page-break-inside: avoid; }
+    .sum-wrap { flex: 1 1 auto; }
     table.sum { width: 100%; border-collapse: collapse; font-size: 9pt; }
-    .sum th, .sum td { padding: .5mm 1.5mm; border-bottom: .2mm solid #000; }
-    .sum thead th { font-size: 8pt; text-transform: uppercase; text-align: right; border-bottom: .3mm solid #000; }
+    .sum th, .sum td { padding: .6mm 1.5mm; border-bottom: .2mm solid #000; }
+    .sum thead th { font-size: 8pt; text-transform: uppercase; text-align: right; border-bottom: .4mm solid #000; }
     .sum thead th:first-child { text-align: left; }
     .sum td { text-align: right; font-variant-numeric: tabular-nums; }
     .sum th[scope=row] { text-align: left; font-weight: 400; }
-    .sum .grp th { text-align: left; font-size: 8.5pt; font-weight: 700; text-transform: uppercase; padding-top: 1.5mm; }
+    .sum .grp th { text-align: left; font-size: 8.5pt; font-weight: 700; text-transform: uppercase; padding-top: 2mm; }
     .sum .sub th, .sum .sub td { font-weight: 700; }
+    .simple-sum { display: grid; grid-template-columns: repeat(3, 1fr); gap: 6mm; font-size: 9pt; }
+    .sgroup { break-inside: avoid; }
+    .shead { display: flex; justify-content: space-between; font-weight: 700; text-transform: uppercase; border-bottom: .4mm solid #000; padding-bottom: .6mm; margin-bottom: .6mm; }
+    .srow { display: flex; justify-content: space-between; padding: .5mm 0; border-bottom: .2mm solid #000; }
     .total { display: flex; justify-content: space-between; align-items: baseline; margin-top: 2mm;
-      border-top: .5mm solid #000; padding-top: 1mm; font-weight: 700; font-size: 11pt; text-transform: uppercase; }
-    .total b { font-size: 14pt; }
+      border-top: .6mm solid #000; padding-top: 1mm; font-weight: 700; font-size: 11pt; text-transform: uppercase; }
+    .total b { font-size: 15pt; }
     .note { font-size: 8.5pt; font-style: italic; margin-top: 1mm; }
-    .legend { font-size: 9pt; text-transform: uppercase; }
-    .legend h2 { font-size: 9pt; font-weight: 700; margin: 0 0 1.5mm; }
-    .legend p { margin: 0 0 1mm; }
-    .foot { margin-top: 6mm; font-size: 8pt; text-align: right; }
+    .legend { flex: 0 0 52mm; font-size: 9pt; text-transform: uppercase; border: .3mm solid #000; padding: 3mm; }
+    .legend h2 { font-size: 9pt; font-weight: 700; letter-spacing: .06em; margin: 0 0 2mm; padding-bottom: 1mm; border-bottom: .3mm solid #000; }
+    .legend p { margin: 0 0 1.2mm; }
+
+    /* ---- signatures and footer ---- */
+    .sign { display: grid; grid-template-columns: 1fr 1fr; gap: 14mm; margin-top: 10mm; break-inside: avoid; page-break-inside: avoid; }
+    .sign div { border-top: .3mm solid #000; padding-top: 1mm; font-size: 8.5pt; text-align: center; text-transform: uppercase; letter-spacing: .04em; }
+    .foot { margin-top: 4mm; font-size: 8pt; text-align: right; }
   </style>
 </head>
 <body>
@@ -126,74 +140,57 @@ unreliable across browsers). The toolbar is screen-only.
       </div>
     </dl>
 
-    <table class="grid">
-      <colgroup>
-        <col style="width: 8mm">
-        <col>
-        <col style="width: 26mm">
-        {% for i in "12345678" %}<col style="width: 10mm">{% endfor %}
-        <col style="width: 8mm">
-        <col style="width: 9mm">
-      </colgroup>
-      <thead>
-        <tr>
-          <th rowspan="2" scope="col">#</th>
-          <th rowspan="2" scope="col">Name</th>
-          <th rowspan="2" scope="col">Belongs to</th>
-          <th colspan="4" scope="colgroup" class="sep">Men</th>
-          <th colspan="4" scope="colgroup" class="sep">Women</th>
-          <th rowspan="2" scope="col" class="sep">G</th>
-          <th rowspan="2" scope="col">FT</th>
-        </tr>
-        <tr>
-          {% for code, head in heads %}<th scope="col"{% if forloop.first %} class="sep"{% endif %}>{{ head }}</th>{% endfor %}
-          {% for code, head in heads %}<th scope="col"{% if forloop.first %} class="sep"{% endif %}>{{ head }}</th>{% endfor %}
-        </tr>
-      </thead>
-      <tbody>
-        {% for row in rows %}
-        <tr>
-          <td class="num">{{ row.number }}</td>
-          <td class="name">{{ row.name }}{% if row.needs_category %} <span class="miss">(no category yet)</span>{% endif %}</td>
-          <td class="belongs">{{ row.belongs|title_case }}</td>
-          {% for cell in row.cells %}<td class="tick{% if forloop.counter0 == 0 or forloop.counter0 == 4 %} sep{% endif %}">{% if cell %}&#10003;{% endif %}</td>{% endfor %}
-          <td class="tick sep">{% if row.guest %}&#10003;{% endif %}</td>
-          <td class="tick sep">{% if row.first_timer %}&#10003;{% endif %}</td>
-        </tr>
-        {% empty %}
-        <tr><td colspan="13" class="empty">Nobody is marked yet.</td></tr>
-        {% endfor %}
-      </tbody>
-    </table>
+    <div class="grow">
+      <table class="grid">
+        <colgroup>
+          <col style="width: 8mm">
+          <col>
+          {% for i in "12345678" %}<col style="width: 10.5mm">{% endfor %}
+          <col style="width: 8mm">
+          <col style="width: 9mm">
+        </colgroup>
+        <thead>
+          <tr>
+            <th rowspan="2" scope="col">#</th>
+            <th rowspan="2" scope="col">Name</th>
+            <th colspan="4" scope="colgroup" class="sep">Men</th>
+            <th colspan="4" scope="colgroup" class="sep">Women</th>
+            <th rowspan="2" scope="col" class="sep">G</th>
+            <th rowspan="2" scope="col">FT</th>
+          </tr>
+          <tr>
+            {% for code, head in heads %}<th scope="col"{% if forloop.first %} class="sep"{% endif %}>{{ head }}</th>{% endfor %}
+            {% for code, head in heads %}<th scope="col"{% if forloop.first %} class="sep"{% endif %}>{{ head }}</th>{% endfor %}
+          </tr>
+        </thead>
+        <tbody>
+          {% for row in rows %}
+          <tr>
+            <td class="num">{{ row.number }}</td>
+            <td class="name">{{ row.name }}{% if row.needs_category %} <span class="miss">(no category yet)</span>{% endif %}</td>
+            {% for cell in row.cells %}<td class="tick{% if forloop.counter0 == 0 or forloop.counter0 == 4 %} sep{% endif %}">{% if cell %}&#10003;{% endif %}</td>{% endfor %}
+            <td class="tick sep">{% if row.guest %}&#10003;{% endif %}</td>
+            <td class="tick sep">{% if row.first_timer %}&#10003;{% endif %}</td>
+          </tr>
+          {% empty %}
+          <tr><td colspan="12" class="empty">Nobody is marked yet.</td></tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
 
     <section class="below" aria-label="Summary">
       <div class="sum-wrap">
-        <table class="sum">
-          <thead>
-            <tr>
-              <th scope="col">Summary</th>
-              {% for column in table.columns %}<th scope="col">{{ column.label }}</th>{% endfor %}
-              <th scope="col">Total</th>
-            </tr>
-          </thead>
-          {% for group in table.groups %}
-          <tbody>
-            <tr class="grp"><th colspan="6">{{ group.title }}</th></tr>
-            {% for line in group.rows %}
-            <tr>
-              <th scope="row">{{ line.label }}</th>
-              {% for cell in line.cells %}<td>{{ cell }}</td>{% endfor %}
-              <td>{{ line.total }}</td>
-            </tr>
+        <div class="simple-sum">
+          {% for group in simple_summary %}
+          <div class="sgroup">
+            <p class="shead"><span>{{ group.title }}</span><b>{{ group.total }}</b></p>
+            {% for label, count in group.rows %}
+            <p class="srow"><span>{{ label }}</span><span>{{ count }}</span></p>
             {% endfor %}
-            <tr class="sub">
-              <th scope="row">Subtotal</th>
-              {% for number in group.column_totals %}<td>{{ number }}</td>{% endfor %}
-              <td>{{ group.total }}</td>
-            </tr>
-          </tbody>
+          </div>
           {% endfor %}
-        </table>
+        </div>
         <p class="total"><span>Total attendees</span> <b>{{ summary.total_present }}</b></p>
         {% if summary.incomplete %}
         <p class="note">{{ summary.incomplete }} {% if summary.incomplete == 1 %}person is{% else %}people are{% endif %} not in the table yet: no gender or age network.</p>
@@ -210,7 +207,6 @@ unreliable across browsers). The toolbar is screen-only.
         <p>FT: first timer</p>
       </div>
     </section>
-
     <p class="foot">Printed {% now "j M Y, g:i A" %} (Manila time)</p>
   </main>
 </body>

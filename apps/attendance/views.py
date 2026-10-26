@@ -44,7 +44,6 @@ from .age import AgeNetwork
 from .forms import FirstTimerForm, SheetCreateForm, SheetFilterForm
 from .models import Attendance, AttendanceFirstTimer, AttendanceMember
 from .summary import incomplete_rows, summary_for, summary_table
-from .permissions import creatable_extensions
 
 CONVERT_RESULT_TEMPLATE = "attendance/convert_result.html"
 MINE_TEMPLATE = "attendance/mine.html"
@@ -70,6 +69,9 @@ AREA_ROLES = {
     "coordinator_area": Role.COORDINATOR,
     "attendance": Role.MEMBER,
 }
+GENDERS = [(code, GENDER_LABELS[code]) for code in (Gender.MALE.value, Gender.FEMALE.value)]
+AGES = [(code, AGE_LABELS[code]) for code in AgeNetwork.values]
+
 
 
 def attendance_screen(view):
@@ -101,6 +103,39 @@ def _gone(request):
     messages.info(request, "That sheet no longer exists.")
     return _to(request, "sheet_list")
 
+
+def _sheet_people(sheet):
+    """The decorated people and first timers of one sheet, with `is_returning` set on each first timer."""
+    members = [
+        _decorate_member(row, sheet)
+        for row in AttendanceMember.objects.filter(attendance=sheet).order_by("member_name", "pk")
+    ]
+    first_timers = [
+        _decorate_first_timer(row)
+        for row in AttendanceFirstTimer.objects.select_related("guest")
+        .filter(attendance=sheet).order_by("last_name", "first_name", "pk")
+    ]
+    returning = _returning_first_timers(sheet, first_timers)
+    for row in first_timers:
+        row.is_returning = row.pk in returning
+    return members, first_timers
+
+
+def build_simple_summary(members, first_timers):
+    first_timer_rows = [p for p in first_timers if not p.is_returning]
+    guest_rows = [m for m in members if m.is_guest] + [p for p in first_timers if p.is_returning]
+    member_rows = [m for m in members if not m.is_guest]
+
+    def block(title, people):
+        rows = [(label, sum(1 for p in people if p.gender == code)) for code, label in GENDERS]
+        rows += [(label, sum(1 for p in people if p.age_network == code)) for code, label in AGES]
+        return {"title": title, "rows": rows, "total": len(people)}
+
+    return [
+        block("First timer", first_timer_rows),
+        block("Guest", guest_rows),
+        block("Member", member_rows),
+    ]
 
 # ------------------------------------------------------------------- list
 def _with_counts(sheets):
@@ -471,59 +506,35 @@ def _workspace_context(request, sheet, form=None, pending=None):
     `form` is the first-timer form (bound with its errors after a refused post); `pending` is the "same
     person?" prompt (the typed fields and the matches) when `add_first_timer` saved nothing.
     """
+def _sheet_people(sheet):
+    """The decorated people and first timers of one sheet, with `is_returning` set on each first timer."""
     members = [
         _decorate_member(row, sheet)
         for row in AttendanceMember.objects.filter(attendance=sheet).order_by("member_name", "pk")
     ]
-    # People who still need a category come first, so they are not missed on a long sheet.
-    members.sort(key=lambda row: not row.needs_category)
     first_timers = [
         _decorate_first_timer(row)
-        for row in AttendanceFirstTimer.objects.select_related("guest").filter(attendance=sheet).order_by("last_name", "first_name", "pk")
+        for row in AttendanceFirstTimer.objects.select_related("guest")
+        .filter(attendance=sheet).order_by("last_name", "first_name", "pk")
     ]
     returning = _returning_first_timers(sheet, first_timers)
     for row in first_timers:
         row.is_returning = row.pk in returning
-    returning = _returning_first_timers(sheet, first_timers)
-    for row in first_timers:
-        row.is_returning = row.pk in returning
-    summary = summary_for(sheet)  # a draft is counted live from its rows
-    form = form or FirstTimerForm()
-    blocker = ""
-    if summary.incomplete:
-        blocker = (
-            f"{summary.incomplete} {'person needs' if summary.incomplete == 1 else 'people need'} "
-            "a gender and an age network before the sheet can be uploaded."
-        )
-    elif summary.total_present == 0:
-        blocker = "Mark at least one person before uploading."
-    can_upload = permissions.can_upload(request.user, sheet)
-    context = {
-        "sheet": sheet,
-        "summary": summary,
-        "table": summary_table(summary.summary),
-        "members": members,
-        "first_timers": first_timers,
-        "can_edit_first_timer": _can_edit_first_timer(request, sheet),
-        "form": form,
-        "pending": pending,
-        # The "more" fold opens by itself when it holds something (an error or a value to keep).
-        "more_open": any(form[name].errors or form[name].value() for name in FirstTimerForm.MORE_FIELDS),
-        "gender_choices": Gender.choices,
-        "age_choices": AgeNetwork.choices,
-        "can_review": permissions.can_review(request.user, sheet),
-        "can_upload": can_upload,
-        "upload_blocker": blocker,
-        "submit_token": new_submission_token() if can_upload else "",
-        # Brick 10: the convert buttons (see attendance/_convert_button.html and _previous_visits.html).
-        "can_convert": permissions.can_convert(request.user, sheet),
-        "convert_token": new_submission_token() if permissions.can_convert(request.user, sheet) else "",
-    }
-    context.update(_search_context(request, sheet, members))
-    context["roster"] = _roster_context(request, sheet)
-    context["roster"] = _order_roster(context.get("roster"), sheet)
-    context.update(_danger_flags(request, sheet))
-    return context
+    return members, first_timers
+
+
+def build_simple_summary(members, first_timers):
+    """First timer / Guest / Member blocks: gender rows, age network rows and a total for each."""
+    first_timer_rows = [p for p in first_timers if not p.is_returning]
+    guest_rows = [m for m in members if m.is_guest] + [p for p in first_timers if p.is_returning]
+    member_rows = [m for m in members if not m.is_guest]
+
+    def block(title, people):
+        rows = [(label, sum(1 for p in people if p.gender == code)) for code, label in GENDERS]
+        rows += [(label, sum(1 for p in people if p.age_network == code)) for code, label in AGES]
+        return {"title": title, "rows": rows, "total": len(people)}
+
+    return [block("First timer", first_timer_rows), block("Guest", guest_rows), block("Member", member_rows)]
 
 
 def _render_workspace(request, sheet, form=None, pending=None):
@@ -566,14 +577,7 @@ def sheet_review(request, pk):
     if not permissions.can_review(request.user, sheet):
         messages.error(request, "You cannot review this sheet.")
         return _back(request, sheet)
-    members = [
-        _decorate_member(row, sheet)
-        for row in AttendanceMember.objects.filter(attendance=sheet).order_by("member_name", "pk")
-    ]
-    first_timers = [
-        _decorate_first_timer(row)
-        for row in AttendanceFirstTimer.objects.select_related("guest").filter(attendance=sheet).order_by("last_name", "first_name", "pk")
-    ]
+    members, first_timers = _sheet_people(sheet)
     summary = summary_for(sheet)
     can_upload = permissions.can_upload(request.user, sheet)
     return render(request, REVIEW_TEMPLATE, {
@@ -619,17 +623,18 @@ def _print_rows(sheet):
         _decorate_member(row, sheet)
         rows.append({
             "name": row.member_name,
-            "belongs": row.home_extension_name if row.home_extension_id != sheet.extension_id else "",
             "first_timer": False,
             "guest": row.person_type == PersonType.GUEST,
             "needs_category": row.needs_category,
             "gender": row.gender,
             "network": row.age_network,
         })
-    first_timers = AttendanceFirstTimer.objects.filter(attendance=sheet).order_by("last_name", "first_name", "pk")
+    first_timers = list(AttendanceFirstTimer.objects.filter(attendance=sheet).order_by("last_name", "first_name", "pk"))
+    returning = _returning_first_timers(sheet, first_timers)
     for row in first_timers:
+        again = row.pk in returning
         rows.append({
-            "name": row.full_name, "belongs": "", "first_timer": True, "guest": False, "needs_category": False,
+            "name": row.full_name, "first_timer": not again, "guest": again, "needs_category": False,
             "gender": row.gender, "network": row.age_network,
         })
     for number, line in enumerate(rows, start=1):
@@ -657,10 +662,11 @@ def sheet_print(request, pk):
         messages.error(request, "You cannot print this sheet.")
         return _back(request, sheet)
     summary = summary_for(sheet)
+    members, first_timers = _sheet_people(sheet)
     return render(request, PRINT_TEMPLATE, {
         "sheet": sheet,
         "summary": summary,
-        "table": summary_table(summary.summary),
+        "simple_summary": build_simple_summary(members, first_timers),
         "rows": _print_rows(sheet),
         "heads": [(code, PRINT_HEADS.get(code, code)) for code in AgeNetwork.values],
         "back_url": _sheet_url(request, sheet, "sheet_review" if permissions.can_review(request.user, sheet) else "sheet_detail"),
