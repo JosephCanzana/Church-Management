@@ -9,7 +9,8 @@ How it reads, by person:
   admin / super-admin   Approve / Reject first when a coordinator's request is pending (on an empty report "Approve and
                         finalize" is the only button: no second "No tithes" button while a request waits); then Finalize
                         (with a reason when the numbers do not match), or "No tithes & offering" when empty and no request waits.
-  coordinator           no approved request yet: the request form (message required only for a mismatch);
+  coordinator           no approved request yet: the request button opens the modal (the modal itself is in
+                        report_review.html; message required only for a mismatch);
                         pending: "waiting" and Withdraw; approved: Finalize unlocks, once. On an EMPTY report the form
                         is a "no tithes" request and the admin's approval finalizes the report at once.
 The message and the decision note are shown only when can_see_request. Nothing here writes an amount anywhere.
@@ -100,26 +101,17 @@ The message and the decision note are shown only when can_see_request. Nothing h
     </form>
     {% endif %}
 
-  {# ---- coordinator, nothing approved yet: ask an admin ---- #}
+  {# ---- coordinator, nothing approved yet: ask an admin (the modal is in report_review.html) ---- #}
   {% elif can_request %}
-  <form method="post" action="{% role_url 'bypass_request' report.pk %}" class="space-y-3">
-    {% csrf_token %}
-    <input type="hidden" name="submit_token" value="{{ request_token }}">
+  <div class="space-y-3">
     <p class="text-base text-txt-secondary">
       {% if empty %}Nothing was collected? Ask an admin to approve closing this service as no tithes and offering.
       {% else %}An admin must approve before this report can be finalized. Send a request; Finalize unlocks here once it is approved.{% endif %}
     </p>
-    <div>
-      <label class="label" for="finalize-message">
-        {% if totals.balanced %}Note for the admin (optional){% else %}Why do the bills and coins not match the Total?{% endif %}
-      </label>
-      <textarea id="finalize-message" name="message" rows="3" maxlength="500" class="input" {% if not totals.balanced %}required{% endif %}></textarea>
-      <p class="field-help">An admin reads this. The draft is locked for everyone else until it is decided or withdrawn.</p>
-    </div>
-    <button type="submit" class="btn btn-primary min-h-[44px] text-base">
+    <button type="button" class="btn btn-primary min-h-[44px] text-base" x-data x-on:click="$store.ui.openModal('finalize-report')">
       {% if empty %}Request: no tithes &amp; offering{% else %}Request to finalize{% endif %}
     </button>
-  </form>
+  </div>
 
   {% elif open_request %}
   <p class="text-base text-txt-primary" role="status">Waiting for an admin to decide on your request. Finalize unlocks here once it is approved.</p>
