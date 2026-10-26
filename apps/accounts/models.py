@@ -65,10 +65,10 @@ class AgeNetwork(models.TextChoices):
     network from a birth date.
     """
 
-    ADULT = "adult", "Adult"                    # 36 and above
-    YOUNG_ADULT = "young_adult", "Young adult"  # 25 to 35
-    YOUTH = "youth", "Youth"                    # 13 to 24
-    CHILDREN = "children", "Children"           # 0 to 12
+    ADULT = "adult", "Adult · 36+"
+    YOUNG_ADULT = "young_adult", "Young adult · 25–35"
+    YOUTH = "youth", "Youth · 13–24"
+    CHILDREN = "children", "Children · 0–12"
 
 
 class ArchiveReason(models.TextChoices):
