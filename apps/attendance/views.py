@@ -506,6 +506,48 @@ def _workspace_context(request, sheet, form=None, pending=None):
     `form` is the first-timer form (bound with its errors after a refused post); `pending` is the "same
     person?" prompt (the typed fields and the matches) when `add_first_timer` saved nothing.
     """
+    members, first_timers = _sheet_people(sheet)
+    # People who still need a category come first, so they are not missed on a long sheet.
+    members.sort(key=lambda row: not row.needs_category)
+    summary = summary_for(sheet)  # a draft is counted live from its rows
+    form = form or FirstTimerForm()
+    blocker = ""
+    if summary.incomplete:
+        blocker = (
+            f"{summary.incomplete} {'person needs' if summary.incomplete == 1 else 'people need'} "
+            "a gender and an age network before the sheet can be uploaded."
+        )
+    elif summary.total_present == 0:
+        blocker = "Mark at least one person before uploading."
+    can_upload = permissions.can_upload(request.user, sheet)
+    context = {
+        "sheet": sheet,
+        "summary": summary,
+        "table": summary_table(summary.summary),
+        "members": members,
+        "first_timers": first_timers,
+        "can_edit_first_timer": _can_edit_first_timer(request, sheet),
+        "form": form,
+        "pending": pending,
+        # The "more" fold opens by itself when it holds something (an error or a value to keep).
+        "more_open": any(form[name].errors or form[name].value() for name in FirstTimerForm.MORE_FIELDS),
+        "gender_choices": Gender.choices,
+        "age_choices": AgeNetwork.choices,
+        "can_review": permissions.can_review(request.user, sheet),
+        "can_upload": can_upload,
+        "upload_blocker": blocker,
+        "submit_token": new_submission_token() if can_upload else "",
+        # Brick 10: the convert buttons (see attendance/_convert_button.html and _previous_visits.html).
+        "can_convert": permissions.can_convert(request.user, sheet),
+        "convert_token": new_submission_token() if permissions.can_convert(request.user, sheet) else "",
+    }
+    context.update(_search_context(request, sheet, members))
+    context["roster"] = _roster_context(request, sheet)
+    context["roster"] = _order_roster(context.get("roster"), sheet)
+    context.update(_danger_flags(request, sheet))
+    return context
+
+
 def _sheet_people(sheet):
     """The decorated people and first timers of one sheet, with `is_returning` set on each first timer."""
     members = [
