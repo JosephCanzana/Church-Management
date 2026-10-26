@@ -18,36 +18,47 @@ Links go through role_url so the same file serves superadmin, admin_area, coordi
     Sheets <span class="text-base font-normal text-txt-secondary">({{ total }})</span>
   </h2>
   <div class="flex flex-wrap items-center gap-2">
+    {% if active_filters %}<a class="btn btn-ghost min-h-[44px]" href="{% role_url 'report_list' %}">Clear</a>{% endif %}
+    <button type="button" class="btn btn-secondary" x-on:click="$store.ui.openModal('report_filters')">
+      {% include 'includes/icon.html' with name='adjustments-horizontal' class='size-5' %}
+      Filters{% if active_filters %} <span class="ml-1 rounded-full bg-txt-primary px-2 text-sm text-surface">{{ active_filters }}</span>{% endif %}
+    </button>
     {% if pending_count %}
     <a class="btn btn-highlight" href="{% role_url 'pending_requests' %}">
       {% include 'includes/icon.html' with name='clipboard-document-check' class='size-5' %}
       {{ pending_count }} bypass request{{ pending_count|pluralize }} waiting
     </a>
     {% endif %}
-
+    
   </div>
 </div>
-
-<form method="get" class="card mb-4 grid grid-cols-1 items-end gap-3 sm:grid-cols-2 lg:grid-cols-5">
-  {% if form.state %}
-  <div><label class="label" for="{{ form.state.id_for_label }}">{{ form.state.label }}</label>{{ form.state }}</div>
-  {% endif %}
-  {% if form.extension %}
-  <div><label class="label" for="{{ form.extension.id_for_label }}">{{ form.extension.label }}</label>{{ form.extension }}</div>
-  {% endif %}
-  <div>
-    <label class="label" for="{{ form.date_from.id_for_label }}">{{ form.date_from.label }}</label>{{ form.date_from }}
-    {% for error in form.date_from.errors %}<p class="field-error">{{ error }}</p>{% endfor %}
-  </div>
-  <div>
-    <label class="label" for="{{ form.date_to.id_for_label }}">{{ form.date_to.label }}</label>{{ form.date_to }}
-    {% for error in form.date_to.errors %}<p class="field-error">{{ error }}</p>{% endfor %}
-  </div>
-  <div class="flex gap-2">
-    <button type="submit" class="btn btn-primary min-h-[44px]">Apply{% if active_filters %} ({{ active_filters }}){% endif %}</button>
-    {% if active_filters %}<a class="btn btn-secondary min-h-[44px]" href="{% role_url 'report_list' %}">Clear</a>{% endif %}
-  </div>
-</form>
+{# Filters live in a modal. It reopens by itself when a date is invalid, so the error is not hidden. #}
+<div x-data x-init="{% if form.errors %}$nextTick(() => $store.ui.openModal('report_filters')){% endif %}">
+  {% modal "report_filters" title="Filter sheets" %}
+  <form method="get" class="space-y-4">
+    {% if form.state %}
+    <div><label class="label" for="{{ form.state.id_for_label }}">{{ form.state.label }}</label>{{ form.state }}</div>
+    {% endif %}
+    {% if form.extension %}
+    <div><label class="label" for="{{ form.extension.id_for_label }}">{{ form.extension.label }}</label>{{ form.extension }}</div>
+    {% endif %}
+    <div class="grid grid-cols-1 gap-4 sm:grid-cols-2">
+      <div>
+        <label class="label" for="{{ form.date_from.id_for_label }}">{{ form.date_from.label }}</label>{{ form.date_from }}
+        {% for error in form.date_from.errors %}<p class="field-error">{{ error }}</p>{% endfor %}
+      </div>
+      <div>
+        <label class="label" for="{{ form.date_to.id_for_label }}">{{ form.date_to.label }}</label>{{ form.date_to }}
+        {% for error in form.date_to.errors %}<p class="field-error">{{ error }}</p>{% endfor %}
+      </div>
+    </div>
+    <div class="flex flex-wrap justify-end gap-3">
+      <button type="button" class="btn btn-secondary min-h-[44px] text-base" x-on:click="$store.ui.closeModal()">Cancel</button>
+      <button type="submit" class="btn btn-primary min-h-[44px] text-base">Apply{% if active_filters %} ({{ active_filters }}){% endif %}</button>
+    </div>
+  </form>
+  {% endmodal %}
+</div>
 
 {% if page.object_list %}
 <ul class="divide-y divide-border overflow-hidden rounded-xl border border-border bg-surface">
