@@ -1,0 +1,111 @@
+<!--
+faith/goal_form.html
+Create or edit a goal, Google Calendar style: title, description, start date, All day or a time range, Repeat
+(Daily, or Weekly with weekday chips) and Ends (Never or On date). Fills the blocks title, page_title and content.
+Once the goal has a check-in, Repeat is shown read-only with a Change schedule button.
+Saving asks for confirmation through the global confirm dialog (data-confirm); the server checks everything again.
+Context: form, goal (None when creating), locked, repeat_label, form_title, confirm_message, active_tab.
+-->
+{% extends "base_app.html" %}
+{% load static %}
+
+{% block title %}{{ form_title }}{% endblock %}
+{% block page_title %}{{ form_title }}{% endblock %}
+
+{% block content %}
+<script src="{% static 'js/goals.js' %}"></script>
+<div class="mx-auto w-full max-w-2xl">
+  {% url 'faith:goals' as goals_url %}
+  {% include 'includes/breadcrumb.html' with parent_label='Goals' parent_url=goals_url current=form_title %}
+
+  <form method="post" class="card space-y-5" x-data="goalForm()"
+        data-all-day="{% if form.all_day.value %}1{% else %}0{% endif %}"
+        data-repeat="{% if locked %}{{ goal.repeat_type }}{% else %}{{ form.repeat_type.value|default:'daily' }}{% endif %}"
+        data-ends="{{ form.ends.value|default:'never' }}"
+        data-confirm="{{ confirm_message }}" data-confirm-title="Save goal" data-confirm-text="Save">
+    {% csrf_token %}
+    {{ form.token }}
+
+    {% if form.non_field_errors %}
+    <div role="alert" class="rounded-lg border border-error bg-error/10 px-4 py-3 text-base text-error">
+      {% for error in form.non_field_errors %}<p>{{ error }}</p>{% endfor %}
+    </div>
+    {% endif %}
+
+    {% include 'faith/_field.html' with field=form.title %}
+    {% include 'faith/_field.html' with field=form.description %}
+    <p class="field-help -mt-3">Your buddy can see this goal's title and description.</p>
+
+    {% include 'faith/_field.html' with field=form.start_date %}
+
+    <div class="space-y-3">
+      <label class="flex min-h-11 items-center gap-3 text-base text-txt-primary">
+        <input type="checkbox" name="all_day" x-model="allDay" class="h-5 w-5">
+        All day
+      </label>
+      <div x-show="!allDay" x-cloak class="grid gap-5 sm:grid-cols-2">
+        {% include 'faith/_field.html' with field=form.start_time %}
+        {% include 'faith/_field.html' with field=form.end_time %}
+      </div>
+      <p x-show="!allDay" x-cloak class="field-help">Times are Manila time. A goal cannot run past midnight.</p>
+    </div>
+
+    {% if locked %}
+    <div>
+      <p class="label">Repeat</p>
+      <p class="text-base text-txt-primary">{{ repeat_label }}</p>
+      <p class="field-help">You already have check-ins, so the repeat is locked. To change it, end this goal today and start a new one tomorrow.</p>
+      <a href="{% url 'faith:goal_change_schedule' goal.pk %}" class="btn btn-secondary mt-2">Change schedule</a>
+    </div>
+    {% else %}
+    <fieldset>
+      <legend class="label">Repeat</legend>
+      <div class="flex flex-wrap gap-2">
+        {% for value, name in form.repeat_type.field.choices %}
+        <label class="relative">
+          <input type="radio" name="repeat_type" value="{{ value }}" x-model="repeat" class="peer sr-only">
+          <span class="inline-flex min-h-11 cursor-pointer items-center rounded-full border border-border bg-surface px-4 text-base text-txt-secondary peer-checked:border-primary peer-checked:bg-primary peer-checked:font-medium peer-checked:text-on-primary peer-focus-visible:outline peer-focus-visible:outline-2 peer-focus-visible:outline-offset-2 peer-focus-visible:outline-accent">{{ name }}</span>
+        </label>
+        {% endfor %}
+      </div>
+      {% for error in form.repeat_type.errors %}<p class="field-error">{{ error }}</p>{% endfor %}
+    </fieldset>
+    {% include 'faith/_weekdays.html' with field=form.weekdays %}
+    {% endif %}
+
+    <fieldset>
+      <legend class="label">Ends</legend>
+      <div class="flex flex-wrap gap-2">
+        {% for value, name in form.ends.field.choices %}
+        <label class="relative">
+          <input type="radio" name="ends" value="{{ value }}" x-model="ends" class="peer sr-only">
+          <span class="inline-flex min-h-11 cursor-pointer items-center rounded-full border border-border bg-surface px-4 text-base text-txt-secondary peer-checked:border-primary peer-checked:bg-primary peer-checked:font-medium peer-checked:text-on-primary peer-focus-visible:outline peer-focus-visible:outline-2 peer-focus-visible:outline-offset-2 peer-focus-visible:outline-accent">{{ name }}</span>
+        </label>
+        {% endfor %}
+      </div>
+      <div x-show="ends === 'date'" x-cloak class="mt-3 sm:w-1/2">
+        {% include 'faith/_field.html' with field=form.end_date %}
+      </div>
+    </fieldset>
+
+    <div class="flex flex-wrap items-center gap-3 border-t border-border pt-5">
+      <button type="submit" class="btn btn-primary">Save goal</button>
+      <a href="{% url 'faith:goals' %}" class="btn btn-secondary">Back</a>
+      {% if goal %}
+      <button type="submit" form="archive-goal-form" class="btn btn-secondary ml-auto">
+        <svg class="h-5 w-5" aria-hidden="true"><use href="{% static 'icons/sprite.svg' %}#archive-box"></use></svg>
+        Archive
+      </button>
+      {% endif %}
+    </div>
+  </form>
+
+  {% if goal %}
+  <form id="archive-goal-form" method="post" action="{% url 'faith:goal_archive' goal.pk %}"
+        data-confirm="Archive {{ goal.title }}? It will be hidden and left out of your history. You can restore it later."
+        data-confirm-title="Archive goal" data-confirm-text="Archive" data-confirm-danger>
+    {% csrf_token %}
+  </form>
+  {% endif %}
+</div>
+{% endblock %}

@@ -1,0 +1,280 @@
+@import "tailwindcss";
+
+/* Declares variable NAMES (so Tailwind generates bg-primary, text-txt-primary,
+   font-main, etc.) and the "neutral" preset's LIGHT values as the default.
+   Dark-mode and other-preset overrides live in themes.css, loaded after the
+   compiled output. `static` keeps every token in the build even when no
+   utility uses it yet, so runtime theme overrides always have a target. */
+
+@font-face {
+  font-family: 'Inter';
+  src: url('/static/fonts/Inter-VariableFont_opsz\,wght.ttf') format('truetype');
+  font-weight: 100 900;
+  font-style: normal;
+  font-display: swap;
+}
+
+@font-face {
+  font-family: 'JetBrains Mono';
+  src: url('/static/fonts/JetBrainsMono-VariableFont_wght.ttf') format('truetype');
+  font-weight: 100 800;
+  font-style: normal;
+  font-display: swap;
+}
+
+@theme static {
+  --font-main: 'Inter', ui-sans-serif, system-ui, sans-serif;
+  --font-mono: 'JetBrains Mono', ui-monospace, SFMono-Regular, monospace;
+
+  --color-primary:        #0B3B75;
+  --color-primary-hover:  #082E5C;
+  --color-primary-soft:   #E8F1FC;
+  --color-on-primary:     #FFFFFF;
+
+  --color-bg:             #F7F9FC;
+  --color-surface:        #FFFFFF;
+  --color-surface-alt:    #EFF4FA;
+
+  --color-txt-primary:    #10233D;
+  --color-txt-secondary:  #4B607A;
+  --color-txt-muted:      #7B8CA3;
+
+  --color-border:         #D7E2F0;
+  --color-border-strong:  #B8C9DD;
+
+  --color-success:        #15803D;
+  --color-error:          #B91C1C;
+  --color-warning:        #B45309;
+  --color-info:           #1D5FA7;
+
+  --color-accent:         #1769C2;
+  --color-accent-hover:   #0E4F96;
+  --color-accent-soft:    #E8F1FC;
+  --color-on-accent:      #FFFFFF;
+
+  /* Brand highlight: fills, lines and icon badges. Never for text. */
+  --color-highlight:       #D4AF56;
+  --color-highlight-soft:  color-mix(in oklab, var(--color-highlight) 75%, white);
+  --color-on-highlight:    #0B1220;
+
+  /* The frame that floats above the page: icon rail, sidebar panel, header, bottom bar.
+     Surface color with a hint of the primary color. Depth comes from shadows in the templates. */
+  --color-shell:          color-mix(in oklab, var(--color-primary) 3%, var(--color-surface));
+  --color-shell-border:   color-mix(in oklab, var(--color-primary) 14%, var(--color-surface));
+
+  /* Chart colors (series and donut slices). Each one points at an existing token, so themes.css already
+     recolors them in dark mode and in every preset: no second set of values to keep in step. The order is
+     the order a chart uses them (men, women...). Charts never rely on color alone: every slice, bar and
+     point also has its label and value as text. */
+  --color-chart-1:        var(--color-accent);
+  --color-chart-2:        var(--color-highlight);
+  --color-chart-3:        var(--color-success);
+  --color-chart-4:        var(--color-warning);
+  --color-chart-5:        var(--color-txt-muted);
+}
+
+/* Keeps Alpine-controlled elements (modals, bars) hidden until Alpine has started. */
+[x-cloak] { display: none !important; }
+
+/* Reusable pieces, built only from the tokens above.
+   Performance rules used here:
+   - no backdrop-filter (blur is the most expensive effect; it re-blurs on every scroll/repaint)
+   - one or two light shadows instead of three stacked ones
+   - transitions only on cheap properties (colors, transform, opacity), never box-shadow/filter/backdrop */
+@layer components {
+
+  /* Glass + glow buttons, built cheaply:
+     - colored buttons use a gradient + lit rim; secondary/ghost are flat translucent glass (no backdrop-filter)
+     - the hover glow lives on ::after and only its opacity animates, so no shadow repaint */
+  .btn {
+    @apply relative isolate inline-flex items-center justify-center gap-2 rounded-xl px-4 py-2.5 text-sm font-medium
+           disabled:pointer-events-none disabled:opacity-50
+           focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-accent;
+    --glow: var(--color-accent);
+    transition: background-color 180ms ease, border-color 180ms ease, color 180ms ease, transform 180ms ease;
+  }
+  .btn::after {
+    content: "";
+    position: absolute;
+    inset: 0;
+    z-index: -1;
+    border-radius: inherit;
+    pointer-events: none;
+    opacity: 0;
+    box-shadow:
+      0 0 0 1px color-mix(in oklab, var(--glow) 20%, transparent),
+      0 6px 16px -6px color-mix(in oklab, var(--glow) 35%, transparent);
+    transition: opacity 200ms ease;
+  }
+  .btn:hover { transform: translateY(-1px); }
+  .btn:hover::after { opacity: 1; }
+  .btn:active { transform: translateY(1px) scale(0.985); }
+
+  /* Solid actions: gradient, lit rim, tinted shadow. */
+  .btn-primary {
+    @apply text-on-primary;
+    --glow: var(--color-accent);
+    background-image: linear-gradient(
+      to bottom,
+      color-mix(in oklab, var(--color-primary) 85%, white),
+      var(--color-primary)
+    );
+    box-shadow:
+      inset 0 1px 0 color-mix(in oklab, white 30%, transparent),
+      0 4px 12px -3px color-mix(in oklab, var(--color-primary) 50%, transparent);
+  }
+  .btn-primary:hover {
+    background-image: linear-gradient(
+      to bottom,
+      color-mix(in oklab, var(--color-primary-hover) 85%, white),
+      var(--color-primary-hover)
+    );
+  }
+
+  /* Simple glass button: flat translucent tint, lit top rim, no gradient, no glow. */
+  .btn-secondary {
+    @apply text-txt-primary;
+    --glow: var(--color-accent);
+    background-color: color-mix(in oklab, var(--color-surface) 60%, transparent);
+    border: 1px solid color-mix(in oklab, var(--color-border-strong) 70%, transparent);
+    box-shadow:
+      inset 0 1px 0 color-mix(in oklab, white 40%, transparent),
+      0 4px 12px -4px color-mix(in oklab, black 16%, transparent);
+  }
+  .btn-secondary::after { display: none; }
+  .btn-secondary:hover {
+    transform: none;
+    background-color: color-mix(in oklab, var(--color-surface-alt) 75%, transparent);
+    border-color: color-mix(in oklab, var(--color-accent) 55%, transparent);
+  }
+  .btn-secondary:active { transform: translateY(1px); }
+
+  /* Quiet button: frosted pill on hover. */
+  .btn-ghost {
+    @apply text-txt-secondary hover:text-txt-primary;
+    --glow: var(--color-accent);
+  }
+  .btn-ghost::after { display: none; }
+  .btn-ghost:hover {
+    transform: none;
+    background-color: color-mix(in oklab, var(--color-surface-alt) 70%, transparent);
+    box-shadow: inset 0 1px 0 color-mix(in oklab, white 20%, transparent);
+  }
+
+  /* Destructive actions (delete). */
+  .btn-danger {
+    @apply text-on-primary;
+    --glow: var(--color-error);
+    background-image: linear-gradient(
+      to bottom,
+      color-mix(in oklab, var(--color-error) 85%, white),
+      var(--color-error)
+    );
+    box-shadow:
+      inset 0 1px 0 color-mix(in oklab, white 28%, transparent),
+      0 4px 12px -3px color-mix(in oklab, var(--color-error) 50%, transparent);
+  }
+  .btn-danger:hover { background-color: color-mix(in oklab, var(--color-error) 92%, black); }
+
+  .btn-highlight {
+    @apply text-on-highlight;
+    --glow: var(--color-highlight);
+    background-image: linear-gradient(
+      to bottom,
+      var(--color-highlight-soft),
+      var(--color-highlight)
+    );
+    box-shadow:
+      inset 0 1px 0 color-mix(in oklab, white 45%, transparent),
+      0 4px 12px -3px color-mix(in oklab, var(--color-highlight) 55%, transparent);
+  }
+
+  .label { @apply mb-1.5 block text-sm font-medium text-txt-primary; }
+
+  /* Field: solid background, focus shown with a border + ring (no animated shadow). */
+  .input {
+    @apply block w-full rounded-xl bg-surface px-3 py-2.5 text-sm text-txt-primary placeholder:text-txt-muted
+           border border-border-strong hover:border-accent
+           focus-visible:outline-none focus-visible:border-accent focus-visible:ring-4 focus-visible:ring-accent/20;
+    transition: border-color 150ms ease;
+  }
+
+  /* Django adds aria-invalid="true" to a field that has errors, so forms need no extra class. */
+  .input-error, .input[aria-invalid="true"] {
+    @apply border-error focus-visible:border-error focus-visible:ring-error/20;
+  }
+  .field-error { @apply mt-1.5 text-sm text-error; }
+  .field-help  { @apply mt-1.5 text-sm text-txt-secondary; }
+
+  /* Panel: solid surface, border, one soft shadow. */
+  .card {
+    @apply rounded-2xl bg-surface p-6 border border-border;
+    box-shadow: 0 4px 16px -8px color-mix(in oklab, black 20%, transparent);
+  }
+  /* Optional: add alongside .card for clickable cards. Only transform + border animate. */
+  .card-interactive {
+    transition: transform 180ms ease, border-color 180ms ease;
+  }
+  .card-interactive:hover {
+    transform: translateY(-2px);
+    border-color: color-mix(in oklab, var(--color-accent) 40%, transparent);
+  }
+
+  /* Panel for the workspace (same as .card, without the padding). */
+  .glass-panel {
+    @apply rounded-2xl bg-surface border border-border;
+    box-shadow: 0 4px 16px -8px color-mix(in oklab, black 20%, transparent);
+  }
+
+  /* Chart colors by number (1..5), picked with the chart_slot filter in dashboards/templatetags/chart_tags.py.
+     They are written out here, in a component layer, so the build always keeps them even though no template
+     spells the full class name. */
+  .chart-fill-1 { fill: var(--color-chart-1); }
+  .chart-fill-2 { fill: var(--color-chart-2); }
+  .chart-fill-3 { fill: var(--color-chart-3); }
+  .chart-fill-4 { fill: var(--color-chart-4); }
+  .chart-fill-5 { fill: var(--color-chart-5); }
+  .chart-stroke-1 { stroke: var(--color-chart-1); }
+  .chart-stroke-2 { stroke: var(--color-chart-2); }
+  .chart-stroke-3 { stroke: var(--color-chart-3); }
+  .chart-stroke-4 { stroke: var(--color-chart-4); }
+  .chart-stroke-5 { stroke: var(--color-chart-5); }
+  .chart-bg-1 { background-color: var(--color-chart-1); }
+  .chart-bg-2 { background-color: var(--color-chart-2); }
+  .chart-bg-3 { background-color: var(--color-chart-3); }
+  .chart-bg-4 { background-color: var(--color-chart-4); }
+  .chart-bg-5 { background-color: var(--color-chart-5); }
+
+  /* No lifting or press effects for people who prefer reduced motion. */
+  @media (prefers-reduced-motion: reduce) {
+    .btn, .btn::after, .card-interactive, .input { transition: none; }
+    .btn:active, .btn:hover, .card-interactive:hover { transform: none; }
+  }
+}
+
+@layer base {
+  body {
+    background-color: var(--color-bg);
+  }
+
+  /* The background glow lives on its own fixed layer. This replaces
+     `background-attachment: fixed` on body, which forces a full repaint on every scroll.
+     A fixed pseudo-element is promoted to its own GPU layer and just stays put. */
+  body::before {
+    content: "";
+    position: fixed;
+    inset: 0;
+    z-index: -1;
+    pointer-events: none;
+    background-image:
+      radial-gradient(60rem 40rem at 10% -10%, color-mix(in oklab, var(--color-accent) 16%, transparent), transparent),
+      radial-gradient(50rem 40rem at 100% 0%, color-mix(in oklab, var(--color-primary) 14%, transparent), transparent);
+    transform: translateZ(0);
+  }
+}
+
+.logo-mask {
+  display: inline-block;
+  background-color: currentColor;
+  mask: var(--logo-url) center / contain no-repeat;
+}

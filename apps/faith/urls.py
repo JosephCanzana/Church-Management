@@ -19,6 +19,8 @@ urlpatterns = [
     path("<int:pk>/change-schedule/", views.change_schedule_view, name="goal_change_schedule"),
     path("<int:pk>/archive/", views.archive_view, name="goal_archive"),
     path("<int:pk>/restore/", views.restore_view, name="goal_restore"),
+    path("<int:pk>/end/", views.end_view, name="goal_end"),
+    path("<int:pk>/delete/", views.delete_view, name="goal_delete"),
     path("history/", views_overview.history, name="history"),
     path("<int:pk>/", views_overview.goal_detail, name="detail"),
 

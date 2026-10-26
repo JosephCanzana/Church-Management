@@ -1,0 +1,107 @@
+<!--
+faith/today.html
+The Goals "Today" screen. Fills the blocks title, page_title and content.
+Shows the two person-level streak chips (daily open, Bible reading), a progress ring ("3 of 5 done"),
+today's goals (all-day first, then timed goals in time order) and the other active goals.
+Loads static/js/goals.js (goalToday and goalRow) with a normal script tag, before the markup that uses it.
+Context: overview (all_day, timed, others, total, done, percent, has_goals), chips (open, read), today, active_tab.
+Rows come from the partial faith/_row.html (include with row=row).
+-->
+{% extends "base_app.html" %}
+{% load static %}
+
+{% block title %}Goals{% endblock %}
+{% block page_title %}Goals{% endblock %}
+
+{% block content %}
+<script src="{% static 'js/goals.js' %}"></script>
+<div class="mx-auto w-full max-w-3xl">
+  {% include 'faith/_linkbar.html' with active='today' %}
+
+  <section aria-label="Streaks" class="grid grid-cols-2 gap-3">
+    <div class="card flex items-center gap-3">
+      <svg class="h-8 w-8 shrink-0 text-accent" aria-hidden="true"><use href="{% static 'icons/sprite.svg' %}#fire"></use></svg>
+      <div>
+        <p class="font-mono text-3xl font-semibold leading-none text-txt-primary">{{ chips.open.current }}<span class="sr-only"> days</span></p>
+        <p class="mt-1 text-sm text-txt-secondary">Opened the app</p>
+        <p class="text-sm text-txt-secondary">Best: <span class="font-mono">{{ chips.open.best }}</span></p>
+      </div>
+    </div>
+    <div class="card flex items-center gap-3">
+      <svg class="h-8 w-8 shrink-0 text-accent" aria-hidden="true"><use href="{% static 'icons/sprite.svg' %}#book-open"></use></svg>
+      <div>
+        <p class="font-mono text-3xl font-semibold leading-none text-txt-primary">{{ chips.read.current }}<span class="sr-only"> days</span></p>
+        <p class="mt-1 text-sm text-txt-secondary">Read the Bible</p>
+        <p class="text-sm text-txt-secondary">Best: <span class="font-mono">{{ chips.read.best }}</span></p>
+      </div>
+    </div>
+  </section>
+
+  {% if not overview.has_goals %}
+  <div class="card mt-5 py-12 text-center">
+    <p class="text-base font-medium text-txt-primary">You have no goals yet.</p>
+    <p class="mt-1 text-base text-txt-secondary">Start with one small thing you want to do every day.</p>
+    <a href="{% url 'faith:goal_new' %}" class="btn btn-primary mt-4">Create your first goal</a>
+  </div>
+  {% else %}
+  <div class="mt-5 space-y-5" x-data="goalToday()" @goal-delta="onDelta($event)" @goal-counts="onCounts($event)"
+       data-csrf="{{ csrf_token }}" data-done="{{ overview.done }}" data-total="{{ overview.total }}" data-today="{{ today|date:'Y-m-d' }}">
+
+    <section aria-label="Today's progress" class="card flex items-center gap-5">
+      <div class="relative h-20 w-20 shrink-0">
+        <svg viewBox="0 0 36 36" class="h-20 w-20 -rotate-90" aria-hidden="true">
+          <circle cx="18" cy="18" r="15.9155" fill="none" stroke="currentColor" stroke-width="3" class="text-border"></circle>
+          <circle cx="18" cy="18" r="15.9155" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round"
+                  pathLength="100" class="text-accent motion-safe:transition-all motion-safe:duration-500"
+                  stroke-dasharray="{{ overview.percent }} 100" :stroke-dasharray="percent + ' 100'"></circle>
+        </svg>
+        <p class="absolute inset-0 flex items-center justify-center font-mono text-base font-semibold text-txt-primary"><span x-text="percent">{{ overview.percent }}</span>%</p>
+      </div>
+      <div>
+        <h2 class="text-xl font-semibold text-txt-primary">{{ today|date:"l, F j" }}</h2>
+        {% if overview.total %}
+        <p class="mt-1 text-base text-txt-secondary" role="status" aria-live="polite"><span class="font-mono" x-text="doneCount">{{ overview.done }}</span> of <span class="font-mono" x-text="totalCount">{{ overview.total }}</span> done</p>
+        {% else %}
+        <p class="mt-1 text-base text-txt-secondary">Nothing is scheduled for today.</p>
+        {% endif %}
+      </div>
+    </section>
+
+    {% if overview.all_day %}
+    <section aria-labelledby="goals-allday">
+      <h3 id="goals-allday" class="mb-2 text-base font-semibold text-txt-primary">All day</h3>
+      <ul class="divide-y divide-border rounded-xl border border-border bg-surface px-4">
+        {% for row in overview.all_day %}{% include 'faith/_row.html' with row=row %}{% endfor %}
+      </ul>
+    </section>
+    {% endif %}
+
+    {% if overview.timed %}
+    <section aria-labelledby="goals-timed">
+      <h3 id="goals-timed" class="mb-2 text-base font-semibold text-txt-primary">At a set time</h3>
+      <ul class="divide-y divide-border rounded-xl border border-border bg-surface px-4">
+        {% for row in overview.timed %}{% include 'faith/_row.html' with row=row %}{% endfor %}
+      </ul>
+    </section>
+    {% endif %}
+
+    {% if overview.others %}
+    <section aria-labelledby="goals-others">
+      <h3 id="goals-others" class="mb-2 text-base font-semibold text-txt-primary">Not today</h3>
+      <ul class="divide-y divide-border rounded-xl border border-border bg-surface px-4">
+        {% for item in overview.others %}
+        <li class="flex items-center justify-between gap-3 py-3">
+          <div class="min-w-0">
+            <p class="text-base text-txt-primary">{{ item.goal.title }}</p>
+            <p class="text-sm text-txt-secondary">{{ item.repeat_label }} · {{ item.hint }}</p>
+          </div>
+          <a href="{% url 'faith:goal_edit' item.goal.pk %}" class="btn btn-ghost min-h-11" aria-label="Edit {{ item.goal.title }}">Edit</a>
+        </li>
+        {% endfor %}
+      </ul>
+    </section>
+    {% endif %}
+  </div>
+  {% endif %}
+</div>
+{% endblock %}

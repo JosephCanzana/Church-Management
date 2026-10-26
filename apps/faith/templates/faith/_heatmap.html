@@ -1,7 +1,8 @@
 <!--
 faith/_heatmap.html
-84-day heatmap, 12 weeks as columns (Monday at the top), drawn with CSS grid only. Colors are tokens:
-accent for done, accent at opacity steps for partly done, highlight for a perfect day, border for missed.
+84-day heatmap, 12 weeks as columns (Monday at the top), drawn with CSS grid only. The columns share the width of
+the card (auto-cols-fr), so the picture fills whatever space it is given; the height of a row is fixed.
+Colors are tokens: accent for done, accent at opacity steps for partly done, highlight for a perfect day, border for missed.
 Every cell has a title and an aria-label with its date and result, and the legend below says what each look means
 in words, so no meaning depends on color alone.
 Pass: cells (84 cells from faith.overview), kind ("goal" for one goal, "global" for all goals), title (name of the picture).
@@ -9,17 +10,17 @@ Include example: include faith/_heatmap.html with cells=ov.heatmap kind='goal' t
 -->
 <div class="flex gap-2">
   <ul class="grid shrink-0 grid-rows-7 gap-1" aria-hidden="true">
-    <li class="h-4 text-xs leading-4 text-txt-secondary sm:h-5 sm:leading-5">Mon</li>
-    <li class="h-4 sm:h-5"></li>
-    <li class="h-4 text-xs leading-4 text-txt-secondary sm:h-5 sm:leading-5">Wed</li>
-    <li class="h-4 sm:h-5"></li>
-    <li class="h-4 text-xs leading-4 text-txt-secondary sm:h-5 sm:leading-5">Fri</li>
-    <li class="h-4 sm:h-5"></li>
-    <li class="h-4 text-xs leading-4 text-txt-secondary sm:h-5 sm:leading-5">Sun</li>
+    <li class="h-5 text-xs leading-5 text-txt-secondary sm:h-7 sm:leading-7 xl:h-9 xl:leading-9">Mon</li>
+    <li class="h-5 sm:h-7 xl:h-9"></li>
+    <li class="h-5 text-xs leading-5 text-txt-secondary sm:h-7 sm:leading-7 xl:h-9 xl:leading-9">Wed</li>
+    <li class="h-5 sm:h-7 xl:h-9"></li>
+    <li class="h-5 text-xs leading-5 text-txt-secondary sm:h-7 sm:leading-7 xl:h-9 xl:leading-9">Fri</li>
+    <li class="h-5 sm:h-7 xl:h-9"></li>
+    <li class="h-5 text-xs leading-5 text-txt-secondary sm:h-7 sm:leading-7 xl:h-9 xl:leading-9">Sun</li>
   </ul>
-  <ul class="grid grid-flow-col grid-rows-7 gap-1" aria-label="{{ title }}">
+  <ul class="grid min-w-0 flex-1 grid-flow-col grid-rows-7 auto-cols-fr gap-1" aria-label="{{ title }}">
     {% for cell in cells %}
-    <li class="size-4 rounded-sm sm:size-5 {% if cell.state == 'done' %}bg-accent{% elif cell.state == 'perfect' %}bg-highlight{% elif cell.state == 'partial' %}{% if cell.level == 1 %}bg-accent/20{% elif cell.level == 2 %}bg-accent/40{% else %}bg-accent/70{% endif %}{% elif cell.state == 'missed' %}bg-border{% elif cell.state == 'open' %}border-2 border-accent{% elif cell.state == 'future' %}border border-dashed border-border{% else %}bg-border/30{% endif %}"
+    <li class="h-5 rounded-sm sm:h-7 xl:h-9 {% if cell.state == 'done' %}bg-accent{% elif cell.state == 'perfect' %}bg-highlight{% elif cell.state == 'partial' %}{% if cell.level == 1 %}bg-accent/20{% elif cell.level == 2 %}bg-accent/40{% else %}bg-accent/70{% endif %}{% elif cell.state == 'missed' %}bg-border{% elif cell.state == 'open' %}border-2 border-accent{% elif cell.state == 'future' %}border border-dashed border-border{% else %}bg-border/30{% endif %}"
         title="{{ cell.label }}" aria-label="{{ cell.label }}"></li>
     {% endfor %}
   </ul>

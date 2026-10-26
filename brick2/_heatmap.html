@@ -1,0 +1,43 @@
+<!--
+faith/_heatmap.html
+84-day heatmap, 12 weeks as columns (Monday at the top), drawn with CSS grid only. Colors are tokens:
+accent for done, accent at opacity steps for partly done, highlight for a perfect day, border for missed.
+Every cell has a title and an aria-label with its date and result, and the legend below says what each look means
+in words, so no meaning depends on color alone.
+Pass: cells (84 cells from faith.overview), kind ("goal" for one goal, "global" for all goals), title (name of the picture).
+Include example: include faith/_heatmap.html with cells=ov.heatmap kind='goal' title='Last 12 weeks'
+-->
+<div class="flex gap-2">
+  <ul class="grid shrink-0 grid-rows-7 gap-1" aria-hidden="true">
+    <li class="h-4 text-xs leading-4 text-txt-secondary sm:h-5 sm:leading-5">Mon</li>
+    <li class="h-4 sm:h-5"></li>
+    <li class="h-4 text-xs leading-4 text-txt-secondary sm:h-5 sm:leading-5">Wed</li>
+    <li class="h-4 sm:h-5"></li>
+    <li class="h-4 text-xs leading-4 text-txt-secondary sm:h-5 sm:leading-5">Fri</li>
+    <li class="h-4 sm:h-5"></li>
+    <li class="h-4 text-xs leading-4 text-txt-secondary sm:h-5 sm:leading-5">Sun</li>
+  </ul>
+  <ul class="grid grid-flow-col grid-rows-7 gap-1" aria-label="{{ title }}">
+    {% for cell in cells %}
+    <li class="size-4 rounded-sm sm:size-5 {% if cell.state == 'done' %}bg-accent{% elif cell.state == 'perfect' %}bg-highlight{% elif cell.state == 'partial' %}{% if cell.level == 1 %}bg-accent/20{% elif cell.level == 2 %}bg-accent/40{% else %}bg-accent/70{% endif %}{% elif cell.state == 'missed' %}bg-border{% elif cell.state == 'open' %}border-2 border-accent{% elif cell.state == 'future' %}border border-dashed border-border{% else %}bg-border/30{% endif %}"
+        title="{{ cell.label }}" aria-label="{{ cell.label }}"></li>
+    {% endfor %}
+  </ul>
+</div>
+<ul class="mt-3 flex flex-wrap items-center gap-x-4 gap-y-2 text-sm text-txt-secondary">
+  {% if kind == 'goal' %}
+  <li class="flex items-center gap-1.5"><span class="size-4 rounded-sm bg-accent" aria-hidden="true"></span>Done</li>
+  <li class="flex items-center gap-1.5"><span class="size-4 rounded-sm bg-border" aria-hidden="true"></span>Missed</li>
+  <li class="flex items-center gap-1.5"><span class="size-4 rounded-sm bg-border/30" aria-hidden="true"></span>Not scheduled</li>
+  <li class="flex items-center gap-1.5"><span class="size-4 rounded-sm border-2 border-accent" aria-hidden="true"></span>Today, still open</li>
+  <li class="flex items-center gap-1.5"><span class="size-4 rounded-sm border border-dashed border-border" aria-hidden="true"></span>Upcoming</li>
+  {% else %}
+  <li class="flex items-center gap-1.5"><span class="size-4 rounded-sm bg-border/30" aria-hidden="true"></span>No goals</li>
+  <li class="flex items-center gap-1.5"><span class="size-4 rounded-sm bg-border" aria-hidden="true"></span>None done</li>
+  <li class="flex items-center gap-1.5"><span class="size-4 rounded-sm bg-accent/20" aria-hidden="true"></span>1-33%</li>
+  <li class="flex items-center gap-1.5"><span class="size-4 rounded-sm bg-accent/40" aria-hidden="true"></span>34-66%</li>
+  <li class="flex items-center gap-1.5"><span class="size-4 rounded-sm bg-accent/70" aria-hidden="true"></span>67-99%</li>
+  <li class="flex items-center gap-1.5"><span class="size-4 rounded-sm bg-highlight" aria-hidden="true"></span>All done</li>
+  <li class="flex items-center gap-1.5"><span class="size-4 rounded-sm border-2 border-accent" aria-hidden="true"></span>Today, not started</li>
+  {% endif %}
+</ul>

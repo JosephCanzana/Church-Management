@@ -1,13 +1,19 @@
 {% comment %}
 faith/_list_item.html
-One goal as a row on the All goals page: title, repeat, time, dates, streaks and the buttons that fit its status
-(Edit and Archive for active goals, Edit for completed ones, Restore for archived ones).
-Usage: include with item=item (a dict from stats.goal_list).
+One goal as a card on the All goals page: title (a link to its progress page), repeat, time, dates, streaks and the
+buttons that fit what the goal allows now (goal_tags / goal_rules): Edit (not started, or a started goal with an end date),
+Change schedule (a started goal with no end date), End goal and Archive; a completed goal can only be archived; Restore and
+Delete for archived ones. End goal and Delete show only once their routes (faith:goal_end, faith:goal_delete) exist.
+Usage: include with item=item (a dict from stats.goal_list). The card sits in a grid, so it is an li of its own.
 {% endcomment %}
-{% load static %}
-<li class="flex flex-wrap items-start justify-between gap-3 py-4">
-  <div class="min-w-0 flex-1">
-    <p class="text-base font-semibold text-txt-primary">{{ item.goal.title }}</p>
+{% load static goal_tags %}
+{% goal_actions item.goal as can %}
+{% url 'faith:detail' item.goal.pk as detail_url %}{% url 'faith:goal_end' item.goal.pk as end_url %}{% url 'faith:goal_delete' item.goal.pk as delete_url %}
+<li class="flex flex-col justify-between gap-4 rounded-xl border border-border bg-surface p-4">
+  <div class="min-w-0">
+    <p class="text-base font-semibold text-txt-primary">
+      {% if detail_url %}<a href="{{ detail_url }}" class="underline-offset-2 hover:underline focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-accent">{{ item.goal.title }}</a>{% else %}{{ item.goal.title }}{% endif %}
+    </p>
     <p class="mt-0.5 text-sm text-txt-secondary">
       {{ item.repeat_label }} · {{ item.time_label }} · Starts {{ item.goal.start_date|date:"M j, Y" }}{% if item.goal.end_date %} · Ends {{ item.goal.end_date|date:"M j, Y" }}{% else %} · Never ends{% endif %}
     </p>
@@ -21,7 +27,7 @@ Usage: include with item=item (a dict from stats.goal_list).
       {% if item.goal.status == 'archived' %}<span class="rounded-full border border-border px-2.5 py-0.5">Archived</span>{% endif %}
     </p>
   </div>
-  <div class="flex shrink-0 items-center gap-2">
+  <div class="flex items-center gap-2">
     {% if item.goal.status == 'archived' %}
     <form method="post" action="{% url 'faith:goal_restore' item.goal.pk %}">
       {% csrf_token %}
@@ -30,8 +36,28 @@ Usage: include with item=item (a dict from stats.goal_list).
         Restore
       </button>
     </form>
+    {% if delete_url %}
+    <form method="post" action="{{ delete_url }}"
+          data-confirm="Permanently delete {{ item.goal.title }}? Its check-ins and notes are deleted too. This cannot be undone."
+          data-confirm-title="Delete goal" data-confirm-text="Delete" data-confirm-danger>
+      {% csrf_token %}
+      <button type="submit" class="btn btn-danger" aria-label="Delete {{ item.goal.title }}">
+        <svg class="h-5 w-5" aria-hidden="true"><use href="{% static 'icons/sprite.svg' %}#trash"></use></svg>
+        Delete
+      </button>
+    </form>
+    {% endif %}
     {% else %}
-    <a href="{% url 'faith:goal_edit' item.goal.pk %}" class="btn btn-secondary">Edit</a>
+    {% if can.edit %}<a href="{% url 'faith:goal_edit' item.goal.pk %}" class="btn btn-secondary">{% if can.edit_end_date %}Change end date{% else %}Edit{% endif %}</a>{% endif %}
+    {% if can.change_schedule %}<a href="{% url 'faith:goal_change_schedule' item.goal.pk %}" class="btn btn-secondary">Change schedule</a>{% endif %}
+    {% if end_url and can.end %}
+    <form method="post" action="{{ end_url }}"
+          data-confirm="End {{ item.goal.title }} today? It moves to Completed and keeps its check-ins and streaks."
+          data-confirm-title="End goal" data-confirm-text="End goal">
+      {% csrf_token %}
+      <button type="submit" class="btn btn-secondary">End goal</button>
+    </form>
+    {% endif %}
     <form method="post" action="{% url 'faith:goal_archive' item.goal.pk %}"
           data-confirm="Archive {{ item.goal.title }}? It will be hidden and left out of your history. You can restore it later."
           data-confirm-title="Archive goal" data-confirm-text="Archive" data-confirm-danger>

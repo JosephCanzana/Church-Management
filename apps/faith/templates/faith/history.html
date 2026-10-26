@@ -1,20 +1,22 @@
 <!--
 faith/history.html
 All goals together (owner only). Server-rendered CSS grid, no chart library, no JavaScript.
-Blocks: page_title, content.
+Full width: overrides main_class; from xl the heatmap and the daily habits sit side by side.
+Blocks: page_title, main_class, content.
 Context: ov (faith.overview.global_overview: has_goals, goal_count, heatmap, perfect {current, best, total},
 week and month {done, expected, rate}, activity: two rows with label, icon, cells, days, window, current, best).
 Archived goals are left out of every number; completed goals are included.
 -->
 {% extends 'base_app.html' %}
 {% block page_title %}Goal history{% endblock %}
+{% block main_class %}w-full flex-1 px-4 py-6 sm:px-6 lg:px-8{% if mobile_nav_style == 'bottom' %} pb-[calc(5rem+env(safe-area-inset-bottom))] sm:pb-6{% endif %}{% endblock %}
 {% block content %}
 <div class="space-y-5">
   {% include 'faith/_goal_nav.html' with active='history' %}
   <h2 class="text-xl font-semibold text-txt-primary">Goal history</h2>
 
   {% if not ov.has_goals %}
-  {% url 'faith:new' as new_url %}
+  {% url 'faith:goal_new' as new_url %}
   <section class="card p-5">
     <p class="text-base text-txt-secondary">You have no goals yet, so there is no history to show.</p>
     {% if new_url %}<a href="{{ new_url }}" class="btn btn-primary mt-3 min-h-11">Add a goal</a>{% endif %}
@@ -47,18 +49,21 @@ Archived goals are left out of every number; completed goals are included.
       </div>
     </dl>
   </section>
+  {% endif %}
 
+  <div class="grid gap-5 xl:grid-cols-2 xl:items-start">
+  {% if ov.has_goals %}
   <section class="card p-5">
     <h3 class="text-base font-semibold text-txt-primary">Last 12 weeks</h3>
     <p class="text-sm text-txt-secondary">Each square is one day. The darker it is, the more of that day's goals you finished. Gold means all of them.</p>
-    <div class="mt-4 overflow-x-auto">
+    <div class="mt-4">
       {% include 'faith/_heatmap.html' with cells=ov.heatmap kind='global' title='Last 12 weeks, one square per day' %}
     </div>
     <p class="mt-3 text-sm text-txt-secondary">Today is not counted against you until it ends.</p>
   </section>
   {% endif %}
 
-  <section class="card p-5" aria-labelledby="activity-heading">
+  <section class="card p-5{% if not ov.has_goals %} xl:col-span-2{% endif %}" aria-labelledby="activity-heading">
     <h3 id="activity-heading" class="text-base font-semibold text-txt-primary">Daily habits</h3>
     <p class="text-sm text-txt-secondary">The last {{ ov.activity.0.window }} days, oldest first.</p>
     <div class="mt-4 space-y-6">
@@ -76,7 +81,7 @@ Archived goals are left out of every number; completed goals are included.
         </div>
         <ul class="mt-2 grid grid-cols-14 gap-1" aria-label="{{ row.label }}, last {{ row.window }} days">
           {% for cell in row.cells %}
-          <li class="aspect-square rounded-sm {% if cell.state == 'done' %}bg-accent{% elif cell.state == 'open' %}border-2 border-accent{% else %}bg-border{% endif %}"
+          <li class="h-6 rounded-sm sm:h-7 {% if cell.state == 'done' %}bg-accent{% elif cell.state == 'open' %}border-2 border-accent{% else %}bg-border{% endif %}"
               title="{{ cell.label }}" aria-label="{{ cell.label }}"></li>
           {% endfor %}
         </ul>
@@ -89,5 +94,6 @@ Archived goals are left out of every number; completed goals are included.
       <li class="flex items-center gap-1.5"><span class="size-4 rounded-sm border-2 border-accent" aria-hidden="true"></span>Today, not yet</li>
     </ul>
   </section>
+  </div>
 </div>
 {% endblock %}

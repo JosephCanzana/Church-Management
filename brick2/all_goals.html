@@ -1,0 +1,46 @@
+<!--
+faith/all_goals.html
+Every goal the person has, grouped by status: Active, Completed, Archived (collapsed).
+Fills the blocks title, page_title and content.
+Context: groups (active, completed, archived: lists of dicts with goal, current, best, time_label, repeat_label), active_tab.
+-->
+{% extends "base_app.html" %}
+{% load static %}
+
+{% block title %}All goals{% endblock %}
+{% block page_title %}Goals{% endblock %}
+
+{% block content %}
+<div class="mx-auto w-full max-w-3xl space-y-6">
+  {% include 'faith/_linkbar.html' with active='all' %}
+
+  <section aria-labelledby="g-active">
+    <h2 id="g-active" class="mb-2 text-base font-semibold text-txt-primary">Active</h2>
+    {% if groups.active %}
+    <ul class="divide-y divide-border rounded-xl border border-border bg-surface px-4">
+      {% for item in groups.active %}{% include 'faith/_list_item.html' with item=item %}{% endfor %}
+    </ul>
+    {% else %}
+    <p class="rounded-xl border border-border bg-surface px-4 py-6 text-center text-base text-txt-secondary">No active goals.</p>
+    {% endif %}
+  </section>
+
+  {% if groups.completed %}
+  <section aria-labelledby="g-done">
+    <h2 id="g-done" class="mb-2 text-base font-semibold text-txt-primary">Completed</h2>
+    <ul class="divide-y divide-border rounded-xl border border-border bg-surface px-4">
+      {% for item in groups.completed %}{% include 'faith/_list_item.html' with item=item %}{% endfor %}
+    </ul>
+  </section>
+  {% endif %}
+
+  {% if groups.archived %}
+  <details class="rounded-xl border border-border bg-surface px-4">
+    <summary class="flex min-h-11 cursor-pointer items-center text-base font-semibold text-txt-primary">Archived ({{ groups.archived|length }})</summary>
+    <ul class="divide-y divide-border">
+      {% for item in groups.archived %}{% include 'faith/_list_item.html' with item=item %}{% endfor %}
+    </ul>
+  </details>
+  {% endif %}
+</div>
+{% endblock %}

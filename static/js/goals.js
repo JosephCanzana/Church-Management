@@ -60,24 +60,24 @@
   };
 
   window.goalRow = function () {
-     return {
+    return {
       done: false,
       busy: false,
       noteOpen: false,
       note: "",
       noteState: "",
       streak: 0,
-      checkUrl: "",   // add
-      noteUrl: "",    // add
-      csrf: "",       // add
+      checkUrl: "",
+      noteUrl: "",
+      csrf: "",
       init: function () {
         var d = this.$el.dataset;
         this.done = d.done === "1";
         this.note = d.note || "";
         this.streak = parseInt(d.streak || "0", 10);
-        this.checkUrl = d.checkUrl || "";     // add
-        this.noteUrl = d.noteUrl || "";       // add
-        this.csrf = csrfOf(this.$el);         // add
+        this.checkUrl = d.checkUrl || "";
+        this.noteUrl = d.noteUrl || "";
+        this.csrf = csrfOf(this.$el);
         this.noteOpen = false;
       },
       toggle: function () {

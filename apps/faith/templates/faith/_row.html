@@ -6,7 +6,8 @@ attributes below, flips the box at once, then asks the server; the server decide
 The note is the owner's own and is only ever rendered on this person's page.
 Usage: include with row=row (a dict from stats.today_overview).
 {% endcomment %}
-{% load static %}
+{% load static goal_tags %}
+{% goal_actions row.goal as can %}
 <li class="py-4" x-data="goalRow()"
     data-done="{% if row.done %}1{% else %}0{% endif %}" data-streak="{{ row.current }}" data-note="{{ row.note }}"
     data-check-url="{% url 'faith:goal_check' row.goal.pk %}" data-note-url="{% url 'faith:goal_note' row.goal.pk %}">
@@ -38,9 +39,15 @@ Usage: include with row=row (a dict from stats.today_overview).
               :aria-expanded="noteOpen.toString()" aria-expanded="false" aria-label="Private note for {{ row.goal.title }}">
         <svg class="h-5 w-5" aria-hidden="true"><use href="{% static 'icons/sprite.svg' %}#chat-bubble-left"></use></svg>
       </button>
-      <a href="{% url 'faith:goal_edit' row.goal.pk %}" class="btn btn-ghost min-h-11 min-w-11" aria-label="Edit {{ row.goal.title }}">
+      {% if can.edit %}
+      <a href="{% url 'faith:goal_edit' row.goal.pk %}" class="btn btn-ghost min-h-11 min-w-11" aria-label="{% if can.edit_end_date %}Change end date of{% else %}Edit{% endif %} {{ row.goal.title }}">
         <svg class="h-5 w-5" aria-hidden="true"><use href="{% static 'icons/sprite.svg' %}#pencil-square"></use></svg>
       </a>
+      {% elif can.change_schedule %}
+      <a href="{% url 'faith:goal_change_schedule' row.goal.pk %}" class="btn btn-ghost min-h-11 min-w-11" aria-label="Change schedule of {{ row.goal.title }}">
+        <svg class="h-5 w-5" aria-hidden="true"><use href="{% static 'icons/sprite.svg' %}#clock"></use></svg>
+      </a>
+      {% endif %}
     </div>
   </div>
 

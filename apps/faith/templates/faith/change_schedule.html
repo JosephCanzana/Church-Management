@@ -1,8 +1,9 @@
 <!--
 faith/change_schedule.html
-Change how a goal repeats. Ends the old goal today and starts a new, linked goal tomorrow with the same title,
-description and time. Fills the blocks title, page_title and content.
-Context: form (repeat_type, weekdays), goal, repeat_label, today, tomorrow, active_tab.
+Change how a habit (a goal with no end date) repeats and what time of day it happens. Ends the old goal today and starts a
+new, linked goal tomorrow with the same title and description, so the history stays as it was.
+Fills the blocks title, page_title and content.
+Context: form (repeat_type, weekdays, all_day, start_time, end_time), goal, repeat_label, today, tomorrow, active_tab.
 -->
 {% extends "base_app.html" %}
 {% load static %}
@@ -18,6 +19,7 @@ Context: form (repeat_type, weekdays), goal, repeat_label, today, tomorrow, acti
 
   <form method="post" class="card space-y-5" x-data="goalForm()"
         data-repeat="{{ form.repeat_type.value|default:'daily' }}"
+        data-all-day="{% if form.all_day.value %}1{% else %}0{% endif %}"
         data-confirm="End {{ goal.title }} today and start the new schedule tomorrow?"
         data-confirm-title="Change schedule" data-confirm-text="Change">
     {% csrf_token %}
@@ -34,7 +36,7 @@ Context: form (repeat_type, weekdays), goal, repeat_label, today, tomorrow, acti
     </div>
 
     <p class="rounded-lg border border-border bg-bg px-4 py-3 text-base text-txt-secondary">
-      This goal ends today ({{ today|date:"M j" }}) and keeps all its history. A new goal with the same title, description and time starts tomorrow ({{ tomorrow|date:"M j" }}) with the schedule you pick. Its streak starts again at 0.
+      This goal ends today ({{ today|date:"M j" }}) and keeps all its history. A new goal with the same title and description starts tomorrow ({{ tomorrow|date:"M j" }}) with the repeat and time you pick. Its streak starts again at 0.
     </p>
 
     <fieldset>
@@ -51,9 +53,21 @@ Context: form (repeat_type, weekdays), goal, repeat_label, today, tomorrow, acti
     </fieldset>
     {% include 'faith/_weekdays.html' with field=form.weekdays %}
 
+    <div class="space-y-3">
+      <label class="flex min-h-11 items-center gap-3 text-base text-txt-primary">
+        <input type="checkbox" name="all_day" x-model="allDay" class="h-5 w-5">
+        All day
+      </label>
+      <div x-show="!allDay" x-cloak class="grid gap-5 sm:grid-cols-2">
+        {% include 'faith/_field.html' with field=form.start_time %}
+        {% include 'faith/_field.html' with field=form.end_time %}
+      </div>
+      <p x-show="!allDay" x-cloak class="field-help">Times are Manila time. A goal cannot run past midnight.</p>
+    </div>
+
     <div class="flex flex-wrap items-center gap-3 border-t border-border pt-5">
       <button type="submit" class="btn btn-primary">Change schedule</button>
-      <a href="{% url 'faith:goal_edit' goal.pk %}" class="btn btn-secondary">Back</a>
+      <a href="{% url 'faith:goal_all' %}" class="btn btn-secondary">Back</a>
     </div>
   </form>
 </div>

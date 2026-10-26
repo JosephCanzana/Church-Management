@@ -1,107 +1,119 @@
 <!--
 faith/today.html
-The Goals "Today" screen. Fills the blocks title, page_title and content.
-Shows the two person-level streak chips (daily open, Bible reading), a progress ring ("3 of 5 done"),
-today's goals (all-day first, then timed goals in time order) and the other active goals.
+The Goals "Today" screen, full width. Fills the blocks title, page_title, main_class and content.
+Wide screens (xl): today's goals on the left, a sticky side column on the right with the two streak cards and the
+progress ring. Narrow screens: one column in the order streaks, progress, goals.
 Loads static/js/goals.js (goalToday and goalRow) with a normal script tag, before the markup that uses it.
+The goalToday component sits on the grid wrapper (data-csrf, data-done, data-total, data-today) so the ring in the
+side column and the rows in the main column share it. With no goals there is no component.
 Context: overview (all_day, timed, others, total, done, percent, has_goals), chips (open, read), today, active_tab.
 Rows come from the partial faith/_row.html (include with row=row).
 -->
 {% extends "base_app.html" %}
-{% load static %}
+{% load static goal_tags %}
 
 {% block title %}Goals{% endblock %}
 {% block page_title %}Goals{% endblock %}
+{% block main_class %}w-full flex-1 px-4 py-6 sm:px-6 lg:px-8{% if mobile_nav_style == 'bottom' %} pb-[calc(5rem+env(safe-area-inset-bottom))] sm:pb-6{% endif %}{% endblock %}
 
 {% block content %}
 <script src="{% static 'js/goals.js' %}"></script>
-<div class="mx-auto w-full max-w-3xl">
-  {% include 'faith/_linkbar.html' with active='today' %}
+<div class="space-y-5">
+  {% include 'faith/_goal_nav.html' with active='today' %}
 
-  <section aria-label="Streaks" class="grid grid-cols-2 gap-3">
-    <div class="card flex items-center gap-3">
-      <svg class="h-8 w-8 shrink-0 text-accent" aria-hidden="true"><use href="{% static 'icons/sprite.svg' %}#fire"></use></svg>
-      <div>
-        <p class="font-mono text-3xl font-semibold leading-none text-txt-primary">{{ chips.open.current }}<span class="sr-only"> days</span></p>
-        <p class="mt-1 text-sm text-txt-secondary">Opened the app</p>
-        <p class="text-sm text-txt-secondary">Best: <span class="font-mono">{{ chips.open.best }}</span></p>
-      </div>
-    </div>
-    <div class="card flex items-center gap-3">
-      <svg class="h-8 w-8 shrink-0 text-accent" aria-hidden="true"><use href="{% static 'icons/sprite.svg' %}#book-open"></use></svg>
-      <div>
-        <p class="font-mono text-3xl font-semibold leading-none text-txt-primary">{{ chips.read.current }}<span class="sr-only"> days</span></p>
-        <p class="mt-1 text-sm text-txt-secondary">Read the Bible</p>
-        <p class="text-sm text-txt-secondary">Best: <span class="font-mono">{{ chips.read.best }}</span></p>
-      </div>
-    </div>
-  </section>
+  <div class="grid gap-5 xl:grid-cols-[minmax(0,1fr)_minmax(20rem,26rem)] xl:items-start"
+       {% if overview.has_goals %}x-data="goalToday()" @goal-delta="onDelta($event)" @goal-counts="onCounts($event)"
+       data-csrf="{{ csrf_token }}" data-done="{{ overview.done }}" data-total="{{ overview.total }}" data-today="{{ today|date:'Y-m-d' }}"{% endif %}>
 
-  {% if not overview.has_goals %}
-  <div class="card mt-5 py-12 text-center">
-    <p class="text-base font-medium text-txt-primary">You have no goals yet.</p>
-    <p class="mt-1 text-base text-txt-secondary">Start with one small thing you want to do every day.</p>
-    <a href="{% url 'faith:goal_new' %}" class="btn btn-primary mt-4">Create your first goal</a>
-  </div>
-  {% else %}
-  <div class="mt-5 space-y-5" x-data="goalToday()" @goal-delta="onDelta($event)" @goal-counts="onCounts($event)"
-       data-csrf="{{ csrf_token }}" data-done="{{ overview.done }}" data-total="{{ overview.total }}" data-today="{{ today|date:'Y-m-d' }}">
-
-    <section aria-label="Today's progress" class="card flex items-center gap-5">
-      <div class="relative h-20 w-20 shrink-0">
-        <svg viewBox="0 0 36 36" class="h-20 w-20 -rotate-90" aria-hidden="true">
-          <circle cx="18" cy="18" r="15.9155" fill="none" stroke="currentColor" stroke-width="3" class="text-border"></circle>
-          <circle cx="18" cy="18" r="15.9155" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round"
-                  pathLength="100" class="text-accent motion-safe:transition-all motion-safe:duration-500"
-                  stroke-dasharray="{{ overview.percent }} 100" :stroke-dasharray="percent + ' 100'"></circle>
-        </svg>
-        <p class="absolute inset-0 flex items-center justify-center font-mono text-base font-semibold text-txt-primary"><span x-text="percent">{{ overview.percent }}</span>%</p>
-      </div>
-      <div>
-        <h2 class="text-xl font-semibold text-txt-primary">{{ today|date:"l, F j" }}</h2>
-        {% if overview.total %}
-        <p class="mt-1 text-base text-txt-secondary" role="status" aria-live="polite"><span class="font-mono" x-text="doneCount">{{ overview.done }}</span> of <span class="font-mono" x-text="totalCount">{{ overview.total }}</span> done</p>
-        {% else %}
-        <p class="mt-1 text-base text-txt-secondary">Nothing is scheduled for today.</p>
-        {% endif %}
-      </div>
-    </section>
-
-    {% if overview.all_day %}
-    <section aria-labelledby="goals-allday">
-      <h3 id="goals-allday" class="mb-2 text-base font-semibold text-txt-primary">All day</h3>
-      <ul class="divide-y divide-border rounded-xl border border-border bg-surface px-4">
-        {% for row in overview.all_day %}{% include 'faith/_row.html' with row=row %}{% endfor %}
-      </ul>
-    </section>
-    {% endif %}
-
-    {% if overview.timed %}
-    <section aria-labelledby="goals-timed">
-      <h3 id="goals-timed" class="mb-2 text-base font-semibold text-txt-primary">At a set time</h3>
-      <ul class="divide-y divide-border rounded-xl border border-border bg-surface px-4">
-        {% for row in overview.timed %}{% include 'faith/_row.html' with row=row %}{% endfor %}
-      </ul>
-    </section>
-    {% endif %}
-
-    {% if overview.others %}
-    <section aria-labelledby="goals-others">
-      <h3 id="goals-others" class="mb-2 text-base font-semibold text-txt-primary">Not today</h3>
-      <ul class="divide-y divide-border rounded-xl border border-border bg-surface px-4">
-        {% for item in overview.others %}
-        <li class="flex items-center justify-between gap-3 py-3">
-          <div class="min-w-0">
-            <p class="text-base text-txt-primary">{{ item.goal.title }}</p>
-            <p class="text-sm text-txt-secondary">{{ item.repeat_label }} · {{ item.hint }}</p>
+    <div class="space-y-5 xl:sticky xl:top-20 xl:col-start-2 xl:row-start-1">
+      <section aria-label="Streaks" class="grid grid-cols-2 gap-3">
+        <div class="card flex items-center gap-3">
+          <svg class="h-8 w-8 shrink-0 text-accent" aria-hidden="true"><use href="{% static 'icons/sprite.svg' %}#fire"></use></svg>
+          <div>
+            <p class="font-mono text-3xl font-semibold leading-none text-txt-primary">{{ chips.open.current }}<span class="sr-only"> days</span></p>
+            <p class="mt-1 text-sm text-txt-secondary">Opened the app</p>
+            <p class="text-sm text-txt-secondary">Best: <span class="font-mono">{{ chips.open.best }}</span></p>
           </div>
-          <a href="{% url 'faith:goal_edit' item.goal.pk %}" class="btn btn-ghost min-h-11" aria-label="Edit {{ item.goal.title }}">Edit</a>
-        </li>
-        {% endfor %}
-      </ul>
-    </section>
-    {% endif %}
+        </div>
+        <div class="card flex items-center gap-3">
+          <svg class="h-8 w-8 shrink-0 text-accent" aria-hidden="true"><use href="{% static 'icons/sprite.svg' %}#book-open"></use></svg>
+          <div>
+            <p class="font-mono text-3xl font-semibold leading-none text-txt-primary">{{ chips.read.current }}<span class="sr-only"> days</span></p>
+            <p class="mt-1 text-sm text-txt-secondary">Read the Bible</p>
+            <p class="text-sm text-txt-secondary">Best: <span class="font-mono">{{ chips.read.best }}</span></p>
+          </div>
+        </div>
+      </section>
+
+      {% if overview.has_goals %}
+      <section aria-label="Today's progress" class="card flex items-center gap-5">
+        <div class="relative h-24 w-24 shrink-0">
+          <svg viewBox="0 0 36 36" class="h-24 w-24 -rotate-90" aria-hidden="true">
+            <circle cx="18" cy="18" r="15.9155" fill="none" stroke="currentColor" stroke-width="3" class="text-border"></circle>
+            <circle cx="18" cy="18" r="15.9155" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round"
+                    pathLength="100" class="text-accent motion-safe:transition-all motion-safe:duration-500"
+                    stroke-dasharray="{{ overview.percent }} 100" :stroke-dasharray="percent + ' 100'"></circle>
+          </svg>
+          <p class="absolute inset-0 flex items-center justify-center font-mono text-lg font-semibold text-txt-primary"><span x-text="percent">{{ overview.percent }}</span>%</p>
+        </div>
+        <div>
+          <h2 class="text-xl font-semibold text-txt-primary">{{ today|date:"l, F j" }}</h2>
+          {% if overview.total %}
+          <p class="mt-1 text-base text-txt-secondary" role="status" aria-live="polite"><span class="font-mono" x-text="doneCount">{{ overview.done }}</span> of <span class="font-mono" x-text="totalCount">{{ overview.total }}</span> done</p>
+          {% else %}
+          <p class="mt-1 text-base text-txt-secondary">Nothing is scheduled for today.</p>
+          {% endif %}
+        </div>
+      </section>
+      {% endif %}
+    </div>
+
+    <div class="space-y-5 xl:col-start-1 xl:row-start-1">
+      {% if not overview.has_goals %}
+      <div class="card py-12 text-center">
+        <p class="text-base font-medium text-txt-primary">You have no goals yet.</p>
+        <p class="mt-1 text-base text-txt-secondary">Start with one small thing you want to do every day.</p>
+        <a href="{% url 'faith:goal_new' %}" class="btn btn-primary mt-4">Create your first goal</a>
+      </div>
+      {% else %}
+      {% if overview.all_day %}
+      <section aria-labelledby="goals-allday">
+        <h3 id="goals-allday" class="mb-2 text-base font-semibold text-txt-primary">All day</h3>
+        <ul class="divide-y divide-border rounded-xl border border-border bg-surface px-4">
+          {% for row in overview.all_day %}{% include 'faith/_row.html' with row=row %}{% endfor %}
+        </ul>
+      </section>
+      {% endif %}
+
+      {% if overview.timed %}
+      <section aria-labelledby="goals-timed">
+        <h3 id="goals-timed" class="mb-2 text-base font-semibold text-txt-primary">At a set time</h3>
+        <ul class="divide-y divide-border rounded-xl border border-border bg-surface px-4">
+          {% for row in overview.timed %}{% include 'faith/_row.html' with row=row %}{% endfor %}
+        </ul>
+      </section>
+      {% endif %}
+
+      {% if overview.others %}
+      <section aria-labelledby="goals-others">
+        <h3 id="goals-others" class="mb-2 text-base font-semibold text-txt-primary">Not today</h3>
+        <ul class="divide-y divide-border rounded-xl border border-border bg-surface px-4">
+          {% for item in overview.others %}
+          <li class="flex items-center justify-between gap-3 py-3">
+            <div class="min-w-0">
+              <p class="text-base text-txt-primary">{{ item.goal.title }}</p>
+              <p class="text-sm text-txt-secondary">{{ item.repeat_label }} · {{ item.hint }}</p>
+            </div>
+            {% goal_actions item.goal as can %}
+            {% if can.edit %}<a href="{% url 'faith:goal_edit' item.goal.pk %}" class="btn btn-ghost min-h-11" aria-label="{% if can.edit_end_date %}Change end date of{% else %}Edit{% endif %} {{ item.goal.title }}">{% if can.edit_end_date %}Change end date{% else %}Edit{% endif %}</a>
+            {% elif can.change_schedule %}<a href="{% url 'faith:goal_change_schedule' item.goal.pk %}" class="btn btn-ghost min-h-11" aria-label="Change schedule of {{ item.goal.title }}">Change schedule</a>{% endif %}
+          </li>
+          {% endfor %}
+        </ul>
+      </section>
+      {% endif %}
+      {% endif %}
+    </div>
   </div>
-  {% endif %}
 </div>
 {% endblock %}

@@ -1,43 +1,77 @@
 <!--
 faith/all_goals.html
-Every goal the person has, grouped by status: Active, Completed, Archived (collapsed).
-Fills the blocks title, page_title and content.
-Context: groups (active, completed, archived: lists of dicts with goal, current, best, time_label, repeat_label), active_tab.
+Every goal the person has, full width, grouped by status: Active, Completed, Archived (collapsed).
+Each group is a responsive grid of goal cards (1, 2 or 3 columns). Fills the blocks title, page_title, main_class and content.
+Filter: a GET form (status and how the goal ends) handled by faith.views.all_view; bad values fall back to All.
+Context: groups (active, completed, archived: lists of dicts with goal, current, best, time_label, repeat_label),
+flt (status, ends, on), shown (how many goals are listed), active_tab.
 -->
 {% extends "base_app.html" %}
 {% load static %}
 
 {% block title %}All goals{% endblock %}
 {% block page_title %}Goals{% endblock %}
+{% block main_class %}w-full flex-1 px-4 py-6 sm:px-6 lg:px-8{% if mobile_nav_style == 'bottom' %} pb-[calc(5rem+env(safe-area-inset-bottom))] sm:pb-6{% endif %}{% endblock %}
 
 {% block content %}
-<div class="mx-auto w-full max-w-3xl space-y-6">
-  {% include 'faith/_linkbar.html' with active='all' %}
+<div class="space-y-6">
+  {% include 'faith/_goal_nav.html' with active='all' %}
 
+  <form method="get" class="card flex flex-wrap items-end gap-3 p-4" aria-label="Filter goals">
+    <div class="min-w-40 flex-1 sm:flex-none">
+      <label class="label" for="flt-status">Show</label>
+      <select id="flt-status" name="status" class="input">
+        <option value="all" {% if flt.status == 'all' %}selected{% endif %}>All goals</option>
+        <option value="active" {% if flt.status == 'active' %}selected{% endif %}>Active</option>
+        <option value="completed" {% if flt.status == 'completed' %}selected{% endif %}>Completed</option>
+        <option value="archived" {% if flt.status == 'archived' %}selected{% endif %}>Archived</option>
+      </select>
+    </div>
+    <div class="min-w-40 flex-1 sm:flex-none">
+      <label class="label" for="flt-ends">How it ends</label>
+      <select id="flt-ends" name="ends" class="input">
+        <option value="any" {% if flt.ends == 'any' %}selected{% endif %}>Any</option>
+        <option value="never" {% if flt.ends == 'never' %}selected{% endif %}>Never ends</option>
+        <option value="deadline" {% if flt.ends == 'deadline' %}selected{% endif %}>Has an end date</option>
+      </select>
+    </div>
+    <button type="submit" class="btn btn-primary min-h-11">Apply</button>
+    {% if flt.on %}<a href="{% url 'faith:goal_all' %}" class="btn btn-ghost min-h-11">Reset</a>{% endif %}
+    {% if flt.on %}<p class="w-full text-sm text-txt-secondary" role="status">Showing <span class="font-mono text-txt-primary">{{ shown }}</span> {% if shown == 1 %}goal{% else %}goals{% endif %}.</p>{% endif %}
+  </form>
+
+  {% if flt.on and not shown %}
+  <p class="rounded-xl border border-border bg-surface px-4 py-6 text-center text-base text-txt-secondary">No goals match this filter.</p>
+  {% endif %}
+
+  {% if flt.status == 'all' or flt.status == 'active' %}
+  {% if not flt.on or groups.active %}
   <section aria-labelledby="g-active">
     <h2 id="g-active" class="mb-2 text-base font-semibold text-txt-primary">Active</h2>
     {% if groups.active %}
-    <ul class="divide-y divide-border rounded-xl border border-border bg-surface px-4">
+    <ul class="grid gap-3 md:grid-cols-2 2xl:grid-cols-3">
       {% for item in groups.active %}{% include 'faith/_list_item.html' with item=item %}{% endfor %}
     </ul>
     {% else %}
     <p class="rounded-xl border border-border bg-surface px-4 py-6 text-center text-base text-txt-secondary">No active goals.</p>
     {% endif %}
   </section>
+  {% endif %}
+  {% endif %}
 
   {% if groups.completed %}
   <section aria-labelledby="g-done">
     <h2 id="g-done" class="mb-2 text-base font-semibold text-txt-primary">Completed</h2>
-    <ul class="divide-y divide-border rounded-xl border border-border bg-surface px-4">
+    <ul class="grid gap-3 md:grid-cols-2 2xl:grid-cols-3">
       {% for item in groups.completed %}{% include 'faith/_list_item.html' with item=item %}{% endfor %}
     </ul>
   </section>
   {% endif %}
 
   {% if groups.archived %}
-  <details class="rounded-xl border border-border bg-surface px-4">
+  <details class="rounded-xl border border-border bg-surface px-4 pb-4" {% if flt.status == 'archived' %}open{% endif %}>
     <summary class="flex min-h-11 cursor-pointer items-center text-base font-semibold text-txt-primary">Archived ({{ groups.archived|length }})</summary>
-    <ul class="divide-y divide-border">
+    <ul class="mt-2 grid gap-3 md:grid-cols-2 2xl:grid-cols-3">
       {% for item in groups.archived %}{% include 'faith/_list_item.html' with item=item %}{% endfor %}
     </ul>
   </details>

@@ -1,13 +1,16 @@
 <!--
 faith/goal_detail.html
 One goal's progress page (owner only). Server-rendered: CSS grid and inline SVG, no chart library, no JavaScript.
-Blocks: page_title, content.
+Full width: overrides main_class; from xl two columns (streak and heatmap | weekly bars, best weekday, month).
+Blocks: page_title, main_class, content.
 Context: goal, ov (faith.overview.goal_overview: streak, done, expected, rate, ring, has_checkins, heatmap, weeks,
 best_weekday, month), repeat (text), when (text).
-Uses the partials faith/_goal_nav.html, faith/_ring.html, faith/_heatmap.html and dashboards/_column_chart.html.
+Uses the partials faith/_goal_nav.html, faith/_ring.html and faith/_heatmap.html. The weekly bars are drawn here (no dashboards partial).
 -->
 {% extends 'base_app.html' %}
+{% load goal_tags %}
 {% block page_title %}{{ goal.title }}{% endblock %}
+{% block main_class %}w-full flex-1 px-4 py-6 sm:px-6 lg:px-8{% if mobile_nav_style == 'bottom' %} pb-[calc(5rem+env(safe-area-inset-bottom))] sm:pb-6{% endif %}{% endblock %}
 {% block content %}
 <div class="space-y-5">
   {% include 'faith/_goal_nav.html' with active='all' %}
@@ -16,10 +19,38 @@ Uses the partials faith/_goal_nav.html, faith/_ring.html, faith/_heatmap.html an
     <h2 class="text-xl font-semibold text-txt-primary">{{ goal.title }}</h2>
     {% if goal.description %}<p class="mt-1 text-base text-txt-secondary">{{ goal.description }}</p>{% endif %}
     <p class="mt-2 text-sm text-txt-secondary">{{ repeat }} &middot; {{ when }}{% if goal.status != 'active' %} &middot; {{ goal.get_status_display }}{% endif %}</p>
-    {% url 'faith:edit' goal.pk as edit_url %}
-    {% if edit_url %}<a href="{{ edit_url }}" class="btn btn-secondary mt-3 min-h-11">Edit goal</a>{% endif %}
+    {% url 'faith:goal_edit' goal.pk as edit_url %}
+    <div class="mt-3 flex flex-wrap items-center gap-2">
+      {% goal_actions goal as can %}
+      {% if edit_url and can.edit %}<a href="{{ edit_url }}" class="btn btn-secondary min-h-11">{% if can.edit_end_date %}Change end date{% else %}Edit goal{% endif %}</a>{% endif %}
+      {% if can.change_schedule %}{% url 'faith:goal_change_schedule' goal.pk as schedule_url %}{% if schedule_url %}<a href="{{ schedule_url }}" class="btn btn-secondary min-h-11">Change schedule</a>{% endif %}{% endif %}
+      {% if can.end %}
+      {% url 'faith:goal_end' goal.pk as end_url %}
+      {% if end_url %}
+      <form method="post" action="{{ end_url }}"
+            data-confirm="End {{ goal.title }} today? It moves to Completed and keeps its check-ins and streaks."
+            data-confirm-title="End goal" data-confirm-text="End goal">
+        {% csrf_token %}
+        <button type="submit" class="btn btn-secondary min-h-11">End goal</button>
+      </form>
+      {% endif %}
+      {% endif %}
+      {% if can.delete %}
+      {% url 'faith:goal_delete' goal.pk as delete_url %}
+      {% if delete_url %}
+      <form method="post" action="{{ delete_url }}"
+            data-confirm="Permanently delete {{ goal.title }}? Its check-ins and notes are deleted too. This cannot be undone."
+            data-confirm-title="Delete goal" data-confirm-text="Delete" data-confirm-danger>
+        {% csrf_token %}
+        <button type="submit" class="btn btn-danger min-h-11">Delete</button>
+      </form>
+      {% endif %}
+      {% endif %}
+    </div>
   </header>
 
+  <div class="grid gap-5 xl:grid-cols-2 xl:items-start">
+  <div class="space-y-5">
   <section class="card p-5" aria-labelledby="streak-heading">
     <h3 id="streak-heading" class="sr-only">Streak and completion</h3>
     <div class="flex flex-wrap items-center gap-x-8 gap-y-5">
@@ -45,7 +76,7 @@ Uses the partials faith/_goal_nav.html, faith/_ring.html, faith/_heatmap.html an
       </dl>
     </div>
     {% if not ov.has_checkins %}
-    {% url 'faith:today' as today_url %}
+    {% url 'faith:goals' as today_url %}
     <p class="mt-4 text-base text-txt-secondary">
       No check-ins yet. Tick this goal on the <a class="underline" href="{{ today_url|default:'/goals/' }}">Today</a> screen to start your streak.
     </p>
@@ -55,12 +86,32 @@ Uses the partials faith/_goal_nav.html, faith/_ring.html, faith/_heatmap.html an
   <section class="card p-5">
     <h3 class="text-base font-semibold text-txt-primary">Last 12 weeks</h3>
     <p class="text-sm text-txt-secondary">Each square is one day. Hover or focus a square for its date and result.</p>
-    <div class="mt-4 overflow-x-auto">
+    <div class="mt-4">
       {% include 'faith/_heatmap.html' with cells=ov.heatmap kind='goal' title='Last 12 weeks, one square per day' %}
     </div>
   </section>
 
-  {% include 'dashboards/_column_chart.html' with title='Each week' caption='Share of scheduled days done, weeks starting Monday. The number above is done over scheduled.' bars=ov.weeks empty='Nothing to show yet.' %}
+  </div>
+  <div class="space-y-5">
+  <section class="card p-5" aria-labelledby="weeks-heading">
+    <h3 id="weeks-heading" class="text-base font-semibold text-txt-primary">Each week</h3>
+    <p class="text-sm text-txt-secondary">Share of scheduled days done, weeks starting Monday. The number above is done over scheduled.</p>
+    {% if ov.has_checkins %}
+    <ul class="mt-4 flex h-44 items-end gap-1 sm:gap-2" aria-label="Each week, share of scheduled days done">
+      {% for bar in ov.weeks %}
+      <li class="flex h-full min-w-0 flex-1 flex-col items-center justify-end gap-1" title="Week of {{ bar.label }}: {{ bar.display }}" aria-label="Week of {{ bar.label }}: {{ bar.display }}">
+        <span class="font-mono text-xs text-txt-secondary">{{ bar.short }}</span>
+        <span class="w-full rounded-t-sm {% if bar.pct %}bg-accent{% else %}bg-border{% endif %}" style="height: {% if bar.pct %}{{ bar.pct }}%{% else %}2px{% endif %}"></span>
+      </li>
+      {% endfor %}
+    </ul>
+    <ul class="mt-1 flex gap-1 sm:gap-2" aria-hidden="true">
+      {% for bar in ov.weeks %}<li class="min-w-0 flex-1 truncate text-center text-xs text-txt-secondary">{{ bar.label }}</li>{% endfor %}
+    </ul>
+    {% else %}
+    <p class="mt-3 text-base text-txt-secondary">Nothing to show yet.</p>
+    {% endif %}
+  </section>
 
   <section class="card p-5">
     <h3 class="text-base font-semibold text-txt-primary">Best weekday</h3>
@@ -94,5 +145,7 @@ Uses the partials faith/_goal_nav.html, faith/_ring.html, faith/_heatmap.html an
     {% endfor %}
     <p class="mt-3 text-sm text-txt-secondary">Filled = done, grey = missed, faint = not scheduled, outlined = today still open, dashed = upcoming.</p>
   </section>
+  </div>
+  </div>
 </div>
 {% endblock %}

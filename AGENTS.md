@@ -985,7 +985,8 @@ Run: `docker compose exec web python manage.py test apps.tithes apps.dashboards`
 ## Faith: goals, streaks and history
 
 Code: `apps/faith/` (`models.py`, `permissions.py`, `services.py`, `stats.py`, `schedule.py`, `streaks.py`, `overview.py`,
-`partner.py`, `middleware.py`, `listeners.py`, `views.py`, `views_overview.py`, templates in `templates/faith/`,
+`partner.py`, `middleware.py`, `listeners.py`, `views.py`, `views_overview.py`, `goal_rules.py` (what a goal allows now),
+`forms_changes.py` (end date and change schedule forms), `templatetags/goal_tags.py`, templates in `templates/faith/`,
 `static/js/goals.js`, tests in `tests/`).
 
 ### Schedule, streaks and middleware (Brick 1)
@@ -998,22 +999,41 @@ Code: `apps/faith/` (`models.py`, `permissions.py`, `services.py`, `stats.py`, `
 
 ### Goals (Brick 3)
 - Routes (namespace `faith`, mounted at `/goals/` for every role): `""` Today (`faith:goals`), `new/`, `all/`,
-  `<pk>/edit/`, `<pk>/check/` (POST, JSON or redirect), `<pk>/note/` (POST), `<pk>/change-schedule/`,
-  `<pk>/archive/`, `<pk>/restore/`. Brick 4 adds `history/` and `<pk>/` (see below).
+  `<pk>/edit/` (full edit, or the end date only for a started task, or a redirect to Change schedule for a started habit), `<pk>/check/` (POST, JSON or redirect), `<pk>/note/` (POST), `<pk>/change-schedule/`,
+  `<pk>/archive/`, `<pk>/restore/`, `<pk>/end/` and `<pk>/delete/` (both POST). Brick 4 adds `history/` and `<pk>/` (see below).
 - Permissions: `faith/permissions.py` only. `can_use_goals` = `User.can_sign_in`; `can_manage_goal` = owner.
   A missing goal and another person's goal are both a 404 in views and `PermissionDenied` in services.
 - Services (`faith/services.py`): `clean_goal_data` (used by form and services), `create_goal`, `update_goal`,
-  `change_schedule`, `archive_goal`, `restore_goal`, `set_checkin`, `set_checkin_note`. Each is atomic, locks the
+  `change_schedule`, `archive_goal`, `restore_goal`, `change_end_date`, `end_goal`, `delete_goal`, `set_checkin`, `set_checkin_note`. Each is atomic, locks the
   person then the goal, and re-checks the owner. Cap: 20 active goals.
+- **End goal and Delete:** `end_goal` ends an ACTIVE goal today (end date becomes today unless it already ends sooner, status
+  `completed`, `completed_at` set), for never-ending goals and goals with a deadline alike; check-ins and streaks stay, and
+  a completed goal stays completed (it is read-only). A goal that has not started yet is refused (its end
+  date would precede its start); an archived goal must be restored first; ending a completed goal is a quiet no-op. `delete_goal`
+  permanently removes the owner's own ARCHIVED goal (check-ins cascade, `previous_goal` of a follow-up goal becomes NULL), writes the
+  `goal.delete` audit row BEFORE deleting, and refuses any goal that is not archived. The nightly `purge_archived` still removes
+  archived goals by itself after the 180-day retention period; Delete is the same removal done now. Buttons: End goal on active
+  cards and the detail page, Delete on archived cards and the detail page; each hides itself if its route is missing.
+- **All goals filter:** `all_view` reads `?status=` (`all`, `active`, `completed`, `archived`) and `?ends=` (`any`, `never` = no end
+  date, `deadline` = has an end date); other values mean `all` / `any`. `_filter_groups` narrows what `stats.goal_list` returns.
 - Check-ins: the server decides "today" (`timezone.localdate()`); no service accepts a date. Unchecking sets
   `done=False` and keeps the row and note. Only `done=True` rows count in stats. Notes are private to the owner.
-- Edit rules: start date cannot move later than the first check-in; end date cannot be earlier than today or the
-  last done check-in (an unchanged past end date is allowed); repeat type and weekdays lock once ANY check-in row
-  exists; "Change schedule" ends the old goal today and creates a linked goal (`previous_goal`) starting tomorrow;
-  a completed goal given a future or empty end date becomes active again.
+- **What can be changed (`faith/goal_rules.py`, `actions(goal, today)`, the one place; the services enforce it and templates ask
+  it through `{% load goal_tags %}{% goal_actions goal as can %}`).** Habit = no end date, task = has an end date.
+  - Not started yet (`start_date` after today): full Edit (`update_goal`), nothing has happened.
+  - Started TASK: Edit shows as "Change end date" and changes ONLY the end date (`change_end_date`, form `EndDateForm`, template
+    `goal_end_date.html`): not in the past, not before the last done check-in, never cleared (End goal does that job).
+  - Started HABIT: no Edit. `/<pk>/edit/` redirects to Change schedule. Change schedule (`change_schedule`, form
+    `ChangeScheduleForm` in `faith/forms_changes.py`) changes the repeat, the weekdays AND the time of day (All day, or a start
+    and an optional end time): it ends the old goal today and creates a linked goal (`previous_goal`) starting tomorrow, so history
+    stays and the streak starts again. Changing nothing is refused. A goal with an end date cannot change its schedule.
+  - COMPLETED goals are read-only (no Edit, Change schedule or End goal; Archive stays). Editing a completed goal no longer
+    reactivates it. Archived goals are restored first.
+  - A goal that starts today already counts as started, so fix typos before the start date or archive and delete it.
+  - Other edit rules: start date cannot move later than the first check-in; repeat type and weekdays lock once ANY check-in row exists.
 - Stats (`faith/stats.py`, all take `today`): `goal_streaks`, `streak_chips`, `today_overview`, `today_counts`,
   `goal_list`, `done_dates_for`. The unchecked current day never breaks a streak until midnight.
-- Audit: `goal.create`, `goal.update`, `goal.change_schedule`, `goal.archive`, `goal.restore` carry the goal id and
+- Audit: `goal.create`, `goal.update`, `goal.change_schedule`, `goal.archive`, `goal.restore`, `goal.end`, `goal.delete` carry the goal id and
   field NAMES only. Check-ins and notes are not audited. `faith/services.py::_audit` is the one place that calls
   `log_action`.
 - Frontend: `static/js/goals.js` (plain global functions `goalToday`, `goalRow`, `goalForm`, loaded with a normal
@@ -1031,10 +1051,19 @@ Code: `apps/faith/` (`models.py`, `permissions.py`, `services.py`, `stats.py`, `
   Best weekday needs 2 settled days on that weekday and at least 1 done. Daily-habit strips are 28 days.
 - Routes: `/goals/<pk>/` (`faith:detail`, owner only, a missing or foreign goal is 404; archived goals are allowed because
   All goals lists them) and `/goals/history/` (`faith:history`). Per-goal nav is `faith/_goal_nav.html`
-  (`{% include 'faith/_goal_nav.html' with active='today' %}` or `'all'`); a wrong url name hides a link, it does not crash.
+  (`{% include 'faith/_goal_nav.html' with active='today' %}`, `'all'` or `'history'`). It holds Today | All goals | History
+  and the New goal button, and links through the real names `faith:goals`, `faith:goal_all`, `faith:history` and
+  `faith:goal_new`; a wrong url name hides a link, it does not crash (the old `faith:today` and `faith:all` hid two links).
+  The old `faith/_linkbar.html` is replaced by it and can be deleted. Both overview views use `goals_screen` from `faith/views.py`.
 - Visual rules: server-rendered CSS grid and inline SVG, no chart library, no JavaScript. Heatmap cells use `bg-accent` at
   /20 /40 /70 and full, `bg-highlight` for a perfect day, `bg-border` for missed; every cell has a `title` and
   `aria-label`, and the legend is written in words.
+- **Full-width layout:** the four goal pages (Today, All goals, History, goal detail) override `main_class` of `base_app.html`
+  to drop `mx-auto max-w-6xl` and keep the padding and the bottom-bar padding. The forms (new, edit, change schedule) stay
+  narrow. Today: from `xl` the goals on the left and a sticky side column (streaks, ring) on the right; the `goalToday()`
+  component sits on the grid wrapper so both columns share it. All goals: card grid (1, 2, 3 columns), each title links to
+  `faith:detail`. History and detail: two columns from `xl`. `_heatmap.html` columns share the width (`auto-cols-fr`) with
+  fixed row heights, so it fills its card. Rebuild Tailwind after changing these templates.
 - Dashboards: `get_dashboard_context` adds `streaks` and `goals_today` (None for people who cannot use goals);
   `dashboards/_faith_widgets.html` (with `_streaks.html`, `_goals_today.html`) draws them.
 - Tests: `apps.faith.tests.test_overview`, `apps.dashboards.tests.test_faith_widgets`.

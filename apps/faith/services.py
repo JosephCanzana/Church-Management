@@ -18,7 +18,7 @@ from apps.audit.services import log_action
 from apps.core import services as core_services
 from apps.core.services import ServiceError, consume_submission_token
 
-from . import permissions
+from . import goal_rules, permissions
 from .models import Goal, GoalCheckin
 from .schedule import is_scheduled
 
@@ -164,18 +164,24 @@ def create_goal(actor, data, *, token=None, request=None):
 
 @transaction.atomic
 def update_goal(actor, goal_id, data, *, request=None):
-    """Edit a goal. Returns the goal; changes nothing (and logs nothing) when nothing changed.
+    """Edit a goal that has NOT started yet. Returns the goal; changes nothing (and logs nothing) when nothing changed.
 
-    Rules: the start date cannot move later than the first check-in; the end date cannot be
-    earlier than today or earlier than the last done check-in; repeat type and weekdays are
-    locked once any check-in exists (use `change_schedule`); giving a completed goal a
-    future (or no) end date makes it active again.
+    A completed goal cannot be edited. Once a goal has started, a task (it has an end date) can only change its
+    end date (`change_end_date`) and a habit (no end date) uses `change_schedule`. Before the start date every field
+    can change. Other rules: the start date cannot move later than the first check-in; the end date cannot be earlier
+    than today or earlier than the last done check-in; repeat type and weekdays are locked once any check-in exists.
     """
     _lock_actor(actor)
     goal = _locked_goal(actor, goal_id)
     if goal.status == Goal.Status.ARCHIVED:
         raise ServiceError("Restore this goal before editing it.")
+    if goal.status == Goal.Status.COMPLETED:
+        raise ServiceError("A completed goal cannot be edited.")
     today = timezone.localdate()
+    if not goal_rules.actions(goal, today)["edit_all"]:
+        if goal.end_date is not None:
+            raise ServiceError("This goal has started, so only its end date can be changed.")
+        raise ServiceError("This goal has started. Use Change schedule to change how it repeats or its time.")
 
     locked = goal.checkins.exists()
     data = dict(data)
@@ -198,32 +204,57 @@ def update_goal(actor, goal_id, data, *, request=None):
     if not locked:
         changed += [f for f in ("repeat_type", "weekdays") if getattr(goal, f) != clean[f]]
 
-    reactivated = goal.status == Goal.Status.COMPLETED and (clean["end_date"] is None or clean["end_date"] >= today)
-    if reactivated:
-        _check_cap(actor)
-    if not changed and not reactivated:
+    if not changed:
         return goal
 
     for field in changed:
         setattr(goal, field, clean[field])
-    update_fields = list(changed)
-    if reactivated:
-        goal.status = Goal.Status.ACTIVE
-        goal.completed_at = None
-        update_fields += ["status", "completed_at"]
-        changed.append("status")
-    goal.save(update_fields=update_fields)
+    goal.save(update_fields=list(changed))
     _audit(actor, "goal.update", goal, fields=changed, request=request)
     return goal
 
 
 @transaction.atomic
-def change_schedule(actor, goal_id, data, *, request=None):
-    """End the old goal today and start a linked new goal tomorrow with a new repeat.
+def change_end_date(actor, goal_id, end_date, *, request=None):
+    """Change only the end date of a STARTED task (the one thing a started task lets you edit).
 
-    `data` carries only `repeat_type` and `weekdays`. The new goal copies the title,
-    description, time and end date, and points at the old one through `previous_goal`.
-    Returns the new goal. The old goal keeps its history and stays checkable until midnight.
+    The new date cannot be in the past, before the start date or before the last done check-in, and a task keeps
+    an end date (clearing it would turn it into a habit; use End goal instead). Saving the same date changes nothing.
+    """
+    _lock_actor(actor)
+    goal = _locked_goal(actor, goal_id)
+    if goal.status == Goal.Status.COMPLETED:
+        raise ServiceError("A completed goal cannot be edited.")
+    if goal.status == Goal.Status.ARCHIVED:
+        raise ServiceError("Restore this goal before editing it.")
+    today = timezone.localdate()
+    if not goal_rules.actions(goal, today)["edit_end_date"]:
+        raise ServiceError("Only a goal that has started and has an end date can have its end date changed.")
+    if not isinstance(end_date, dt.date):
+        raise GoalDataError("Pick an end date.", "end_date")
+    if end_date == goal.end_date:
+        return goal
+    if end_date < today:
+        raise GoalDataError("The end date cannot be in the past.", "end_date")
+    if end_date < goal.start_date:
+        raise GoalDataError("The end date cannot be before the start date.", "end_date")
+    last_done = goal.checkins.filter(done=True).order_by("-checkin_date").values_list("checkin_date", flat=True).first()
+    if last_done and end_date < last_done:
+        raise GoalDataError("The end date cannot be before your last completed check-in.", "end_date")
+    goal.end_date = end_date
+    goal.save(update_fields=["end_date"])
+    _audit(actor, "goal.update", goal, fields=["end_date"], request=request)
+    return goal
+
+
+@transaction.atomic
+def change_schedule(actor, goal_id, data, *, request=None):
+    """End the old goal today and start a linked new goal tomorrow with a new repeat and/or a new time of day.
+
+    Only for a STARTED goal with NO end date (a habit). `data` carries `repeat_type` and `weekdays`, and may carry
+    `start_time` and `end_time` (both None = all day); a missing time key keeps the old time. The new goal copies
+    the title and description and points at the old one through `previous_goal`. Returns the new goal. The old
+    goal keeps its history and stays checkable until midnight. Changing nothing is refused.
     """
     _lock_actor(actor)
     goal = _locked_goal(actor, goal_id)
@@ -231,24 +262,33 @@ def change_schedule(actor, goal_id, data, *, request=None):
     tomorrow = today + dt.timedelta(days=1)
     if goal.status != Goal.Status.ACTIVE:
         raise ServiceError("Only an active goal can change its schedule.")
+    if goal.end_date is not None:
+        raise ServiceError("A goal with an end date cannot change its schedule. Change its end date instead.")
     if goal.start_date > today:
         raise ServiceError("This goal has not started yet. Edit it instead.")
-    if goal.end_date is not None and goal.end_date <= today:
-        raise ServiceError("This goal ends today, so there is nothing to continue tomorrow.")
 
+    start_time = data["start_time"] if "start_time" in data else goal.start_time
+    end_time = data["end_time"] if "end_time" in data else goal.end_time
     clean = clean_goal_data({
         "title": goal.title, "description": goal.description,
-        "start_date": tomorrow, "end_date": goal.end_date,
-        "start_time": goal.start_time, "end_time": goal.end_time,
+        "start_date": tomorrow, "end_date": None,
+        "start_time": start_time, "end_time": end_time,
         "repeat_type": data.get("repeat_type"), "weekdays": data.get("weekdays"),
     }, today=today)
-    if clean["repeat_type"] == goal.repeat_type and (clean["weekdays"] or []) == sorted(goal.weekdays or []):
-        raise ServiceError("This goal already repeats that way.")
+    repeat_same = clean["repeat_type"] == goal.repeat_type and (clean["weekdays"] or []) == sorted(goal.weekdays or [])
+    time_same = clean["start_time"] == goal.start_time and clean["end_time"] == goal.end_time
+    if repeat_same and time_same:
+        raise ServiceError("Nothing changed. Pick a different repeat or time.")
 
     goal.end_date = today
     goal.save(update_fields=["end_date"])
     new_goal = Goal.objects.create(user=actor, status=Goal.Status.ACTIVE, previous_goal=goal, **clean)
-    _audit(actor, "goal.change_schedule", new_goal, fields=["repeat_type", "weekdays", "previous_goal"], request=request)
+    fields = ["previous_goal"]
+    if not repeat_same:
+        fields += ["repeat_type", "weekdays"]
+    if not time_same:
+        fields += ["start_time", "end_time"]
+    _audit(actor, "goal.change_schedule", new_goal, fields=fields, request=request)
     return new_goal
 
 
@@ -283,6 +323,53 @@ def restore_goal(actor, goal_id, *, request=None):
     core_services.restore(goal, extra_fields=["status", "completed_at"])
     _audit(actor, "goal.restore", goal, request=request)
     return goal
+
+
+@transaction.atomic
+def end_goal(actor, goal_id, *, request=None):
+    """End an active goal today: its end date becomes today (unless it already ends sooner) and it is completed.
+
+    Works for a goal that never ends and for one with a deadline. Check-ins, notes and streaks are kept; to
+    resume it, edit it and give it a future or empty end date (`update_goal` makes a completed goal active
+    again). Ending a goal that is already completed does nothing; an archived goal must be restored first;
+    a goal that has not started yet cannot end today (its end date would be before its start), so it is
+    archived instead.
+    """
+    _lock_actor(actor)
+    goal = _locked_goal(actor, goal_id)
+    if goal.status == Goal.Status.COMPLETED:
+        return goal
+    if goal.status == Goal.Status.ARCHIVED:
+        raise ServiceError("Restore this goal before ending it.")
+    today = timezone.localdate()
+    if goal.start_date > today:
+        raise ServiceError("This goal has not started yet. Archive it instead.")
+    fields = ["status", "completed_at"]
+    if goal.end_date is None or goal.end_date > today:
+        goal.end_date = today
+        fields.append("end_date")
+    goal.status = Goal.Status.COMPLETED
+    goal.completed_at = timezone.now()
+    goal.save(update_fields=fields)
+    _audit(actor, "goal.end", goal, fields=[f for f in fields if f != "completed_at"], request=request)
+    return goal
+
+
+@transaction.atomic
+def delete_goal(actor, goal_id, *, request=None):
+    """Permanently delete one of the person's own ARCHIVED goals, with its check-ins and notes.
+
+    Archive first (the nightly `purge_archived` job still removes archived goals by itself when the retention
+    period ends; this is the same removal, done now). The audit row is written BEFORE the delete and holds the
+    goal id only. Goals that continued this one keep working: `previous_goal` is set to NULL by the database
+    rule. The row goes through the ORM, never raw SQL.
+    """
+    _lock_actor(actor)
+    goal = _locked_goal(actor, goal_id)
+    if goal.status != Goal.Status.ARCHIVED:
+        raise ServiceError("Archive this goal first. Only archived goals can be deleted.")
+    _audit(actor, "goal.delete", goal, request=request)
+    goal.delete()
 
 
 # ------------------------------------------------------------------ check-ins

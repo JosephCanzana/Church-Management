@@ -50,6 +50,7 @@ from .summary import incomplete_rows, summary_for, summary_table
 CONVERT_RESULT_TEMPLATE = "attendance/convert_result.html"
 MINE_TEMPLATE = "attendance/mine.html"
 MINE_PAGE_SIZE = 25
+PAGE_SIZE = 25
 
 MINE_PAGE_SIZE = 6
 
