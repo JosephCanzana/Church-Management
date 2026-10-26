@@ -3,7 +3,8 @@ events/calendar.html
 Month calendar in Manila time. Fills the blocks title, page_title and content.
 Desktop: chips in each day, "+N more" opens that day's agenda. Phones: dots, and tapping a day lists its events below.
 Managers: clicking an empty part of a day (desktop) or "Add an event" in the agenda opens the form with that date filled in.
-Context: weeks, weekdays, month_label, selected_iso, prev_url, next_url, today_url, here, can_create, toolbar.
+Context: weeks, weekdays, month_label, selected_iso, prev_url, next_url, today_url, here, can_create, toolbar,
+service_extension (the extension whose weekly service is drawn, or None), can_edit_service.
 Server-rendered; Alpine only keeps track of which day is selected.
 -->
 {% extends "base_app.html" %}
@@ -28,6 +29,10 @@ Server-rendered; Alpine only keeps track of which day is selected.
   <p class="flex flex-wrap items-center gap-x-5 gap-y-1 text-sm text-txt-secondary">
     <span class="inline-flex items-center gap-2"><span class="h-3 w-5 rounded border-l-4 border-highlight bg-highlight-soft" aria-hidden="true"></span>Global event (everyone)</span>
     <span class="inline-flex items-center gap-2"><span class="h-3 w-5 rounded border-l-4 border-accent bg-accent-soft" aria-hidden="true"></span>Extension event</span>
+    {% if service_extension %}
+    <span class="inline-flex items-center gap-2"><span class="h-3 w-5 rounded border-l-4 border-primary bg-surface-alt" aria-hidden="true"></span>Weekly service</span>
+    {% if can_edit_service %}<a href="{% url 'events:service_edit' service_extension.pk %}" class="btn btn-secondary">Edit weekly service</a>{% endif %}
+    {% endif %}
   </p>
 
   <div class="overflow-hidden rounded-xl border border-border bg-surface">
@@ -49,19 +54,21 @@ Server-rendered; Alpine only keeps track of which day is selected.
             {% endif %}
 
             <button type="button" x-on:click="selected = '{{ day.iso }}'" x-bind:aria-pressed="selected === '{{ day.iso }}'"
-                    aria-label="{{ day.date|date:'l, F j' }}, {{ day.events|length }} event{{ day.events|length|pluralize }}"
+                    aria-label="{{ day.date|date:'l, F j' }}, {{ day.events|length }} event{{ day.events|length|pluralize }}{% if day.services %}, weekly service{% endif %}"
                     class="relative z-10 flex w-full flex-col items-center gap-1 rounded-md py-1 sm:w-auto sm:flex-row sm:items-center sm:gap-2 sm:py-0.5 focus-visible:outline focus-visible:outline-2 focus-visible:outline-accent"
                     x-bind:class="selected === '{{ day.iso }}' && 'bg-accent-soft'">
               <span class="inline-flex size-7 items-center justify-center rounded-full text-sm {% if day.is_today %}bg-primary font-semibold text-on-primary{% elif day.in_month %}font-medium text-txt-primary{% else %}text-txt-secondary{% endif %}">{{ day.date.day }}</span>
-              {% if day.events %}
+              {% if day.events or day.services %}
               <span class="flex gap-1 sm:hidden" aria-hidden="true">
+                {% if day.services %}<span class="size-1.5 rounded-full bg-primary"></span>{% endif %}
                 {% for e in day.shown %}<span class="size-1.5 rounded-full {% if e.is_cancelled %}bg-border-strong{% elif e.extension_id is None %}bg-highlight{% else %}bg-accent{% endif %}"></span>{% endfor %}
               </span>
               {% endif %}
             </button>
 
-            {% if day.events %}
+            {% if day.events or day.services %}
             <ul class="pointer-events-none relative z-10 mt-1 hidden space-y-1 sm:block">
+              {% for s in day.services %}<li>{% include 'events/_service_chip.html' with service=s %}</li>{% endfor %}
               {% for e in day.shown %}<li>{% include 'events/_event_chip.html' with event=e day=day %}</li>{% endfor %}
               {% if day.more %}
               <li><button type="button" x-on:click="selected = '{{ day.iso }}'; $nextTick(() => document.getElementById('day-agenda').scrollIntoView({ block: 'nearest' }))"
@@ -81,11 +88,16 @@ Server-rendered; Alpine only keeps track of which day is selected.
     {% for week in weeks %}{% for day in week %}
     <div x-show="selected === '{{ day.iso }}'" x-cloak style="display:none">
       <h2 class="text-base font-semibold text-txt-primary">{{ day.date|date:"l, F j, Y" }}</h2>
+      {% for s in day.services %}
+      <p class="mt-2 rounded-lg border-l-4 border-primary bg-surface-alt px-3 py-2 text-base text-txt-primary">
+        <span class="font-medium">Weekly service</span>, {{ s.start|time:"g:i A" }} to {{ s.end|time:"g:i A" }}
+      </p>
+      {% endfor %}
       {% if day.events %}
       <ul class="mt-1 divide-y divide-border">
         {% for e in day.events %}{% include 'events/_event_row.html' with event=e %}{% endfor %}
       </ul>
-      {% else %}
+      {% elif not day.services %}
       <p class="mt-2 text-base text-txt-secondary">No events on this day.</p>
       {% endif %}
       {% if can_create %}<a href="{% url 'events:create' %}?date={{ day.iso }}" class="btn btn-secondary mt-3">Add an event on this day</a>{% endif %}

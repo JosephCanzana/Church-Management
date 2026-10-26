@@ -30,7 +30,7 @@ from . import permissions, services
 from .calendar import (
     WEEKDAYS, build_month, events_in_window, month_param, month_window, parse_month, shift_month,
 )
-from .forms import EventForm
+from .forms import EventForm, WeeklyServiceForm
 from .permissions import available_actions, visible_events
 
 VIEW_COOKIE = "events_view"
@@ -168,7 +168,8 @@ def calendar_view(request):
     start, end = month_window(year, month)
     queryset = filters.apply(visible_events(user), user).select_related("extension")
     events = _with_actions(list(events_in_window(queryset, start, end)), user)
-    weeks = build_month(year, month, events, today)
+    service_extension = _service_extension(filters, user)
+    weeks = build_month(year, month, events, today, extension=service_extension)
 
     keep_filters = filters.params()
     this_month = (year, month) == (today.year, today.month)
@@ -186,9 +187,60 @@ def calendar_view(request):
         "today_url": _url("events:calendar", **keep_filters),
         "here": request.get_full_path(),
         "can_create": permissions.can_manage_events(user),
+        "service_extension": service_extension,
+        "can_edit_service": permissions.can_edit_service(user, service_extension),
         "toolbar": _toolbar(request, filters, "calendar", {} if this_month else {"month": month_param(year, month)}),
     })
     return _remember(response, "calendar")
+
+
+def _service_extension(filters, user):
+    """The extension whose weekly service the calendar shows, or None.
+
+    Only when ONE extension is selected: an admin who clicked an extension, or a coordinator or
+    member on "My extension". "All events" and "Global" show no service. A made-up or archived
+    extension id gives None (nothing shown), like the event filter does.
+    """
+    if filters.extension_id is not None:
+        return Extension.objects.filter(pk=filters.extension_id, archived_at__isnull=True).first()
+    if filters.scope == SCOPE_MINE and user.extension_id is not None:
+        return Extension.objects.filter(pk=user.extension_id, archived_at__isnull=True).first()
+    return None
+
+
+@events_screen
+def service_edit_view(request, extension_id):
+    """Edit an extension's regular weekly service (coordinator of it, admin, super-admin)."""
+    user = request.user
+    extension = get_object_or_404(Extension.objects.filter(archived_at__isnull=True), pk=extension_id)
+    back = _url("events:calendar", **({"extension": extension.pk} if user.role in _ADMINS else {"scope": SCOPE_MINE}))
+    if not permissions.can_edit_service(user, extension):
+        messages.error(request, "You cannot change this weekly service.")
+        return redirect(back)
+
+    if request.method == "POST":
+        form = WeeklyServiceForm(request.POST)
+        if form.is_valid():
+            data = form.cleaned_data
+            try:
+                services.update_weekly_service(
+                    user, extension, day=data["day"], start=data["start"], end=data["end"],
+                    request=request,
+                )
+            except PermissionDenied:
+                messages.error(request, "You cannot change this weekly service.")
+                return redirect(back)
+            except ServiceError as exc:
+                form.add_error(None, str(exc))
+            else:
+                messages.success(request, "The weekly service was saved.")
+                return redirect(back)
+    else:
+        form = WeeklyServiceForm(service=extension.weekly_service)
+
+    return render(request, "events/service_form.html", {
+        "form": form, "extension": extension, "back_url": back,
+    })
 
 
 @events_screen

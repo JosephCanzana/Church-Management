@@ -28,6 +28,9 @@ class Day:
     in_month: bool
     is_today: bool
     events: list = field(default_factory=list)
+    # The extension's regular weekly service, if it falls on this day. Kept out of `events` so
+    # MAX_CHIPS, "+N more" and the event counts stay about real events only.
+    services: list = field(default_factory=list)
 
     @property
     def iso(self):
@@ -109,8 +112,52 @@ def event_days(event, first, last):
         day += dt.timedelta(days=1)
 
 
-def build_month(year, month, events, today=None):
-    """The grid for one month: a list of weeks, each a list of seven `Day` objects."""
+@dataclass(frozen=True)
+class ServiceSlot:
+    """One occurrence of a regular weekly service, as the templates draw it."""
+
+    extension_name: str
+    start: dt.time
+    end: dt.time
+
+
+def service_days(service, first, last):
+    """The dates in first..last (inclusive) on which a weekly service falls.
+
+    `service` is the stored dict {"day": 0-6, "start", "end"}; `day` uses Python's numbering
+    (Monday=0 ... Sunday=6), the same as `date.weekday()`. Note this is NOT the order of
+    `WEEKDAYS` (which starts on Sunday, for the grid headers). A missing or broken value gives
+    nothing rather than an error, so one bad row cannot break the calendar.
+    """
+    try:
+        weekday = int(service["day"])
+    except (KeyError, TypeError, ValueError):
+        return
+    if not 0 <= weekday <= 6:
+        return
+    day = first + dt.timedelta(days=(weekday - first.weekday()) % 7)
+    while day <= last:
+        yield day
+        day += dt.timedelta(days=7)
+
+
+def service_slot(extension):
+    """A `ServiceSlot` for this extension's stored service, or None when it is unreadable."""
+    try:
+        service = extension.weekly_service
+        start = dt.datetime.strptime(service["start"], "%H:%M").time()
+        end = dt.datetime.strptime(service["end"], "%H:%M").time()
+    except (KeyError, TypeError, ValueError):
+        return None
+    return ServiceSlot(extension.name, start, end)
+
+
+def build_month(year, month, events, today=None, extension=None):
+    """The grid for one month: a list of weeks, each a list of seven `Day` objects.
+
+    Pass `extension` to also place its regular weekly service on the matching days (each
+    `Day.services`). Leave it out (global or "all" views) and no service is drawn.
+    """
     today = today or timezone.localdate()
     weeks = [
         [Day(date=d, in_month=d.month == month, is_today=d == today) for d in week]
@@ -121,6 +168,10 @@ def build_month(year, month, events, today=None):
     for event in events:
         for d in event_days(event, first, last):
             cells[d].events.append(event)
+    slot = service_slot(extension) if extension is not None else None
+    if slot is not None:
+        for d in service_days(extension.weekly_service, first, last):
+            cells[d].services.append(slot)
     for cell in cells.values():
         cell.events.sort(key=lambda e: (e.start_at, e.title.lower(), e.pk or 0))
     return weeks

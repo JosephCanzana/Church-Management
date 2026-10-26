@@ -1,0 +1,39 @@
+<!--
+events/service_form.html
+Edit an extension's regular weekly service (day and start/end time). Fills the blocks title, page_title and content.
+Context: form (WeeklyServiceForm), extension, back_url.
+-->
+{% extends "base_app.html" %}
+{% load ui_tags %}
+
+{% block title %}Weekly service{% endblock %}
+{% block page_title %}Weekly service{% endblock %}
+
+{% block content %}
+<div class="mx-auto w-full max-w-xl space-y-5">
+  <p class="text-base text-txt-secondary">
+    The regular weekly service of <strong class="text-txt-primary">{{ extension.name|title_case }}</strong>.
+    It appears on every matching day of that extension's calendar. Saving a change notifies its members.
+  </p>
+
+  <form method="post" class="card space-y-4 p-5"
+        data-confirm="Save this weekly service? Members of this extension will be notified if it changed."
+        data-confirm-title="Save weekly service">
+    {% csrf_token %}
+    {% if form.non_field_errors %}
+    <div role="alert" class="field-error">{% for error in form.non_field_errors %}<p>{{ error }}</p>{% endfor %}</div>
+    {% endif %}
+    {% for field in form %}
+    <div>
+      <label for="{{ field.id_for_label }}" class="label">{{ field.label }}</label>
+      {{ field }}
+      {% for error in field.errors %}<p class="field-error">{{ error }}</p>{% endfor %}
+    </div>
+    {% endfor %}
+    <div class="flex flex-wrap gap-3">
+      <button type="submit" class="btn btn-primary">Save</button>
+      <a href="{{ back_url }}" class="btn btn-secondary">Cancel</a>
+    </div>
+  </form>
+</div>
+{% endblock %}

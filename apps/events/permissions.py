@@ -145,6 +145,19 @@ def creatable_extensions(actor):
     return Extension.objects.none()
 
 
+def can_edit_service(actor, extension):
+    """May `actor` change this extension's regular weekly service?
+
+    Admin and super-admin: any extension. Coordinator: their own only. Members never. An
+    archived extension cannot be changed.
+    """
+    if not _signed_in(actor) or extension is None or extension.archived_at is not None:
+        return False
+    if actor.role in _ADMINS:
+        return True
+    return actor.role == Role.COORDINATOR and _own_extension(actor, extension.pk)
+
+
 def require(check, actor, obj=None):
     """Raise PermissionDenied unless `check(actor, obj)` is true; services call this first.
 

@@ -7,6 +7,8 @@ Who is it for: admins get "Everyone (global event)" plus every live extension; a
 gets only their own extension. The scope is chosen at creation and cannot change afterwards,
 so the edit form has no such field.
 """
+from datetime import datetime
+
 from django import forms
 from django.utils import timezone
 
@@ -117,3 +119,51 @@ class EventForm(forms.Form):
         """The chosen extension's id, or None for a global event (create only)."""
         extension = self.cleaned_data.get("extension")
         return extension.pk if extension else None
+
+
+# Sunday first (how the calendar reads), but the VALUES are Python's weekday numbers (Mon=0 ... Sun=6).
+_SERVICE_DAYS = [(6, "Sunday"), (0, "Monday"), (1, "Tuesday"), (2, "Wednesday"),
+                 (3, "Thursday"), (4, "Friday"), (5, "Saturday")]
+_TIME_FORMAT = "%H:%M"
+
+
+def _time_field(label):
+    """A time-of-day field (an `<input type="time">`, 24-hour "HH:MM" on the wire)."""
+    return forms.TimeField(
+        label=label, input_formats=[_TIME_FORMAT, "%H:%M:%S"],
+        widget=forms.TimeInput(attrs={"type": "time"}, format=_TIME_FORMAT),
+    )
+
+
+class WeeklyServiceForm(forms.Form):
+    """An extension's regular weekly service: a day and a start and end time.
+
+    The service re-validates everything (`services.clean_weekly_service`); this form only gives
+    friendly inline errors and the right widgets.
+    """
+
+    day = forms.TypedChoiceField(label="Day", choices=_SERVICE_DAYS, coerce=int)
+    start = _time_field("Starts")
+    end = _time_field("Ends")
+
+    def __init__(self, *args, service=None, **kwargs):
+        initial = dict(kwargs.pop("initial", None) or {})
+        if service:
+            try:
+                initial.update(
+                    day=int(service["day"]),
+                    start=datetime.strptime(service["start"], _TIME_FORMAT).time(),
+                    end=datetime.strptime(service["end"], _TIME_FORMAT).time(),
+                )
+            except (KeyError, TypeError, ValueError):
+                pass                      # a broken stored value just shows an empty form
+        super().__init__(*args, initial=initial, **kwargs)
+        for field_ in self.fields.values():
+            field_.widget.attrs.setdefault("class", "input")
+
+    def clean(self):
+        cleaned = super().clean()
+        start, end = cleaned.get("start"), cleaned.get("end")
+        if start and end and end <= start:
+            self.add_error("end", "The service must end after it starts.")
+        return cleaned

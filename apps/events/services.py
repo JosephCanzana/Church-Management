@@ -9,7 +9,9 @@ Notification types declared here (the `type` column has no choices, the list kee
     event_changed    time or place changed (a title or description edit does not notify)
     event_cancelled  the event was cancelled (important)
     event_reminder   an upcoming event, sent by the 15-minute job
+    extension_service_changed  an extension's regular weekly service day or time changed
 """
+import datetime as dt
 from datetime import timedelta
 
 from django.db import transaction
@@ -21,18 +23,16 @@ from apps.audit.services import log_action
 from apps.core.services import ServiceError, consume_submission_token
 from apps.notifications.models import Notification
 from apps.notifications.services import notify_many
-from apps.audit.models import AuditLog
 
 from . import permissions
 from .models import Event, EventReminder
-from datetime import timedelta
 
 EVENT_CHANGED = "event_changed"
 EVENT_CANCELLED = "event_cancelled"
+EXTENSION_SERVICE_CHANGED = "extension_service_changed"
 REMINDER_MAX_MINUTES = 43200   # same ceiling as UserSettings.event_reminder_minutes
 REMINDER_KEEP_DAYS = 30        # EventReminder rows older than this are trimmed by send_reminders
 EVENT_REMINDER = "event_reminder"
-REMINDER_MAX_MINUTES = 43200
 
 TITLE_MAX = 255
 LOCATION_MAX = 255
@@ -102,6 +102,96 @@ def event_recipients(event, actor=None):
     if actor is not None:
         people = people.exclude(pk=actor.pk)
     return list(people.values_list("pk", flat=True))
+
+
+def extension_recipients(extension_id, actor=None):
+    """Ids of the ACTIVE members and coordinator of ONE extension (never everyone, never `actor`).
+
+    Separate from `event_recipients` on purpose: that one treats "no extension" as a global
+    event and returns the whole church, which a weekly-service notice must never do.
+    """
+    people = User.objects.filter(
+        status=Status.ACTIVE, person_type=PersonType.MEMBER_ACCOUNT,
+        extension_id=extension_id, role__in=[Role.MEMBER, Role.COORDINATOR],
+    )
+    if actor is not None:
+        people = people.exclude(pk=actor.pk)
+    return list(people.values_list("pk", flat=True))
+
+
+# ----------------------------------------------------------------- weekly service
+def _clean_time(value, label):
+    """Read "HH:MM" (or a `datetime.time`) into a `datetime.time`, or ServiceError."""
+    if isinstance(value, dt.time):
+        return value.replace(second=0, microsecond=0, tzinfo=None)
+    try:
+        return dt.datetime.strptime((value or "").strip(), "%H:%M").time()
+    except (ValueError, AttributeError):
+        raise ServiceError(f"{label} must be a time such as 08:00.")
+
+
+def clean_weekly_service(*, day, start, end):
+    """Validate a weekly service and return it as the stored dict {"day", "start", "end"}."""
+    try:
+        day = int(day)
+    except (TypeError, ValueError):
+        raise ServiceError("Choose a day of the week.")
+    if not 0 <= day <= 6:
+        raise ServiceError("Choose a day of the week.")
+    start = _clean_time(start, "The start time")
+    end = _clean_time(end, "The end time")
+    if end <= start:
+        raise ServiceError("The service must end after it starts.")
+    return {"day": day, "start": start.strftime("%H:%M"), "end": end.strftime("%H:%M")}
+
+
+def update_weekly_service(actor, extension, *, day, start, end, request=None):
+    """Change an extension's regular weekly service. Returns the saved extension.
+
+    Day 0 to 6 with Monday=0 (Python's `date.weekday()`). Locks the extension row, re-checks
+    permission on the locked row, and does nothing (no audit row, no notice) when nothing
+    changed. A real change notifies that extension's active members and coordinator, except
+    the person who made it. The notice and audit row carry only ids and what changed.
+    """
+    new = clean_weekly_service(day=day, start=start, end=end)
+    pk = getattr(extension, "pk", extension)
+    with transaction.atomic():
+        try:
+            locked = Extension.objects.select_for_update().get(pk=pk, archived_at__isnull=True)
+        except Extension.DoesNotExist:
+            raise ServiceError("This extension no longer exists.")
+        permissions.require(permissions.can_edit_service, actor, locked)
+
+        old = locked.weekly_service or {}
+        if all(old.get(k) == new[k] for k in ("day", "start", "end")):
+            return locked
+
+        changes = []
+        if old.get("day") != new["day"]:
+            changes.append("day")
+        if old.get("start") != new["start"] or old.get("end") != new["end"]:
+            changes.append("time")
+
+        locked.weekly_service = new
+        locked.save(update_fields=["weekly_service", "updated_at"])
+
+        entry = log_action(
+            "extension.service_update", actor=actor, request=request,
+            entity_type="extension", entity_id=locked.pk, entity_label=locked.name,
+            extension_id=locked.pk, before={"weekly_service": old}, after={"weekly_service": new},
+        )
+        notify_many(
+            extension_recipients(locked.pk, actor), EXTENSION_SERVICE_CHANGED,
+            actor=actor, entity_type="extension", entity_id=locked.pk,
+            data={"extension_id": locked.pk, "changes": changes},
+            audit_log_id=entry.pk,
+            push={
+                "title": "Weekly service updated",
+                "body": f"The regular service {' and '.join(changes)} changed.",
+                "url": "/events/calendar/?scope=mine", "tag": f"service-{locked.pk}",
+            },
+        )
+    return locked
 
 
 def _event_url(event):

@@ -88,6 +88,16 @@ def generate_account_id():
 
 
 # ---------------------------------------------------------------- extension
+def default_weekly_service():
+    """The default regular weekly service: Sunday 8:00 AM to 12:00 PM.
+
+    A module-level function (not a dict literal) so every row gets its own copy and migrations
+    can import it. `day` uses Python's numbering, Monday=0 ... Sunday=6 (`date.weekday()`);
+    times are 24-hour "HH:MM" text in Manila time.
+    """
+    return {"day": 6, "start": "08:00", "end": "12:00"}
+
+
 class Extension(TimestampedModel, ArchivableModel):
     name = models.CharField(max_length=150, unique=True)
     coordinator = models.ForeignKey(
@@ -104,6 +114,10 @@ class Extension(TimestampedModel, ArchivableModel):
     # The "main church" tag. At most ONE extension carries it (partial unique index below);
     # `accounts.services` moves the tag from the old holder to the new one in one transaction.
     is_main_church = models.BooleanField(default=False)
+    # The regular weekly service shown on the events calendar: {"day": 0-6 (Mon=0), "start": "HH:MM",
+    # "end": "HH:MM"}. Validated and changed ONLY by `events.services.update_weekly_service`
+    # (a JSON field cannot carry a database constraint). Not private: it may go to audit_log.
+    weekly_service = models.JSONField(default=default_weekly_service)
 
     class Meta:
         db_table = "extension"

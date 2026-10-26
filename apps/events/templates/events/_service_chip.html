@@ -1,0 +1,11 @@
+{% comment %}
+events/_service_chip.html
+The extension's regular weekly service as a small chip inside a calendar day (desktop).
+Not a link: a service has no event page. Written in words ("Weekly service") with the time, so color is never
+the only signal. Colors come from tokens only.
+Usage: include with service=slot (a ServiceSlot: extension_name, start, end).
+{% endcomment %}
+<span title="Weekly service, {{ service.start|time:'g:i A' }} to {{ service.end|time:'g:i A' }}"
+      class="block truncate rounded border-l-4 border-primary bg-surface-alt px-1.5 py-0.5 text-xs font-medium text-txt-primary">
+  Weekly service {{ service.start|time:"g:i A" }}
+</span>

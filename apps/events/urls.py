@@ -13,6 +13,7 @@ urlpatterns = [
     path("calendar/", views.calendar_view, name="calendar"),
     path("list/", views.list_view, name="list"),
     path("new/", views.create_view, name="create"),
+    path("service/<int:extension_id>/", views.service_edit_view, name="service_edit"),
     path("<int:pk>/", views.detail_view, name="detail"),
     path("<int:pk>/edit/", views.edit_view, name="edit"),
     path("<int:pk>/cancel/", views.cancel_view, name="cancel"),
