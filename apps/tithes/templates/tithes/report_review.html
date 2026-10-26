@@ -199,4 +199,34 @@ A finalized report shows its FROZEN numbers, exactly as stored.
 
   </div>
 </div>
+
+{# ── Finalize request modal ── #}
+{% if is_draft %}
+<div data-modal="finalize-report" x-data x-show="$store.ui.modal === 'finalize-report'" x-cloak style="display:none"
+     class="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4"
+     x-on:keydown.escape.window="$store.ui.closeModal()"
+     x-on:click.self="$store.ui.closeModal()">
+  <div role="dialog" aria-modal="true" aria-labelledby="finalize-modal-title" class="card max-h-[90dvh] w-full max-w-md space-y-4 overflow-y-auto">
+    <h2 id="finalize-modal-title" class="text-lg font-semibold text-txt-primary">Request to finalize this report?</h2>
+    <p class="text-sm text-txt-secondary">{{ sheet.label }} &middot; {{ sheet.attendance_date|date:"j M Y" }}</p>
+
+    <dl class="space-y-2 text-base">
+      <div class="flex justify-between"><dt class="text-txt-secondary">Tithers</dt><dd class="font-mono tabular-nums text-txt-primary">{{ totals.tithers }}</dd></div>
+      <div class="flex justify-between"><dt class="text-txt-secondary">Tithes</dt><dd class="font-mono tabular-nums text-txt-primary">&#8369;{{ totals.tithes|floatformat:"2g" }}</dd></div>
+      <div class="flex justify-between"><dt class="text-txt-secondary">Offering</dt><dd class="font-mono tabular-nums text-txt-primary">&#8369;{{ totals.offering|floatformat:"2g" }}</dd></div>
+      <div class="flex justify-between border-t border-border pt-2 font-semibold"><dt class="text-txt-primary">Total</dt><dd class="font-mono tabular-nums text-txt-primary">&#8369;{{ totals.total|floatformat:"2g" }}</dd></div>
+      <div class="flex justify-between"><dt class="text-txt-secondary">Bills and coins</dt><dd class="font-mono tabular-nums text-txt-primary">&#8369;{{ totals.breakdown_total|floatformat:"2g" }}</dd></div>
+    </dl>
+
+    <p class="rounded-lg border p-3 font-mono text-base font-semibold text-txt-primary {% if totals.difference == 0 %}border-border{% else %}border-warning{% endif %}">
+      {% if totals.difference == 0 %}Balanced{% elif totals.difference < 0 %}Short by &#8369;{{ difference_abs|floatformat:"2g" }}{% else %}Over by &#8369;{{ difference_abs|floatformat:"2g" }}{% endif %}
+    </p>
+
+    <div class="flex justify-end gap-2">
+      <button type="button" class="btn btn-ghost min-h-[44px] text-base" x-on:click="$store.ui.closeModal()">Cancel</button>
+      <button type="submit" form="request-finalize-form" class="btn btn-primary min-h-[44px] text-base">Request finalize</button>
+    </div>
+  </div>
+</div>
+{% endif %}
 {% endblock %}

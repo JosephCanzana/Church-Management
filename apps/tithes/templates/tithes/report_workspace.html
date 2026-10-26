@@ -362,7 +362,7 @@ Targets are 44px and text 16px or larger.
                     x-bind:aria-pressed="filter === 'none' ? 'true' : 'false'" x-on:click="filter = 'none'">Not yet</button>
           </div>
         </div>
-        <p class="text-sm text-txt-secondary">Type an amount on the right and press Add. The numbers at the top update as you type. A household shares one envelope: one amount, never split.</p>
+        <p class="text-sm text-txt-secondary">Type an amount on the right and press Add. The numbers at the top update as you type.</p>
       </div>
 
       <div class="max-h-[65dvh] min-h-0 flex-1 overflow-y-auto lg:max-h-none">
@@ -398,7 +398,7 @@ Targets are 44px and text 16px or larger.
                     <input type="hidden" name="entry_id" value="{{ row.entry.pk }}">
                     <label class="sr-only" for="amount-{{ row.entry.pk }}">Amount for {{ row.name|title_case }}</label>
                     <input id="amount-{{ row.entry.pk }}" name="amount" type="text" inputmode="decimal" data-money maxlength="12" pattern="[0-9]*[.]?[0-9]{0,2}" autocomplete="off" class="input w-32 font-mono" value="{{ row.entry.amount }}" data-amt data-saved="{{ row.entry.amount|unlocalize }}" x-model="val">
-                    <button type="submit" class="btn btn-secondary min-h-[44px] text-base" x-bind:disabled="!dirty()">Save</button>
+                    <button type="submit" class="btn btn-secondary min-h-[44px] text-base" x-bind:disabled="!dirty() || !(parseFloat(val) > 0)" class="disabled:bg-black disabled:text-gray-500 disabled:opacity-40">Save</button>
                   </form>
                   <form method="post" autocomplete="off" action="{% role_url 'entry_remove' report.pk %}" data-ask-title="Remove this tithe?" data-ask-text="This tithe will be removed from the report. You can add it again." data-ask-name="{{ row.name|title_case }} &middot; &#8369;{{ row.entry.amount|floatformat:'2g' }}" data-ask-confirm="Remove">
                     {% csrf_token %}
@@ -477,7 +477,7 @@ Targets are 44px and text 16px or larger.
                     <input type="hidden" name="entry_id" value="{{ entry.pk }}">
                     <label class="sr-only" for="amount-{{ entry.pk }}">Amount for {{ entry.giver_name|title_case }}</label>
                     <input id="amount-{{ entry.pk }}" name="amount" type="text" inputmode="decimal" data-money maxlength="12" pattern="[0-9]*[.]?[0-9]{0,2}" autocomplete="off" class="input w-32 font-mono" value="{{ entry.amount }}" data-amt data-saved="{{ entry.amount|unlocalize }}" x-model="val">
-                    <button type="submit" class="btn btn-secondary min-h-[44px] text-base" x-bind:disabled="!dirty()">Save</button>
+                    <button type="submit" class="btn btn-secondary min-h-[44px] text-base disabled:bg-black disabled:text-gray-500 disabled:opacity-40" x-bind:disabled="!dirty() || !(parseFloat(val) > 0)">Save</button>
                   </form>
                   <form method="post" autocomplete="off" action="{% role_url 'entry_remove' report.pk %}" data-ask-title="Remove this tithe?" data-ask-text="This tithe will be removed from the report. You can add it again." data-ask-name="{{ entry.giver_name|title_case }} &middot; &#8369;{{ entry.amount|floatformat:'2g' }}" data-ask-confirm="Remove">
                     {% csrf_token %}
