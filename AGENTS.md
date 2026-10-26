@@ -836,18 +836,20 @@ Code: `apps/tithes/` (`models.py`, `permissions.py`, `services.py`, `views.py`, 
 - `tithe_household` / `tithe_household_member`: a standing, dated household link. It ONLY pre-fills the
   co-givers of a new entry; saving copies them onto the entry, so later changes never rewrite history.
   One active membership per person (partial unique index).
-- `tithes_bypass_request`: the coordinator's request to finalize a mismatch. `message`, signed `difference`
-  as requested, `status` (pending, approved, rejected, withdrawn, voided, used), `decided_by`, `decided_at`,
-  `decision_note`. At most one OPEN (pending or approved) request per report.
+- `tithes_bypass_request`: the coordinator's **finalize request** ("bypass" is only the historical name of the table,
+  the model and the audit actions). `message`, signed `difference` as requested (**0 when the report balances**),
+  `status` (pending, approved, rejected, withdrawn, voided, used), `decided_by`, `decided_at`, `decision_note`.
+  At most one OPEN (pending or approved) request per report. A blank message on a balanced report is stored as a
+  default text (`DEFAULT_BALANCED_MESSAGE` / `DEFAULT_EMPTY_MESSAGE`), so the "message required" constraint stays.
 
 ### Who may do what
 
 | Action | Tithes special member (seat) | Coordinator (own extension) | Admin / super-admin |
 | --- | --- | --- | --- |
 | View / edit draft | Drafts of the extension where they hold the seat | Yes | Yes |
-| Request bypass / withdraw it | No | **Only the coordinator** | No |
+| Request to finalize / withdraw it | No | **Only the coordinator** | No |
 | Approve / reject a request | No | No | Yes |
-| Finalize | No | Yes (balanced, or with an approved request) | Yes (may bypass directly with a reason) |
+| Finalize | No | **Only with an approved request, balanced or not** | Yes (on their own; a mismatch needs an approved request or a typed reason) |
 | Reopen | No | No | Yes |
 | Mark "No tithes & offering" | No | Yes (own extension) | Yes |
 | Manage households | No | Yes | Yes |
@@ -870,18 +872,21 @@ My tithes and the print page.
 
 ### Finalize and bypass order
 
+**A coordinator never finalizes on their own** (`permissions.needs_finalize_approval`): every finalize needs an admin's
+approval, even when the numbers balance. An admin or super-admin finalizes a balanced report directly.
+
 `finalize_report` (one transaction, one-time token consumed first):
 1. consume the token (a replay returns `duplicate=True`);
 2. lock the report, require a draft on an open sheet and `can_finalize`;
-3. refuse an empty report, then `build_totals`;
-4. if the difference is not 0: an APPROVED request with the SAME stored difference (it becomes `used`), or an
-   admin with a typed `bypass_reason`; otherwise refuse with how much is short or over;
+3. refuse an empty report (that is "No tithes & offering"), then `build_totals`;
+4. approval: a coordinator ALWAYS needs an APPROVED request with the SAME stored difference (it becomes `used`).
+   An admin needs nothing when balanced; for a mismatch, that approval or a typed `bypass_reason`; otherwise refuse;
 5. write the frozen numbers, `finalized_by`, `finalized_at`, status; void any other open request;
 6. log `tithes.finalize` (tither count and `balanced` flag only).
 
-`request_bypass` (coordinator only, difference not 0, no open request) -> `decide_bypass` (admin approves or
-rejects; if the difference changed meanwhile the request is VOIDED and nothing is decided) -> `finalize_report`
-uses the approval once. Any draft edit that changes the difference voids an open request (`_after_edit`).
+`request_bypass` (coordinator only, no open request, balanced or not; the message is required only for a mismatch)
+-> `decide_bypass` (admin approves or rejects; if the difference changed meanwhile the request is VOIDED and nothing
+is decided) -> the coordinator presses Finalize and `finalize_report` uses the approval once. Any draft edit that changes the difference voids an open request (`_after_edit`).
 `reopen_report` (admin only) clears every frozen field; entries, offering and breakdown stay.
 
 ### No tithes & offering
@@ -892,12 +897,20 @@ no tithers and a Total of 0 IS a "no tithes" report (`is_no_tithes(report)` read
 `finalize_report` still refuses an empty report, so only this button can make one.
 - Who: `permissions.can_mark_no_tithes(actor, sheet)` for a sheet with no report yet (coordinator of the extension,
   admin, super-admin; never a special member, never an archived sheet); an existing draft goes through `can_finalize`.
+  **An admin closes a sheet on their own. A coordinator asks** (`request_no_tithes(actor, sheet)`): ONE step that starts
+  the report when the sheet has none and files a finalize request on the empty report ("Request no tithes" on the list,
+  or the request form on an empty draft's review page). **When an admin approves it, the report is finalized at once**:
+  `decide_bypass` sees an approve on an EMPTY report and calls `_freeze_no_tithes` in the same transaction
+  (`finalized_by` = the approving admin, the request becomes `used`, `BypassDecisionResult.finalized` is True, the
+  coordinator gets a "no tithes request was approved" notice). Any other approved request still waits for the
+  coordinator to press Finalize. `_freeze_no_tithes` is the one place the zeros are written (also used by
+  `finalize_no_tithes`). The list's one-step "No tithes" button (`finalize_no_tithes`) is admin-only.
 - One transaction: find or create the report (the sheet row is locked first, like `create_report`), lock the report,
   require a draft, REFUSE when anything is already entered (offering, tithe or bills and coins), freeze zeros, void
   any stale open bypass request, log `tithes.finalize` with `no_tithes: True` (no amounts). No one-time token: a second
   press hits "finalized and locked".
 - Screens: a "No tithes" button (with a confirm dialog) on a sheet row that has no report (`report_list.html`) and in the
-  workspace of an empty draft (`can_no_tithes`). Route `sheets/<id>/no-tithes/` (`report_no_tithes`, POST, in `area_urls.py`).
+  Finalize card of the review page for an empty draft (`can_no_tithes`). Route `sheets/<id>/no-tithes/` (`report_no_tithes`, POST, in `area_urls.py`).
   The review and print pages say "No tithes and offering" instead of the tithers and bills-and-coins tables; the list
   shows "No tithes" instead of an amount.
 - An admin reopens it like any finalized report; it becomes an empty draft again. My tithes and the dashboards need no
@@ -911,9 +924,15 @@ route. Guards: `tithes_screen` (login, right area, `can_use_area`, never cached)
 service re-check.
 
 - `""` list, `requests/` pending requests, `households/...`, `sheets/<id>/start/`
-- `<id>/` workspace (editable draft) or review, `<id>/review/`, `<id>/print/`
+- `<id>/` workspace (editable draft) or review, `<id>/review/`, `<id>/print/`. The workspace only edits (offering,
+  givers, bills and coins) and has one "Review & finalize" link; **Finalize, the bypass request and "No tithes" live on
+  the review page**, which is titled "Review and finalize" while the report is a draft. All of it is ONE card,
+  `_finalize_panel.html` (it replaces `_finalize_form.html` and `_bypass_panel.html`): the Finalize button, the finalize
+  request form, Withdraw, the admin's Approve / Reject and "Finalize as no tithes & offering". Actions on it return to
+  `report_review` (`report_action(..., to="report_review")`).
 - JSON helpers `<id>/givers/`, `<id>/givers/prefill/`
-- `sheets/<id>/no-tithes/` (POST): close a sheet as "no tithes and offering"
+- `sheets/<id>/no-tithes/` (POST, admin): close a sheet as "no tithes and offering"
+- `sheets/<id>/no-tithes/request/` (POST, coordinator): ask an admin to do it; the approval finalizes
 - POST actions: `offering/`, `breakdown/`, `entries/add|update|remove/`, `bypass/request|withdraw|decide/`,
   `finalize/`, `reopen/`
 - `mine/` ONLY in `tithes/urls.py` as `tithes:mine` (see My tithes)
