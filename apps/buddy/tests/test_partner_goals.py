@@ -193,11 +193,16 @@ class PartnerGoalsPageTests(TestCase):
     def setUp(self):
         self.today = timezone.localdate()
         self.alice, self.bob, self.carol = make_user("alice"), make_user("bob"), make_user("carol")
-        # (verify) url name: use the name you give the route in buddy/urls.py.
-        self.url = reverse("buddy:goals")
+        # The goals are part of the Buddy page now; the old /buddy/goals/ address only redirects there.
+        self.url = reverse("buddy:home")
 
     def test_route_takes_no_id(self):
-        self.assertEqual(self.url, "/buddy/goals/")
+        self.assertEqual(reverse("buddy:goals"), "/buddy/goals/")
+
+    def test_old_goals_address_redirects_to_the_buddy_page(self):
+        self.client.force_login(self.alice)
+        response = self.client.get(reverse("buddy:goals"))
+        self.assertRedirects(response, self.url, fetch_redirect_response=False)
 
     def test_login_required(self):
         response = self.client.get(self.url)
@@ -223,7 +228,7 @@ class PartnerGoalsPageTests(TestCase):
         response = self.client.get(self.url)
         self.assertEqual(response.status_code, 200)
         self.assertNotIn("Hidden", response.content.decode())
-        self.assertContains(response, "do not have a buddy yet")
+        self.assertContains(response, "A buddy is one person")
 
     def test_inactive_partner_page_hides_goals(self):
         pair(self.alice, self.bob)

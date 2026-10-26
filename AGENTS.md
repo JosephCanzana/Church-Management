@@ -28,8 +28,8 @@ buddies, prayer requests, events, resources, notifications and audit logging.
   - Faith (bricks 1 to 4 and 10): goals with optional times, daily check-ins, streaks (daily open, Bible, perfect day,
     per goal), goal detail and history pages, dashboard streak and goals-today widgets, goal reminders and the nightly
     completion of ended goals (see Faith).
-  - Buddy (bricks 6 to 9): requests and partnerships, messages with nudge and "prayed", and the partner's goals
-    (see Buddy).
+  - Buddy (bricks 6 to 9): requests and partnerships, messages with nudge and "prayed", and the partner's goals,
+    all on ONE full-height page at `/buddy/` (see Buddy).
   - Prayer (brick 5): member send form and the role-scoped inbox with replies and mark as done (see Prayer).
   - Dashboards: one page per role (super-admin, admin, coordinator, member) with the verse of the day, continue
     reading, quick links, streaks and today's goals and, for leaders, counts and charts (see Dashboards).
@@ -44,7 +44,7 @@ buddies, prayer requests, events, resources, notifications and audit logging.
   - Brute-force login throttling.
   - Bell list lines for several notification types (`admin_alert`, `buddy_request`, `buddy_accepted`, `buddy_message`,
     `goal_reminder`, `prayer_request`, `prayer_replied`): the bell items exist, the list needs a generic line for each.
-  - An unread dot on the Buddy Messages tab (`buddy.messaging.unread_count(user)` exists but is not wired).
+  - An unread dot on the Buddy sidebar link (`buddy.messaging.unread_count(user)` exists but is not wired).
   - Beyond the list above, some services, views and forms are not built yet: features are being added on top of
     the models, one app at a time.
 
@@ -1088,7 +1088,20 @@ templates in `templates/buddy/`, `static/js/buddy_chat.js`, tests in `tests/`). 
 
 ### Requests and partnerships (Brick 6)
 - Routes (every view `buddy_screen`): `""` home, `requests/send/<user_id>/`, `requests/<id>/accept|decline|cancel/` (POST only).
-- Hub: `SECTION_TABS["buddy"]` = Buddy | Messages | Their goals; one `NavItem(tabs="buddy")`, visible to all roles.
+- One page, not a hub: `/buddy/` (`buddy:home`, template `buddy/hub.html`) holds everything. With a chat (a live buddy, or an
+  inactive partnership that still has messages) it is two columns from `lg` up: left = partner card, End controls and their
+  goals (scrolls on its own), right = the chat at full height (`main_class` is overridden to the viewport minus the 3.5rem
+  header, `hub_tabs` is emptied). Below `lg` the columns stack and the chat gets `75dvh`. With no chat the page is one
+  full-width column (search, list, requests). The view merges `card`, `ending`, `goals_view`, `chat`, `payload` (from
+  `message_views.chat_context`) and, with no live buddy, `search`, `incoming`, `outgoing`, `max_pending`, `at_cap`.
+  There is no `SECTION_TABS["buddy"]`: Buddy is a plain `NavItem("Buddy", "buddy:home")`, visible to all roles. The old
+  `/buddy/messages/` and `/buddy/goals/` addresses (names `buddy:messages`, `buddy:goals`) only redirect to `buddy:home`,
+  so old bell and push links keep working.
+- Look of the Buddy page (flat and Apple-like, no blur on cards): rounded-3xl hero card with an initial avatar and two streak
+  tiles, goals as inset grouped lists (`divide-y` rows from `_partner_goal_card.html`), pill buttons, and a compact chat
+  (24 to 26rem wide, at most 36rem tall, sticky from `lg` up) with iMessage-style bubbles and a composer of 44px round icon
+  buttons (pray, nudge, send). The page scrolls normally. The streak numbers are each alone in a tag (`>7<`): a test
+  relies on that.
 - Permission: `buddy.permissions.can_use_buddy(user)` = `can_sign_in`, any role. `signable_q(prefix)` is its database twin
   (a test compares the two for every person type and status). `buddy_screen` guards every view (login + `never_cache` +
   `can_use_buddy`) instead of `role_required`, because any role may use Buddy.
@@ -1109,8 +1122,8 @@ templates in `templates/buddy/`, `static/js/buddy_chat.js`, tests in `tests/`). 
   `user_buddy_end_request_time` (a requester always has a time; one-way on purpose, because SET_NULL on a deleted requester
   must not break the row) and `user_buddy_partner_note_needs_end`. `buddy_note` gains `kind` (message|nudge|prayed), the
   `buddy_note_kind_body` constraint and index `ix_buddy_note_buddy_id`. Old NULL-body notes were backfilled as nudges.
-- Tests: `apps.buddy.tests.test_requests`, `test_candidates`, `test_views` (helpers in `tests/helpers.py`). Without the faith
-  streak engine the partner card shows "Not available yet".
+- Tests: `apps.buddy.tests.test_requests`, `test_candidates`, `test_views` (helpers in `tests/helpers.py`; they also cover the
+  merged page and the two redirects). Without the faith streak engine the partner card shows "Not available yet".
 
 ### Messages (Brick 8)
 - `buddy/messaging.py` owns chat. Services: `send_message`, `send_nudge`, `send_prayed`, `mark_read`, `thread_for`,
@@ -1127,14 +1140,16 @@ templates in `templates/buddy/`, `static/js/buddy_chat.js`, tests in `tests/`). 
 - `thread_for` merges every period of the same sorted pair (50 per page, `before=<note id>`), with a divider holding the end
   date and both final notes between periods.
 - Routes under `/buddy/messages/` take no ids: `messages/` (page), `send/`, `nudge/`, `prayed/`, `poll/`, `earlier/`, `read/`.
-  JSON endpoints; the page is `buddy/messages.html` with the `buddyChat()` Alpine component. Bell items are not marked read
-  when the thread opens.
+  JSON endpoints; the chat is drawn inside `buddy/hub.html` by the `buddyChat()` Alpine component, fed by
+  `message_views.chat_context(user)`. `messages/` itself only redirects to the Buddy page. Bell items are not marked read
+  when the page opens.
 
 ### Their goals (Brick 9)
 - `partner_goals_for(viewer)` in `buddy/services.py` returns the LIVE partner's goals; the partner is read from the viewer's
-  own `UserBuddy` row, never from the request. Route `/buddy/goals/` (`buddy:goals`) takes no id. No partner: a friendly empty
-  state. Inactive partner: goals hidden. Reads are not audited and the partner is not notified.
-- Templates `buddy/partner_goals.html` and `_partner_goal_card.html`; data from `faith.partner.partner_goal_overview`.
+  own `UserBuddy` row, never from the request. The goals are a section of the Buddy page (`buddy/hub.html`, left column);
+  `/buddy/goals/` (`buddy:goals`) takes no id and only redirects there. No partner: the find-a-buddy screens. Inactive
+  partner: goals hidden. Reads are not audited and the partner is not notified.
+- Templates `buddy/hub.html` and `_partner_goal_card.html`; data from `faith.partner.partner_goal_overview`.
 - Tests: `apps.buddy.tests.test_partner_goals`, `test_messages`.
 
 ### Ending a partnership
@@ -1473,7 +1488,7 @@ that any person, archived included, still belongs to), `archive_inactive_users`,
   **Hubs and page tabs:** a `NavItem` with `tabs="key"` is ONE sidebar link (to the first visible tab that resolves,
   lit on every tab's pages) whose sub-pages are `TabItem`s in `SECTION_TABS["key"]`. Never put sub-pages in the
   sidebar; add a `TabItem`. Hubs: `journey` (Goals | Attendance | Tithes), `people` (People | Guests | Approvals),
-  `website` (Landing | Give page | Resources) and `buddy` (Buddy | Messages | Their goals, shown to every role). `base_app.html` draws the tab row above `content` for every page whose
+  and `website` (Landing | Give page | Resources). Buddy is no longer a hub: it is one page, see Buddy. `base_app.html` draws the tab row above `content` for every page whose
   path belongs to a hub (`{% block hub_tabs %}{% hub_tabs %}{% endblock %}`, tag in `accounts/templatetags/nav_tags.py`,
   markup in `includes/section_tabs.html`); a page hides it by overriding that block with an empty one, and
   `{% section_tabs "key" %}` places a row by hand. A tab owns sibling pages with `TabItem.also` (url names) and whole

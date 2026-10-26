@@ -4,26 +4,30 @@
     max_pending (int).
   Include example: include this template with incoming, outgoing and max_pending set.
 -->
-<section class="card p-4 mb-6" aria-labelledby="incoming-heading">
-  <h3 id="incoming-heading" class="text-lg font-semibold text-txt-primary">Requests for you</h3>
+<div class="grid gap-6 xl:grid-cols-2">
+<section class="rounded-3xl border border-border bg-surface p-5 sm:p-6" aria-labelledby="incoming-heading">
+  <h3 id="incoming-heading" class="text-lg font-semibold tracking-tight text-txt-primary">Requests for you</h3>
   {% if incoming %}
-    <ul class="mt-3">
+    <ul class="mt-3 divide-y divide-border">
       {% for req in incoming %}
-        <li class="flex flex-wrap items-center justify-between gap-3 border-b border-border py-3 last:border-b-0">
-          <div class="min-w-0">
-            <p class="truncate font-medium text-txt-primary">{{ req.from_user.full_name }}</p>
-            <p class="truncate text-sm text-txt-secondary">
-              {% if req.from_user.extension %}{{ req.from_user.extension.name }} &middot; {% endif %}{{ req.created_at|date:"j M" }}
-            </p>
+        <li class="flex flex-wrap items-center justify-between gap-3 py-3">
+          <div class="flex min-w-0 items-center gap-3">
+            <span aria-hidden="true" class="flex size-10 shrink-0 items-center justify-center rounded-full bg-txt-primary/10 font-semibold text-txt-primary">{{ req.from_user.full_name|slice:":1"|upper }}</span>
+            <div class="min-w-0">
+              <p class="truncate font-medium text-txt-primary">{{ req.from_user.full_name }}</p>
+              <p class="truncate text-sm text-txt-secondary">
+                {% if req.from_user.extension %}{{ req.from_user.extension.name }} &middot; {% endif %}{{ req.created_at|date:"j M" }}
+              </p>
+            </div>
           </div>
           <div class="flex gap-2">
             <form method="post" action="{% url 'buddy:request_accept' req.pk %}">
               {% csrf_token %}
-              <button type="submit" class="btn btn-primary min-h-[44px]" aria-label="Accept the request from {{ req.from_user.full_name }}">Accept</button>
+              <button type="submit" class="btn btn-primary min-h-[44px] rounded-full px-5" aria-label="Accept the request from {{ req.from_user.full_name }}">Accept</button>
             </form>
             <form method="post" action="{% url 'buddy:request_decline' req.pk %}">
               {% csrf_token %}
-              <button type="submit" class="btn btn-secondary min-h-[44px]" aria-label="Decline the request from {{ req.from_user.full_name }}">Decline</button>
+              <button type="submit" class="btn btn-secondary min-h-[44px] rounded-full px-5" aria-label="Decline the request from {{ req.from_user.full_name }}">Decline</button>
             </form>
           </div>
         </li>
@@ -34,23 +38,26 @@
   {% endif %}
 </section>
 
-<section class="card p-4" aria-labelledby="outgoing-heading">
-  <h3 id="outgoing-heading" class="text-lg font-semibold text-txt-primary">
-    Requests you sent <span class="font-mono text-sm text-txt-secondary">({{ outgoing|length }} of {{ max_pending }})</span>
+<section class="rounded-3xl border border-border bg-surface p-5 sm:p-6" aria-labelledby="outgoing-heading">
+  <h3 id="outgoing-heading" class="text-lg font-semibold tracking-tight text-txt-primary">
+    Requests you sent <span class="text-sm font-normal tabular-nums text-txt-secondary">({{ outgoing|length }} of {{ max_pending }})</span>
   </h3>
   {% if outgoing %}
-    <ul class="mt-3">
+    <ul class="mt-3 divide-y divide-border">
       {% for req in outgoing %}
-        <li class="flex flex-wrap items-center justify-between gap-3 border-b border-border py-3 last:border-b-0">
-          <div class="min-w-0">
-            <p class="truncate font-medium text-txt-primary">{{ req.to_user.full_name }}</p>
-            <p class="truncate text-sm text-txt-secondary">
-              {% if req.to_user.extension %}{{ req.to_user.extension.name }} &middot; {% endif %}Waiting since {{ req.created_at|date:"j M" }}
-            </p>
+        <li class="flex flex-wrap items-center justify-between gap-3 py-3">
+          <div class="flex min-w-0 items-center gap-3">
+            <span aria-hidden="true" class="flex size-10 shrink-0 items-center justify-center rounded-full bg-txt-primary/10 font-semibold text-txt-primary">{{ req.to_user.full_name|slice:":1"|upper }}</span>
+            <div class="min-w-0">
+              <p class="truncate font-medium text-txt-primary">{{ req.to_user.full_name }}</p>
+              <p class="truncate text-sm text-txt-secondary">
+                {% if req.to_user.extension %}{{ req.to_user.extension.name }} &middot; {% endif %}Waiting since {{ req.created_at|date:"j M" }}
+              </p>
+            </div>
           </div>
           <form method="post" action="{% url 'buddy:request_cancel' req.pk %}">
             {% csrf_token %}
-            <button type="submit" class="btn btn-ghost min-h-[44px]" aria-label="Cancel the request to {{ req.to_user.full_name }}">Cancel</button>
+            <button type="submit" class="btn btn-ghost min-h-[44px] rounded-full px-4" aria-label="Cancel the request to {{ req.to_user.full_name }}">Cancel</button>
           </form>
         </li>
       {% endfor %}
@@ -59,3 +66,4 @@
     <p class="mt-3 text-txt-secondary">You have not sent any requests.</p>
   {% endif %}
 </section>
+</div>

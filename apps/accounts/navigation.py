@@ -103,8 +103,9 @@ NAV_ITEMS = [
     NavItem("Home", HUB, "home", roles=LEADERS, bottom=True, tabs="dashboard"),
     NavItem("Events", "events:index", "calendar-days", bottom=True),
     NavItem("Bible", "bible:reader", "book-open", bottom=True),
-    # Buddy hub: Buddy | Messages | Their goals. Any role that can sign in may pair (see buddy/permissions.py).
-    NavItem("Buddy", HUB, "user-group", roles=EVERYONE, tabs="buddy"),
+    # Buddy is ONE page (partner card, their goals and the chat), so it is a plain link, not a hub.
+    # Any role that can sign in may pair (see buddy/permissions.py). Active on everything under /buddy/.
+    NavItem("Buddy", "buddy:home", "user-group", roles=EVERYONE),
     # Habit hub: goals, my attendance and my tithes are all "how am I doing" pages.
     NavItem("My journey", HUB, "flag", bottom=True, tabs="journey", short="Journey"),
     NavItem("Resources", "resources:list", "folder-open", exact=True),
@@ -156,12 +157,6 @@ SECTION_TABS = {
         # "My tithes": the person's own giving history (entries where I am giver or co-giver), every role.
         # It lives at /tithes/mine/ in the member root only (tithes/urls.py).
         TabItem("Tithes", "tithes:mine"),
-    ],
-    # Buddy hub. Messages and Their goals show as dimmed placeholders until their routes exist.
-    "buddy": [
-        TabItem("Buddy", "buddy:home", prefixes=("/buddy/",)),
-        TabItem("Messages", "buddy:messages"),
-        TabItem("Their goals", "buddy:goals", ),
     ],
     "people": [
         TabItem("People", "superadmin:user_list", roles=(SUPER_ADMIN,)),

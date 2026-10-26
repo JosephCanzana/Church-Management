@@ -1,5 +1,5 @@
 <!--
-  buddy/_end_controls.html - ending a partnership: End button, waiting state, banner, inactive notice.
+  buddy/_end_controls.html - ending a partnership: quiet End button, waiting state, banner, inactive notice.
   Context: ending (dict from services.partnership_state): mode ("live", "waiting", "asked",
     "inactive"), partner_name, requested_at, request_note (only in mode "asked"), auto_close_days.
   Include example: include this template with ending set to the partnership_state dict.
@@ -7,8 +7,8 @@
 -->
 {% load ui_tags %}
 {% if ending.mode == "live" %}
-  <div class="mt-4" x-data>
-    <button type="button" class="btn btn-secondary min-h-[44px]"
+  <div class="mt-2 flex justify-end" x-data>
+    <button type="button" class="btn btn-ghost min-h-[44px] rounded-full px-4 text-sm text-txt-secondary"
             @click="$store.ui.openModal('end-partnership')">End partnership</button>
   </div>
   {% modal "end-partnership" title="End partnership" %}
@@ -27,20 +27,20 @@
   {% endmodal %}
 
 {% elif ending.mode == "waiting" %}
-  <section class="card mt-4 p-4" aria-labelledby="end-waiting-heading">
-    <h3 id="end-waiting-heading" class="text-lg font-semibold text-txt-primary">Waiting for {{ ending.partner_name }} to agree</h3>
+  <section class="mt-3 rounded-2xl border border-border bg-surface p-4 sm:p-5" aria-labelledby="end-waiting-heading">
+    <h3 id="end-waiting-heading" class="font-semibold text-txt-primary">Waiting for {{ ending.partner_name }} to agree</h3>
     <p class="mt-1 text-sm text-txt-secondary">
       You asked on {{ ending.requested_at|date:"j M" }}. If they do not answer, it ends by itself after {{ ending.auto_close_days }} day{{ ending.auto_close_days|pluralize }}.
     </p>
     <form method="post" action="{% url 'buddy:end_cancel' %}" class="mt-3">
       {% csrf_token %}
-      <button type="submit" class="btn btn-ghost min-h-[44px]">Cancel my request</button>
+      <button type="submit" class="btn btn-ghost min-h-[44px] rounded-full px-4">Cancel my request</button>
     </form>
   </section>
 
 {% elif ending.mode == "asked" %}
-  <section class="card mt-4 p-4" aria-labelledby="end-asked-heading" role="alert">
-    <h3 id="end-asked-heading" class="text-lg font-semibold text-txt-primary">{{ ending.partner_name }} asked to end your partnership</h3>
+  <section class="mt-3 rounded-2xl border border-accent/40 bg-accent/10 p-4 sm:p-5" aria-labelledby="end-asked-heading" role="alert">
+    <h3 id="end-asked-heading" class="font-semibold text-txt-primary">{{ ending.partner_name }} asked to end your partnership</h3>
     {% if ending.request_note %}
       <blockquote class="mt-2 border-l-2 border-border pl-3 text-txt-primary">{{ ending.request_note|linebreaksbr }}</blockquote>
     {% endif %}
@@ -56,8 +56,8 @@
   </section>
 
 {% elif ending.mode == "inactive" %}
-  <section class="card mb-6 p-4" aria-labelledby="end-inactive-heading">
-    <h3 id="end-inactive-heading" class="text-lg font-semibold text-txt-primary">{{ ending.partner_name }} can no longer sign in</h3>
+  <section class="rounded-2xl border border-border bg-surface p-4 sm:p-5" aria-labelledby="end-inactive-heading">
+    <h3 id="end-inactive-heading" class="font-semibold text-txt-primary">{{ ending.partner_name }} can no longer sign in</h3>
     <p class="mt-1 text-sm text-txt-secondary">
       Your partnership is inactive. You can end it now without their approval, or just ask someone new: it ends by itself when a new partnership starts.
     </p>

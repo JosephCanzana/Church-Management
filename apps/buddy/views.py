@@ -1,4 +1,4 @@
-"""buddy.views: thin screens for finding a buddy, answering requests and the partner card.
+"""buddy.views: the Buddy page (one page for the partner card, goals and chat) and its request/ending posts.
 
 Every view is wrapped in `buddy_screen` (sign-in, no cache, permission). Views read the
 request, call a service and turn a `ServiceError` into a message; the rules live in services.
@@ -13,11 +13,12 @@ from django.views.decorators.http import require_POST
 from apps.core.services import ServiceError
 
 from . import services
+from .message_views import chat_context
 from .permissions import buddy_screen
 
 
 def _back_to_home(request):
-    """Redirect to the Buddy tab, keeping the search text and page the person was on.
+    """Redirect to the Buddy page, keeping the search text and page the person was on.
 
     Only `q` and `page` are copied (rebuilt, never a raw `next` URL), so this cannot be
     used as an open redirect.
@@ -35,10 +36,20 @@ def _back_to_home(request):
 
 @buddy_screen
 def home(request):
-    """The Buddy tab. With a live partner: the partner card. Without: search, list, requests."""
+    """The whole Buddy hub on one page: partner card, ending controls, their goals and the chat.
+
+    With a live partner the left column holds the card, the End controls and the partner's goals,
+    and the right column the chat. Without one, the left column holds search, list and requests
+    (and the chat shows read-only when an inactive partnership still has messages).
+    """
     user = request.user
     card = services.partner_card(user)
-    context = {"card": card, "ending": services.partnership_state(user)}
+    context = {
+        "card": card,
+        "ending": services.partnership_state(user),
+        "goals_view": services.partner_goals_for(user),
+        **chat_context(user),
+    }
     if card is None:
         outgoing = services.outgoing_requests(user)
         context.update(
@@ -48,7 +59,7 @@ def home(request):
             max_pending=services.MAX_PENDING_REQUESTS,
             at_cap=len(outgoing) >= services.MAX_PENDING_REQUESTS,
         )
-    return render(request, "buddy/home.html", context)
+    return render(request, "buddy/hub.html", context)
 
 
 @buddy_screen
@@ -105,7 +116,7 @@ def request_cancel(request, request_id):
 
 
 def _back_to_buddy(request, ok_message, action, *args):
-    """Run an ending service, show its message, and go back to the Buddy tab."""
+    """Run an ending service, show its message, and go back to the Buddy page."""
     try:
         action(request.user, *args)
     except ServiceError as exc:
@@ -147,12 +158,8 @@ def end_inactive(request):
         request, "The partnership has ended.", services.end_without_approval, request.POST.get("note"),
     )
 
+
 @buddy_screen
 def partner_goals(request):
-    """The "Their goals" tab: the live partner's goals, read-only. No id in the URL."""
-    try:
-        goals_view = services.partner_goals_for(request.user)
-    except ServiceError as error:
-        messages.error(request, str(error))
-        return redirect("buddy:home")
-    return render(request, "buddy/partner_goals.html", {"goals_view": goals_view})
+    """The old "Their goals" address: the goals now sit on the Buddy page, so go there."""
+    return redirect("buddy:home")

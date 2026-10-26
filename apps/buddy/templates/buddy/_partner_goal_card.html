@@ -1,32 +1,38 @@
 <!--
-  _partner_goal_card.html: one goal of the buddy, read-only (Brick 9).
+  _partner_goal_card.html: one goal of the buddy as a list row, read-only (Brick 9).
+  Draw it inside a rounded container that has divide-y (see hub.html).
   Context: goal = one row of overview.goals / to_do_today / done_today (id, title, description,
   repeat_label, time_label, current, best, done_today, strip). No check-in note exists in a row.
   Include example: include buddy/_partner_goal_card.html with goal=row.
 -->
-<article class="card space-y-3 p-4">
-  <div>
-    <h4 class="font-semibold text-txt-primary">{{ goal.title }}</h4>
-    <p class="text-sm text-txt-secondary">{{ goal.repeat_label }} &middot; {{ goal.time_label }}</p>
+<div class="flex gap-3 px-4 py-4 sm:px-5">
+  <span aria-hidden="true" class="mt-0.5 flex size-6 shrink-0 items-center justify-center rounded-full text-xs font-semibold {% if goal.done_today %}bg-highlight text-on-highlight{% else %}border-2 border-border{% endif %}">{% if goal.done_today %}&#10003;{% endif %}</span>
+  <div class="min-w-0 flex-1 space-y-2.5">
+    <div class="flex items-start justify-between gap-3">
+      <div class="min-w-0">
+        <h4 class="font-semibold text-txt-primary">{{ goal.title }}</h4>
+        <p class="text-sm text-txt-secondary">{{ goal.repeat_label }} &middot; {{ goal.time_label }}</p>
+      </div>
+      <p class="shrink-0 whitespace-nowrap text-sm text-txt-secondary">
+        Streak <span class="font-semibold tabular-nums text-txt-primary">{{ goal.current }}</span> &middot; Best {{ goal.best }}
+      </p>
+    </div>
+    {% if goal.description %}<p class="text-sm text-txt-secondary">{{ goal.description|linebreaksbr }}</p>{% endif %}
+    <ol class="flex flex-wrap gap-1.5" aria-label="Last 7 days">
+      {% for cell in goal.strip %}
+        <li class="flex flex-col items-center gap-1 text-[11px] text-txt-secondary">
+          <span>{{ cell.label }}</span>
+          <span class="flex size-7 items-center justify-center rounded-full text-xs
+            {% if cell.state == 'done' %}bg-highlight text-on-highlight
+            {% elif cell.state == 'missed' %}border border-border bg-bg text-txt-primary
+            {% elif cell.state == 'open' %}border border-accent bg-bg text-txt-primary
+            {% else %}bg-surface-alt text-txt-secondary{% endif %}"
+            title="{{ cell.label }}: {{ cell.text }}">
+            <span aria-hidden="true">{{ cell.symbol }}</span>
+            <span class="sr-only">{{ cell.text }}</span>
+          </span>
+        </li>
+      {% endfor %}
+    </ol>
   </div>
-  {% if goal.description %}<p class="text-sm text-txt-primary">{{ goal.description|linebreaksbr }}</p>{% endif %}
-  <p class="text-sm text-txt-secondary">
-    Streak {{ goal.current }} &middot; Best {{ goal.best }}
-  </p>
-  <ol class="flex gap-1" aria-label="Last 7 days">
-    {% for cell in goal.strip %}
-      <li class="flex flex-col items-center gap-1 text-xs text-txt-secondary">
-        <span>{{ cell.label }}</span>
-        <span class="flex h-8 w-8 items-center justify-center rounded-md
-          {% if cell.state == 'done' %}bg-highlight text-on-highlight
-          {% elif cell.state == 'missed' %}border border-border bg-bg text-txt-primary
-          {% elif cell.state == 'open' %}border border-accent bg-bg text-txt-primary
-          {% else %}bg-surface text-txt-secondary{% endif %}"
-          title="{{ cell.label }}: {{ cell.text }}">
-          <span aria-hidden="true">{{ cell.symbol }}</span>
-          <span class="sr-only">{{ cell.text }}</span>
-        </span>
-      </li>
-    {% endfor %}
-  </ol>
-</article>
+</div>

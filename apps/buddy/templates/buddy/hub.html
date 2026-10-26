@@ -1,0 +1,222 @@
+<!--
+  buddy/hub.html: the whole Buddy hub on one page (replaces home.html, partner_goals.html and messages.html).
+  Blocks: title, page_title, hub_tabs (emptied: Buddy is one page, there is no tab row), main_class, content.
+  Context (buddy.views.home):
+    card, ending (partner card and partnership_state; either may be None),
+    goals_view (buddy.services.partner_goals_for: state, partner_name, overview),
+    chat and payload (buddy.message_views.chat_context: the thread and the JSON the chat starts from),
+    search, incoming, outgoing, max_pending, at_cap (only when there is no live buddy).
+  Design: flat, calm and roomy. Big rounded surfaces with hairline borders, one accent color, tabular numbers,
+  pill buttons. No blur on cards. The page scrolls normally.
+  Layout: with a chat (a live buddy, or an inactive partnership that still has messages) the page is two columns from
+  lg up. Left: buddy card, End button and their goals, filling the space. Right: a compact chat (24 to 26rem wide,
+  at most 36rem tall) that stays in view while the left column scrolls. Below lg everything stacks.
+  With no chat the page is one full-width column holding the find-a-buddy screens.
+  The chat is drawn by buddyChat() from static/js/buddy_chat.js, loaded before the markup. It needs JavaScript.
+  Old addresses /buddy/messages/ and /buddy/goals/ redirect here.
+  Note: this comment contains no template tags on purpose.
+-->
+{% extends "base_app.html" %}
+{% load static %}
+
+{% block title %}Buddy{% endblock %}
+{% block page_title %}Buddy{% endblock %}
+
+{% block hub_tabs %}{% endblock %}
+
+{% block main_class %}mx-auto w-full max-w-[90rem] flex-1 px-4 py-6 sm:px-6 lg:px-10 lg:py-8{% if mobile_nav_style == 'bottom' %} pb-[calc(5rem+env(safe-area-inset-bottom))] sm:pb-8{% endif %}{% endblock %}
+
+{% block content %}
+<div class="grid items-start gap-8 {% if chat.active %}lg:grid-cols-[minmax(0,1fr)_24rem] xl:grid-cols-[minmax(0,1fr)_26rem]{% endif %}">
+
+  {# ============================================================ left: buddy, ending, goals #}
+  <div class="min-w-0 space-y-8">
+
+    {% if card %}
+      <h2 class="sr-only">Buddy</h2>
+      <div>
+        {% include "buddy/_partner_card.html" with card=card %}
+        {% include "buddy/_end_controls.html" with ending=ending %}
+      </div>
+
+      {# ---------------------------------------------------------- their goals (read-only) #}
+      {% if goals_view.state == "live" %}
+        {% with overview=goals_view.overview %}
+          <section aria-labelledby="their-goals" class="space-y-6">
+            <div>
+              <h2 id="their-goals" class="text-2xl font-semibold tracking-tight text-txt-primary">Their goals</h2>
+              {% if overview.goals %}
+                <p class="mt-1 text-txt-secondary">
+                  <span class="tabular-nums">{{ overview.today_done }}</span> of <span class="tabular-nums">{{ overview.today_total }}</span> done today
+                </p>
+              {% endif %}
+            </div>
+
+            {% if not overview.goals %}
+              <div class="rounded-2xl border border-border bg-surface p-5 text-txt-secondary">{{ goals_view.partner_name }} has no active goals right now.</div>
+            {% else %}
+              <div class="space-y-2">
+                <h3 id="still-to-do" class="px-1 text-sm font-semibold text-txt-secondary">Still to do today ({{ overview.to_do_today|length }})</h3>
+                {% if overview.to_do_today %}
+                  <div class="divide-y divide-border overflow-hidden rounded-2xl border border-border bg-surface">
+                    {% for row in overview.to_do_today %}
+                      {% include "buddy/_partner_goal_card.html" with goal=row %}
+                    {% endfor %}
+                  </div>
+                {% else %}
+                  <p class="px-1 text-txt-secondary">
+                    {% if overview.today_total %}Everything scheduled for today is done.{% else %}Nothing is scheduled for today.{% endif %}
+                  </p>
+                {% endif %}
+              </div>
+
+              <div class="space-y-2">
+                <h3 id="done-today" class="px-1 text-sm font-semibold text-txt-secondary">Done today ({{ overview.done_today|length }})</h3>
+                {% if overview.done_today %}
+                  <div class="divide-y divide-border overflow-hidden rounded-2xl border border-border bg-surface">
+                    {% for row in overview.done_today %}
+                      {% include "buddy/_partner_goal_card.html" with goal=row %}
+                    {% endfor %}
+                  </div>
+                {% else %}
+                  <p class="px-1 text-txt-secondary">Nothing is done yet today.</p>
+                {% endif %}
+              </div>
+
+              <div class="space-y-2">
+                <h3 id="other-goals" class="px-1 text-sm font-semibold text-txt-secondary">Not scheduled today</h3>
+                <div class="divide-y divide-border overflow-hidden rounded-2xl border border-border bg-surface">
+                  {% for row in overview.goals %}
+                    {% if row.done_today is None %}
+                      {% include "buddy/_partner_goal_card.html" with goal=row %}
+                    {% endif %}
+                  {% endfor %}
+                </div>
+              </div>
+            {% endif %}
+          </section>
+        {% endwith %}
+      {% endif %}
+
+    {% else %}
+      {# ---------------------------------------------------------- no live buddy #}
+      <div class="max-w-2xl space-y-2">
+        <h2 class="text-3xl font-semibold tracking-tight text-txt-primary">Walk with a buddy</h2>
+        <p class="text-lg text-txt-secondary">
+          A buddy is one person who walks with you: you can see each other's streaks and cheer each other on.
+          Find someone, send a request, and start when they accept.
+        </p>
+      </div>
+
+      {% if ending %}{% include "buddy/_end_controls.html" with ending=ending %}{% endif %}
+
+      {% if goals_view.state == "inactive" %}
+        <div class="rounded-2xl border border-border bg-surface p-5 text-txt-secondary">
+          {{ goals_view.partner_name }} can no longer sign in, so their goals are hidden. You can end the partnership above.
+        </div>
+      {% endif %}
+
+      {% include "buddy/_candidates.html" with search=search at_cap=at_cap max_pending=max_pending %}
+      {% include "buddy/_requests.html" with incoming=incoming outgoing=outgoing max_pending=max_pending %}
+    {% endif %}
+  </div>
+
+  {# ============================================================ right: a compact chat that stays in view #}
+  {% if chat.active %}
+    <div class="min-w-0 lg:sticky lg:top-[4.5rem]">
+      <script src="{% static 'js/buddy_chat.js' %}"></script>
+      {{ payload|json_script:"buddy-chat-data" }}
+      <noscript><p class="mb-3 rounded-2xl border border-border bg-surface p-4 text-txt-secondary">Messages need JavaScript. Turn it on to chat with your buddy.</p></noscript>
+
+      <section class="flex h-[32rem] flex-col overflow-hidden rounded-3xl border border-border bg-surface lg:h-[min(36rem,calc(100dvh-6.5rem))]"
+        x-data="buddyChat()" data-csrf="{{ csrf_token }}" aria-label="Conversation with {{ chat.partner_name }}">
+
+        <header class="flex items-center gap-3 border-b border-border px-4 py-3">
+          <span aria-hidden="true" class="flex size-9 shrink-0 items-center justify-center rounded-full bg-accent text-sm font-semibold text-on-accent">{{ chat.partner_name|slice:":1"|upper }}</span>
+          <h2 class="min-w-0 flex-1 truncate text-[15px] font-semibold tracking-tight text-txt-primary">{{ chat.partner_name }}</h2>
+          <span x-show="readOnly" {% if not chat.read_only %}x-cloak{% endif %} class="shrink-0 rounded-full bg-txt-primary/10 px-2.5 py-0.5 text-xs font-medium text-txt-secondary">Read-only</span>
+        </header>
+
+        {# ------------------------------------------------------------ the thread #}
+        <div x-ref="list" role="log" aria-live="polite" aria-label="Messages" class="min-h-0 flex-1 space-y-1.5 overflow-y-auto px-3 py-3">
+          <div x-show="hasMore" x-cloak class="text-center">
+            <button type="button" class="btn btn-ghost min-h-11 rounded-full text-sm" :disabled="busy" @click="loadEarlier()">Load earlier messages</button>
+          </div>
+
+          <p x-show="items.length === 0" x-cloak class="px-6 py-10 text-center text-sm text-txt-secondary">
+            Say hello to <span x-text="partnerName"></span>. A 👋 works too.
+          </p>
+
+          <template x-for="(item, index) in items" :key="item.key">
+            <div>
+              <template x-if="showDay(index)">
+                <p class="mb-2 mt-4 text-center text-[11px] font-medium text-txt-secondary" x-text="item.day"></p>
+              </template>
+
+              {# a period ended: the end date and both final notes #}
+              <template x-if="item.type === 'divider'">
+                <div class="my-4 rounded-2xl bg-txt-primary/5 p-3 text-center text-sm text-txt-secondary">
+                  <p class="font-medium text-txt-primary">Partnership ended <span x-text="item.ended"></span></p>
+                  <template x-for="note in item.notes" :key="note.name">
+                    <p class="mt-2 whitespace-pre-wrap break-words"><span class="font-medium text-txt-primary" x-text="note.name + ':'"></span> <span x-text="note.text"></span></p>
+                  </template>
+                </div>
+              </template>
+
+              {# a text message #}
+              <template x-if="item.type === 'note' && item.kind === 'message'">
+                <div class="flex flex-col" :class="item.mine ? 'items-end' : 'items-start'">
+                  <div class="max-w-[82%] rounded-[1.25rem] px-3.5 py-2 text-[15px] leading-snug"
+                    :class="item.mine ? 'bg-accent text-on-accent' : 'bg-txt-primary/10 text-txt-primary'">
+                    <span class="sr-only" x-text="item.mine ? 'You: ' : partnerName + ': '"></span>
+                    <p class="whitespace-pre-wrap break-words" x-text="item.body"></p>
+                  </div>
+                  <p class="mt-0.5 px-2 text-[11px] text-txt-secondary">
+                    <span x-text="item.time"></span>
+                    <span x-show="item.mine && item.id === lastMineId && lastMineSeen"> · Seen</span>
+                  </p>
+                </div>
+              </template>
+
+              {# a nudge or an "I prayed for you" tap #}
+              <template x-if="item.type === 'note' && item.kind !== 'message'">
+                <div class="py-1 text-center">
+                  <span class="inline-block rounded-full bg-txt-primary/5 px-3 py-1 text-xs text-txt-secondary">
+                    <span x-text="(item.mine ? 'You' : partnerName) + (item.kind === 'nudge' ? ' 👋 nudged' + (item.mine ? ' ' + partnerName : ' you') : ' 🙏 prayed for ' + (item.mine ? partnerName : 'you'))"></span>
+                    · <span x-text="item.time"></span><span x-show="item.mine && item.id === lastMineId && lastMineSeen"> · Seen</span>
+                  </span>
+                </div>
+              </template>
+            </div>
+          </template>
+        </div>
+
+        {# ------------------------------------------------------------ composer #}
+        <p x-show="error" x-cloak role="alert" class="border-t border-border px-4 pt-2 text-sm text-danger" x-text="error"></p>
+
+        <p x-show="readOnly" {% if not chat.read_only %}x-cloak{% endif %} role="status" class="border-t border-border px-4 py-4 text-center text-sm text-txt-secondary">
+          <span x-text="partnerName"></span> can no longer sign in, so this chat is read-only.
+        </p>
+
+        <form x-show="!readOnly" {% if chat.read_only %}x-cloak{% endif %} class="flex items-end gap-2 border-t border-border p-3" @submit.prevent="send()">
+          <button type="button" class="btn btn-ghost size-11 shrink-0 rounded-full p-0 text-xl"
+            :disabled="busy || prayedToday" @click="prayed()"
+            :aria-label="prayedToday ? 'You prayed for them today' : 'I prayed for you'"
+            :title="prayedToday ? 'You prayed for them today' : 'I prayed for you'"><span aria-hidden="true">🙏</span></button>
+          <label for="buddy-message-box" class="sr-only">Message</label>
+          <textarea id="buddy-message-box" x-ref="box" x-model="text" rows="1" maxlength="1000" autocomplete="off"
+            class="input min-h-11 flex-1 resize-none rounded-[1.375rem] px-4 py-2.5 text-[15px]" placeholder="Message"
+            @input="resize()" @keydown.enter="onEnter($event)"></textarea>
+          <button type="button" x-show="text.trim() === ''" class="btn btn-ghost size-11 shrink-0 rounded-full p-0 text-xl"
+            :disabled="busy || nudgeMinutes > 0" @click="nudge()"
+            :aria-label="nudgeMinutes > 0 ? 'You can nudge again in ' + nudgeMinutes + ' minutes' : 'Send a nudge'"
+            :title="nudgeMinutes > 0 ? 'You can nudge again in ' + nudgeMinutes + ' min' : 'Send a nudge'"><span aria-hidden="true">👋</span></button>
+          <button type="submit" x-show="text.trim() !== ''" x-cloak class="btn btn-primary size-11 shrink-0 rounded-full p-0 text-lg" :disabled="busy">
+            <span aria-hidden="true">&uarr;</span><span class="sr-only">Send</span>
+          </button>
+        </form>
+      </section>
+    </div>
+  {% endif %}
+</div>
+{% endblock %}

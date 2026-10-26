@@ -1,38 +1,42 @@
 <!--
-  buddy/_partner_card.html - the card for a person who has a live buddy.
+  buddy/_partner_card.html - the hero card for a person who has a live buddy.
   Context: card (dict from services.partner_card: name, extension, since, streaks).
     card.streaks is a dict (open_current, open_best, read_current, read_best) or None.
   Include example: include this template with card set to the partner_card dict.
 -->
-<section class="card p-5" aria-labelledby="partner-heading">
-  <h3 id="partner-heading" class="text-sm font-medium text-txt-secondary">Your buddy</h3>
-  <p class="mt-1 text-2xl font-semibold text-txt-primary">{{ card.name }}</p>
-  {% if card.extension %}<p class="text-txt-secondary">{{ card.extension }}</p>{% endif %}
-  <p class="mt-2 text-sm text-txt-secondary">Partners since {{ card.since|date:"j M Y" }}</p>
+<section class="rounded-3xl border border-border bg-surface p-5 sm:p-7" aria-labelledby="partner-heading">
+  <div class="flex items-center gap-4">
+    <span aria-hidden="true" class="flex size-14 shrink-0 items-center justify-center rounded-full bg-accent text-xl font-semibold text-on-accent">{{ card.name|slice:":1"|upper }}</span>
+    <div class="min-w-0">
+      <h3 id="partner-heading" class="text-sm font-medium text-txt-secondary">Your buddy</h3>
+      <p class="truncate text-2xl font-semibold tracking-tight text-txt-primary">{{ card.name }}</p>
+      <p class="truncate text-sm text-txt-secondary">{% if card.extension %}{{ card.extension }} &middot; {% endif %}Partners since {{ card.since|date:"j M Y" }}</p>
+    </div>
+  </div>
 
-  <div class="mt-5 grid gap-3 sm:grid-cols-2">
-    <div class="rounded-lg border border-border bg-surface p-4">
-      <p class="text-sm text-txt-secondary">Opened the app</p>
+  <div class="mt-6 grid grid-cols-2 gap-3">
+    <div class="rounded-2xl bg-surface-alt p-4">
+      <p class="text-sm text-txt-secondary"><span aria-hidden="true">🔥</span> Opened the app</p>
       {% if card.streaks %}
-        <p class="mt-1 text-txt-primary">
-          <span class="font-mono text-3xl font-semibold">{{ card.streaks.open_current }}</span>
-          day{{ card.streaks.open_current|pluralize }} in a row
+        <p class="mt-2 text-txt-primary">
+          <span class="text-4xl font-semibold tabular-nums tracking-tight">{{ card.streaks.open_current }}</span>
+          <span class="text-sm text-txt-secondary">day{{ card.streaks.open_current|pluralize }} in a row</span>
         </p>
-        <p class="text-sm text-txt-secondary">Best: <span class="font-mono">{{ card.streaks.open_best }}</span></p>
+        <p class="mt-1 text-sm text-txt-secondary">Best: <span class="font-medium tabular-nums text-txt-primary">{{ card.streaks.open_best }}</span></p>
       {% else %}
-        <p class="mt-1 text-txt-secondary">Not available yet</p>
+        <p class="mt-2 text-txt-secondary">Not available yet</p>
       {% endif %}
     </div>
-    <div class="rounded-lg border border-border bg-surface p-4">
-      <p class="text-sm text-txt-secondary">Read the Bible</p>
+    <div class="rounded-2xl bg-surface-alt p-4">
+      <p class="text-sm text-txt-secondary"><span aria-hidden="true">📖</span> Read the Bible</p>
       {% if card.streaks %}
-        <p class="mt-1 text-txt-primary">
-          <span class="font-mono text-3xl font-semibold">{{ card.streaks.read_current }}</span>
-          day{{ card.streaks.read_current|pluralize }} in a row
+        <p class="mt-2 text-txt-primary">
+          <span class="text-4xl font-semibold tabular-nums tracking-tight">{{ card.streaks.read_current }}</span>
+          <span class="text-sm text-txt-secondary">day{{ card.streaks.read_current|pluralize }} in a row</span>
         </p>
-        <p class="text-sm text-txt-secondary">Best: <span class="font-mono">{{ card.streaks.read_best }}</span></p>
+        <p class="mt-1 text-sm text-txt-secondary">Best: <span class="font-medium tabular-nums text-txt-primary">{{ card.streaks.read_best }}</span></p>
       {% else %}
-        <p class="mt-1 text-txt-secondary">Not available yet</p>
+        <p class="mt-2 text-txt-secondary">Not available yet</p>
       {% endif %}
     </div>
   </div>

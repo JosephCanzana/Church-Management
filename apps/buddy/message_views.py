@@ -1,7 +1,8 @@
-"""buddy.message_views: the Messages tab (Brick 8).
+"""buddy.message_views: the chat endpoints of the Buddy page (Brick 8).
 
-One page (GET never writes) and a few small endpoints the page calls with fetch:
-send, nudge, prayed, poll, earlier and read. Every view is login-guarded, `never_cache`, and only ever
+The chat is no longer a page of its own: the Buddy hub page (`views.home`) draws it from
+`chat_context()` below. `thread` only keeps the old /buddy/messages/ address alive (it redirects).
+The small endpoints the chat calls with fetch are here: send, nudge, prayed, poll, earlier and read. Every view is login-guarded, `never_cache`, and only ever
 works on the signed-in person's OWN open partnership. No view takes a partner or partnership id from
 the request, so there is nothing to tamper with.
 
@@ -14,7 +15,7 @@ from django.contrib import messages
 from django.contrib.auth.decorators import login_required
 from django.core.exceptions import PermissionDenied
 from django.http import JsonResponse
-from django.shortcuts import redirect, render
+from django.shortcuts import redirect
 from django.urls import reverse
 from django.views.decorators.cache import never_cache
 from django.views.decorators.http import require_http_methods
@@ -63,13 +64,17 @@ def _reply(request, *, ok, error="", status=200, **extra):
     if _wants_json(request):
         return JsonResponse({"ok": ok, "error": error, **extra}, status=status if not ok else 200)
     (messages.success if ok else messages.error)(request, error or "Done.")
-    return redirect("buddy:messages")
+    return redirect("buddy:home")
 
 
-@_guarded("GET")
-def thread(request):
-    """The chat page. Everything on it is rendered by one Alpine component from a JSON block."""
-    data = messaging.thread_for(request.user)
+def chat_context(user):
+    """`{"chat": ..., "payload": ...}` for the Buddy page: the thread and the JSON the chat starts from.
+
+    `chat` is `messaging.thread_for(user)` (its `active` flag is False without an open partnership).
+    `payload` is None when there is no chat; otherwise it holds the first page of notes, a one-time
+    token, the limits and the endpoint URLs. A GET never writes anything (nothing is marked read).
+    """
+    data = messaging.thread_for(user)
     payload = None
     if data["active"]:
         payload = {
@@ -82,7 +87,7 @@ def thread(request):
             "last_mine_id": data["last_mine_id"],
             "last_mine_seen": data["last_mine_seen"],
             "token": new_submission_token(),
-            **messaging.limits_for(request.user),
+            **messaging.limits_for(user),
             "urls": {
                 "send": reverse("buddy:message_send"),
                 "nudge": reverse("buddy:message_nudge"),
@@ -92,7 +97,13 @@ def thread(request):
                 "read": reverse("buddy:message_read"),
             },
         }
-    return render(request, "buddy/messages.html", {"chat": data, "payload": payload})
+    return {"chat": data, "payload": payload}
+
+
+@_guarded("GET")
+def thread(request):
+    """The old Messages address: the chat now lives on the Buddy page, so go there."""
+    return redirect("buddy:home")
 
 
 def _write(request, action):

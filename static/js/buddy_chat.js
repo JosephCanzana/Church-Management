@@ -1,6 +1,6 @@
 /*
  * static/js/buddy_chat.js
- * The Alpine component for the Messages tab. A plain global function (not Alpine.data), like goals.js,
+ * The Alpine component for the chat on the Buddy page (right column from lg up). A plain global function (not Alpine.data), like goals.js,
  * so it works no matter when Alpine starts. Load it with a normal (not deferred) script tag BEFORE
  * the markup that uses it.
  *

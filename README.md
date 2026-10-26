@@ -114,7 +114,7 @@ apps/                # Python package containing all Django apps
   resources/          # monthly themes, weekly PowerPoint, general resources
   attendance/         # attendance sheets, members, first timers
   tithes/             # tithes and offering records
-  buddy/              # accountability partners
+  buddy/              # accountability partners (one page: card, their goals and chat)
   prayer/             # prayer requests and replies
   notifications/      # bell, preferences, admin alerts
   dashboards/         # temporary role landing pages (no models)

@@ -351,16 +351,21 @@ class EndpointTests(MessagingBase):
             self.assertEqual(self.client.get(reverse(name)).status_code, 302)
         self.assertEqual(self.client.post(reverse("buddy:message_send"), {}).status_code, 302)
 
-    def test_page_renders_for_a_partner_and_for_an_unpaired_person(self):
+    def test_the_buddy_page_draws_the_chat_for_a_partner_but_not_for_an_unpaired_person(self):
         self.client.force_login(self.ann)
-        self.assertContains(self.client.get(reverse("buddy:messages")), "buddy-chat-data")
+        self.assertContains(self.client.get(reverse("buddy:home")), "buddy-chat-data")
         self.client.force_login(self.cy)
-        self.assertContains(self.client.get(reverse("buddy:messages")), "No buddy yet")
+        self.assertNotContains(self.client.get(reverse("buddy:home")), "buddy-chat-data")
+
+    def test_the_old_messages_address_redirects_to_the_buddy_page(self):
+        self.client.force_login(self.ann)
+        response = self.client.get(reverse("buddy:messages"))
+        self.assertRedirects(response, reverse("buddy:home"), fetch_redirect_response=False)
 
     def test_get_never_writes(self):
         messaging.send_message(self.ben, "unread", self.token())
         self.client.force_login(self.ann)
-        self.client.get(reverse("buddy:messages"))
+        self.client.get(reverse("buddy:home"))
         self.client.get(reverse("buddy:message_poll"), {"after": 0})
         self.assertEqual(BuddyNote.objects.filter(read_at__isnull=False).count(), 0)
 

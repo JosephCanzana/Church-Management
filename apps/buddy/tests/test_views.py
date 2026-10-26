@@ -99,10 +99,16 @@ class NoPartnerStateTests(TestCase):
         self.assertNotContains(response, reverse("buddy:request_send", args=[free.pk]))
         self.assertContains(response, "Request limit reached")
 
-    def test_the_hub_tabs_are_shown(self):
+    def test_there_is_no_tab_row_and_no_chat_without_a_buddy(self):
         response = self.client.get(reverse(HOME))
-        for label in ("Buddy", "Messages", "Their goals"):
-            self.assertContains(response, label)
+        self.assertNotContains(response, 'href="/buddy/messages/"')
+        self.assertNotContains(response, 'href="/buddy/goals/"')
+        self.assertNotContains(response, "buddy-chat-data")
+
+    def test_the_old_messages_and_goals_addresses_redirect_to_the_page(self):
+        for name in ("buddy:messages", "buddy:goals"):
+            response = self.client.get(reverse(name))
+            self.assertRedirects(response, reverse(HOME), fetch_redirect_response=False)
 
 
 class PartnerStateTests(TestCase):
@@ -124,6 +130,22 @@ class PartnerStateTests(TestCase):
         self.assertContains(response, "Partners since")
         self.assertNotContains(response, 'type="search"')
         self.assertNotContains(response, self.bystander.full_name)
+
+    def test_the_page_holds_the_card_the_goals_and_the_chat(self):
+        response = self.client.get(reverse(HOME))
+        self.assertContains(response, "Their goals")
+        self.assertContains(response, "buddy-chat-data")
+        self.assertContains(response, f"Conversation with {self.partner.full_name}")
+        self.assertEqual(response.context["goals_view"]["state"], "live")
+        self.assertTrue(response.context["chat"]["active"])
+
+    def test_an_inactive_partner_keeps_a_read_only_chat_next_to_the_list(self):
+        self.partner.status = Status.SUSPENDED
+        self.partner.save(update_fields=["status"])
+        response = self.client.get(reverse(HOME))
+        self.assertTrue(response.context["chat"]["read_only"])
+        self.assertContains(response, "buddy-chat-data")
+        self.assertContains(response, "can no longer sign in")
 
     def test_an_inactive_partner_shows_the_normal_list_again(self):
         self.partner.status = Status.SUSPENDED
