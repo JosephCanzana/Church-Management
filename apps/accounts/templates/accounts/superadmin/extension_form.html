@@ -63,9 +63,7 @@ own required-field check runs before that, so the question only appears for a co
   </div>
 
   <h2 class="mt-8 text-base font-semibold">Address</h2>
-  {% if form.country.field.disabled %}<p class="mt-1 text-sm text-txt-secondary">Country, province, and municipality can't be changed after the extension is created.</p>{% endif %}
   <p class="mt-1 text-sm text-txt-secondary" x-show="usePicker" x-cloak style="display:none">
-    Choose from the widest area down to the smallest. Each list follows the one above it.
     <span x-show="loading">Loading the Philippine address list…</span>
   </p>
   <p class="field-error" x-show="failed" x-cloak style="display:none" role="alert">
@@ -73,20 +71,21 @@ own required-field check runs before that, so the question only appears for a co
   </p>
 
   <div class="mt-3 grid gap-4 sm:grid-cols-2">
-    <div class="sm:col-span-2">
-      <label for="id_country" class="label">{{ form.country.label }} <span class="text-error" aria-hidden="true">*</span></label>
-      <select id="id_country" name="country" class="input disabled:cursor-not-allowed disabled:opacity-60" required x-model="country" @change="onCountry($event)"
-              {% if form.country.field.disabled %}disabled{% endif %}
-              {% if form.country.errors %}aria-invalid="true"{% endif %}>
-        {% for value, label in form.country.field.choices %}
-        <option value="{{ value }}"{% if form.country.value == value %} selected{% endif %}>{{ label }}</option>
-        {% endfor %}
-      </select>
-      {% for error in form.country.errors %}<p class="field-error">{{ error }}</p>{% endfor %}
-    </div>
-
-    {% include 'accounts/superadmin/_cascade_field.html' with field=form.province key='province' placeholder='Choose a province' options='provinceOptions' parent='false' on_change="province = $event.target.value; municipality = ''; barangay = ''" %}
-    {% include 'accounts/superadmin/_cascade_field.html' with field=form.municipality key='municipality' placeholder='Choose a municipality' options='municipalityOptions' parent='!province' on_change="municipality = $event.target.value; barangay = ''" %}
+    {# Fixed for this system: shown as plain text. The form supplies the values and the server ignores any posted value. #}
+    <dl class="grid gap-4 sm:col-span-2 sm:grid-cols-3">
+      <div>
+        <dt class="label">{{ form.country.label }}</dt>
+        <dd class="text-base text-txt-primary">{{ form.country.value }}</dd>
+      </div>
+      <div>
+        <dt class="label">{{ form.province.label }}</dt>
+        <dd class="text-base text-txt-primary">{{ form.province.value }}</dd>
+      </div>
+      <div>
+        <dt class="label">{{ form.municipality.label }}</dt>
+        <dd class="text-base text-txt-primary">{{ form.municipality.value }}</dd>
+      </div>
+    </dl>
     {% include 'accounts/superadmin/_cascade_field.html' with field=form.barangay key='barangay' placeholder='Choose a barangay' options='barangayOptions' parent='!municipality' on_change="barangay = $event.target.value" %}
 
     <div>

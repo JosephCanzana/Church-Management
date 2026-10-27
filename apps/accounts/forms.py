@@ -138,6 +138,8 @@ class ExtensionForm(forms.ModelForm):
     TITLE_FIELDS = ("name", "province", "municipality", "barangay", "street", "building_number")
     #: Fixed once the extension exists. Shown greyed out; the server ignores any posted value.
     LOCKED_FIELDS = ("country", "province", "municipality")
+    #: The only area this system covers. Preset and locked on a new extension.
+    DEFAULT_AREA = {"country": PHILIPPINES, "province": "Nueva Ecija", "municipality": "Santa Rosa"}
 
     # Declared here (not just in Meta) because it is a dropdown, not free text.
     # The initial value is the model default for a new extension.
@@ -182,9 +184,13 @@ class ExtensionForm(forms.ModelForm):
             choices.append((old, old))
         self.fields["country"].choices = choices
 
+        # Locked on add and on edit: the system only covers one country, province and municipality.
+        for name in self.LOCKED_FIELDS:
+            self.fields[name].disabled = True
+        if not self.instance.pk:
+            # A disabled field is read from `initial`, so these are also the values that get saved.
+            self.initial.update(self.DEFAULT_AREA)
         if self.instance.pk:
-            for name in self.LOCKED_FIELDS:
-                self.fields[name].disabled = True
             # Saved values are lowercase (or old mixed case); show them as titles.
             # Locked fields need this even on a POST: Django reads them from `initial`.
             for name in self.TITLE_FIELDS:

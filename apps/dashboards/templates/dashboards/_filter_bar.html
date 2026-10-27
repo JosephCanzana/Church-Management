@@ -60,14 +60,14 @@ A refused period shows one line under the row. Whose numbers and which dates are
       </form>
       {% endif %}
 
-      <a href="?{{ pf.giving_query }}" title="{% if pf.include_giving %}Hide giving{% else %}Show giving{% endif %}"
+      <!-- <a href="?{{ pf.giving_query }}" title="{% if pf.include_giving %}Hide giving{% else %}Show giving{% endif %}"
          class="inline-flex min-h-10 shrink-0 items-center gap-1.5 whitespace-nowrap rounded-full border border-border px-3 text-sm text-txt-secondary hover:text-txt-primary">
         <span aria-hidden="true">{% if pf.include_giving %}&#10003;{% else %}&#9675;{% endif %}</span>Giving: {% if pf.include_giving %}on{% else %}off{% endif %}
-      </a>
+      </a> -->
 
       {% role_url_or_empty 'report_print' as print_url %}
       {% if print_url %}
-      <a href="{{ print_url }}?{{ pf.print_query }}" target="_blank" rel="noopener" class="btn btn-secondary !min-h-10 shrink-0 !px-3 text-sm"{% if not pf.preset %} title="Prints the last 3 months. Pick a period to change it."{% endif %}>Print<span class="sr-only md:not-sr-only">&nbsp;report</span></a>
+      <a href="{{ print_url }}?{{ pf.print_query }}" target="_blank" rel="noopener" class="btn btn-secondary !min-h-10 shrink-0 !px-3 text-sm"{% if not pf.preset %} title="Prints the last 3 months. Pick a period to change it."{% endif %}>Print<span class="sr-only md:not-sr-only">report</span></a>
       {% endif %}
     </div>
   </div>
