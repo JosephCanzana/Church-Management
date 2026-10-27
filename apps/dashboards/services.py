@@ -1438,7 +1438,7 @@ def get_report_context(user, params, today=None):
     ``dashboard_url``,
     ``prepared_for`` (role label), ``summary_lines``, ``network_table``, ``attendance_gap``, ``extension_table``
     (print table; None for a coordinator or when one extension is picked), ``events`` and ``prayer``
-    (open and completed COUNTS and ``scope_note`` only: never request text, never a name).
+    (open and replied COUNTS and ``scope_note`` only: never request text, never a name).
     """
     if user.role not in LEADER_ROLES:
         raise PermissionDenied   # the views already check the role; this keeps the service safe on its own
@@ -1481,6 +1481,6 @@ def get_report_context(user, params, today=None):
         "giving_stats": giving,
         "prayer": (
             None if prayer is None
-            else {"open": prayer["open"], "completed": prayer["completed"], "scope_note": prayer["scope_note"]}
+            else {"open": prayer["open"], "replied": prayer["replied"], "scope_note": prayer["scope_note"]}
         ),
     }
