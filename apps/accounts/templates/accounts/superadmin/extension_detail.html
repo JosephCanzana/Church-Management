@@ -67,13 +67,18 @@ Blocks filled: title, page_title, content, extra_js.
   </div>
 </div>
 
-    {% if member_count or archived_people_count %}
-    This extension is archived. It still has people assigned to it, so it will not be deleted automatically.
-    Move them to another extension first.
-    {% else %}
-    This extension is archived{% if extension.purge_at %} and will be permanently deleted on {{ extension.purge_at|date:"j F Y" }}{% endif %}.
-    {% endif %}
-    Restore it to edit it or change its coordinator.
+{% if extension.archived_at %}
+<div class="mt-4 rounded-lg border border-warning px-4 py-3 text-sm text-txt-primary" role="status">
+  {% if member_count or archived_people_count %}
+  This extension is archived. It still has people assigned to it, so it will not be deleted automatically.
+  Move them to another extension first.
+  {% elif extension.purge_at %}
+  This extension is archived and will be permanently deleted on <strong class="font-semibold">{{ extension.purge_at|date:"j F Y" }}</strong>.
+  {% else %}
+  This extension is archived.
+  {% endif %}
+</div>
+{% endif %}
 
 <div class="mt-6 grid gap-6 lg:grid-cols-2">
   <section class="card" aria-labelledby="address-heading">
