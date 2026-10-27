@@ -9,6 +9,7 @@ x-app: &app
   build:
     context: ..                              # repo root: needs requirements.txt, apps/, theme/, Makefile
     dockerfile: production/Dockerfile.prod
+    network: host 
     args:
       APP_UID: ${APP_UID:-1000}
       APP_GID: ${APP_GID:-1000}
