@@ -12,56 +12,74 @@ Shows nothing about anyone else: no names, counts, drafts, birth dates or phone 
 
 {% block title %}My attendance{% endblock %}
 {% block page_title %}My attendance{% endblock %}
+{% block main_class %}w-full flex-1 px-4 py-6 sm:px-6 lg:px-8 lg:py-8{% if mobile_nav_style == 'bottom' %} pb-[calc(5rem+env(safe-area-inset-bottom))] sm:pb-8{% endif %}{% endblock %}
 
 {% block content %}
-<div class="mb-4">
-  <h2 class="text-xl font-semibold tracking-tight text-txt-primary">
-    Services I attended <span class="text-base font-normal text-txt-secondary">({{ total }}{% if month %} in {{ month|date:"F Y" }}{% endif %})</span>
-  </h2>
-  <p class="mt-1 text-sm text-txt-secondary">Only services whose attendance sheet has been uploaded are listed. Weeks run Sunday to Friday.</p>
-</div>
+<div class="mx-auto w-full lg:w-[80%] xl:w-[75%]">
+<header class="mb-8 mt-1">
+  <h2 class="text-3xl font-semibold tracking-tight text-txt-primary sm:text-4xl">Services I attended</h2>
+  <p class="mt-2 text-lg text-txt-secondary">{{ total }} service{{ total|pluralize }}{% if month %} in {{ month|date:"F Y" }}{% endif %}</p>
+  <p class="mt-1 text-sm text-txt-secondary">Only services with an uploaded attendance sheet appear here. Weeks run Sunday to Friday.</p>
+</header>
 
-{% if has_any %}
-{% include 'includes/month_filter.html' %}
-{% include 'includes/month_boxes.html' with boxes=boxes %}
-{% endif %}
-
-{% if page.object_list %}
-<div class="mt-6 space-y-6">
-  {% for week in page.object_list %}
-  <section aria-labelledby="week-{{ week.start|date:'Ymd' }}">
-    <div class="mb-2 flex items-baseline justify-between gap-3 px-1">
-      <h3 id="week-{{ week.start|date:'Ymd' }}" class="text-sm font-semibold text-txt-primary">
-        {{ week.start|date:"M j" }} &ndash; {{ week.end|date:"M j, Y" }}
-      </h3>
-      <p class="text-sm text-txt-secondary">{{ week.count }} service{{ week.count|pluralize }}</p>
-    </div>
-    <ul class="divide-y divide-border overflow-hidden rounded-xl border border-border bg-surface">
-      {% for entry in week.entries %}
-      <li class="flex min-h-[44px] flex-wrap items-center gap-x-4 gap-y-1 px-4 py-3">
-        <div class="min-w-0 flex-1">
-          <p class="truncate text-base font-semibold text-txt-primary">{{ entry.label }}</p>
-          <p class="text-sm text-txt-secondary">{{ entry.date|date:"l, j F" }} &middot; {{ entry.extension }}</p>
+<div class="{% if has_any %}grid items-start gap-8 lg:grid-cols-[minmax(0,3fr)_minmax(0,2fr)] lg:gap-8{% endif %}">
+  <div class="min-w-0">
+    {% if page.object_list %}
+    <div class="space-y-8">
+      {% for week in page.object_list %}
+      <section aria-labelledby="week-{{ week.start|date:'Ymd' }}">
+        <div class="mb-2 flex items-baseline justify-between gap-3 px-4">
+          <h3 id="week-{{ week.start|date:'Ymd' }}" class="text-sm font-medium text-txt-secondary">
+            {{ week.start|date:"M j" }} &ndash; {{ week.end|date:"M j, Y" }}
+          </h3>
+          <p class="text-sm text-txt-secondary">{{ week.count }} service{{ week.count|pluralize }}</p>
         </div>
-        {% if entry.kind == 'first_visit' %}
-        <span class="rounded-full border border-accent px-2.5 py-0.5 text-sm text-txt-primary">First visit</span>
-        {% else %}
-        <span class="rounded-full border border-success px-2.5 py-0.5 text-sm text-success">Present</span>
-        {% endif %}
-      </li>
+        <ul class="divide-y divide-border overflow-hidden rounded-2xl bg-surface">
+          {% for entry in week.entries %}
+          <li class="flex min-h-[60px] items-center gap-4 px-4 py-3">
+            {% if entry.kind == 'first_visit' %}
+            <span class="flex h-9 w-9 flex-none items-center justify-center rounded-full bg-highlight text-on-highlight" aria-hidden="true">&#9733;</span>
+            {% else %}
+            <span class="flex h-9 w-9 flex-none items-center justify-center rounded-full bg-accent text-on-accent" aria-hidden="true">&#10003;</span>
+            {% endif %}
+            <div class="min-w-0 flex-1">
+              <p class="truncate text-base font-medium text-txt-primary">{{ entry.label }}</p>
+              <p class="truncate text-sm text-txt-secondary">{{ entry.date|date:"l, j F" }} &middot; {{ entry.extension }}</p>
+            </div>
+            {% if entry.kind == 'first_visit' %}
+            <span class="flex-none text-sm text-txt-secondary">First visit</span>
+            {% else %}
+            <span class="flex-none text-sm text-success">Present</span>
+            {% endif %}
+          </li>
+          {% endfor %}
+        </ul>
+      </section>
       {% endfor %}
-    </ul>
-  </section>
-  {% endfor %}
+    </div>
+    <div class="mt-8">
+      {% include 'includes/pagination.html' with page=page querystring=querystring %}
+    </div>
+    {% elif has_any %}
+    <div class="rounded-3xl bg-surface px-6 py-12 text-center">
+      <p class="text-lg font-medium text-txt-primary">No services in {{ month|date:"F Y" }}</p>
+      <p class="mt-1 text-sm text-txt-secondary">Choose another month, or show all time.</p>
+    </div>
+    {% else %}
+    <div class="rounded-3xl bg-surface px-6 py-12 text-center">
+      <p class="text-lg font-medium text-txt-primary">No attendance yet</p>
+      <p class="mt-1 text-sm text-txt-secondary">Services you attend will appear here once their sheet is uploaded.</p>
+    </div>
+    {% endif %}
+  </div>
+
+  {% if has_any %}
+  <div class="order-first lg:order-last lg:sticky lg:top-20">
+    {% include 'includes/month_filter.html' %}
+    {% include 'includes/month_boxes.html' with boxes=boxes %}
+  </div>
+  {% endif %}
+
 </div>
-{% include 'includes/pagination.html' with page=page querystring=querystring %}
-{% elif has_any %}
-<div class="card mt-6 text-center">
-  <p class="text-base text-txt-primary">No attendance recorded in {{ month|date:"F Y" }}.</p>
 </div>
-{% else %}
-<div class="card text-center">
-  <p class="text-base text-txt-primary">No attendance has been recorded for you yet.</p>
-</div>
-{% endif %}
 {% endblock %}

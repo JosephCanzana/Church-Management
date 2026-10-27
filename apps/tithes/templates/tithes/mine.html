@@ -2,7 +2,7 @@
 tithes/mine.html
 "My tithes": the signed-in person's own giving history (finalized reports only). A month filter drives both the month
 boxes and the list; the list is grouped by week (Sunday to Friday), newest week first, and with no filter it shows ALL
-history (paginated). Extends base_app.html and fills: title, page_title, content.
+history (paginated). Extends base_app.html and fills: title, page_title, main_class, content.
 Context (tithes.views.my_tithes, from apps.core.weeks.month_view): page, total, has_any, month, selected, months, boxes,
 querystring. Each entry in page.object_list is a week {start, end, entries, count, amount}; each week entry is
 {report_id, entry_id, date, label, extension, amount, shared_with (a list of other names on the same envelope),
@@ -13,57 +13,70 @@ Privacy: only the person's own envelopes; other people appear only as names prin
 
 {% block title %}My tithes{% endblock %}
 {% block page_title %}My tithes{% endblock %}
+{% block main_class %}w-full flex-1 px-4 py-6 sm:px-6 lg:px-8 lg:py-8{% if mobile_nav_style == 'bottom' %} pb-[calc(5rem+env(safe-area-inset-bottom))] sm:pb-8{% endif %}{% endblock %}
 
 {% block content %}
-<div class="mb-4">
-  <h2 class="text-xl font-semibold tracking-tight text-txt-primary">
-    Tithes I gave <span class="text-base font-normal text-txt-secondary">({{ total }}{% if month %} in {{ month|date:"F Y" }}{% endif %})</span>
-  </h2>
+<div class="mx-auto w-full lg:w-[80%] xl:w-[75%]">
+<header class="mb-8 mt-1">
+  <h2 class="text-3xl font-semibold tracking-tight text-txt-primary sm:text-4xl">Tithes I gave</h2>
+  <p class="mt-2 text-lg text-txt-secondary">{{ total }} tithe{{ total|pluralize }}{% if month %} in {{ month|date:"F Y" }}{% endif %}</p>
   <p class="mt-1 text-sm text-txt-secondary">
     Tithes you gave, or shared with someone, in finalized reports. A shared envelope shows its full amount. Weeks run Sunday to Friday.
   </p>
-</div>
+</header>
 
-{% if has_any %}
-{% include 'includes/month_filter.html' %}
-{% include 'includes/month_boxes.html' with boxes=boxes money=1 %}
-{% endif %}
-
-{% if page.object_list %}
-<div class="mt-6 space-y-6">
-  {% for week in page.object_list %}
-  <section aria-labelledby="week-{{ week.start|date:'Ymd' }}">
-    <div class="mb-2 flex items-baseline justify-between gap-3 px-1">
-      <h3 id="week-{{ week.start|date:'Ymd' }}" class="text-sm font-semibold text-txt-primary">
-        {{ week.start|date:"M j" }} &ndash; {{ week.end|date:"M j, Y" }}
-      </h3>
-      <p class="font-mono text-sm font-semibold text-txt-primary">&#8369;{{ week.amount|floatformat:"2g" }}</p>
-    </div>
-    <ul class="divide-y divide-border overflow-hidden rounded-xl border border-border bg-surface">
-      {% for entry in week.entries %}
-      <li class="flex min-h-[44px] flex-wrap items-center gap-x-4 gap-y-1 px-4 py-3">
-        <div class="min-w-0 flex-1">
-          <p class="truncate text-base font-semibold text-txt-primary">{{ entry.label }}</p>
-          <p class="text-sm text-txt-secondary">{{ entry.date|date:"l, j F" }} &middot; {{ entry.extension }}</p>
-          {% if entry.shared_with %}
-          <p class="text-sm text-txt-secondary">Shared with {{ entry.shared_with|join:", " }}</p>
-          {% endif %}
+<div class="{% if has_any %}grid items-start gap-8 lg:grid-cols-[minmax(0,3fr)_minmax(0,2fr)] lg:gap-8{% endif %}">
+  <div class="min-w-0">
+    {% if page.object_list %}
+    <div class="space-y-8">
+      {% for week in page.object_list %}
+      <section aria-labelledby="week-{{ week.start|date:'Ymd' }}">
+        <div class="mb-2 flex items-baseline justify-between gap-3 px-4">
+          <h3 id="week-{{ week.start|date:'Ymd' }}" class="text-sm font-medium text-txt-secondary">
+            {{ week.start|date:"M j" }} &ndash; {{ week.end|date:"M j, Y" }}
+          </h3>
+          <p class="text-sm font-medium tabular-nums text-txt-primary">&#8369;{{ week.amount|floatformat:"2g" }}</p>
         </div>
-        <p class="font-mono text-base font-semibold text-txt-primary">&#8369;{{ entry.amount|floatformat:"2g" }}</p>
-      </li>
+        <ul class="divide-y divide-border overflow-hidden rounded-2xl bg-surface">
+          {% for entry in week.entries %}
+          <li class="flex min-h-[60px] items-center gap-4 px-4 py-3">
+            <span class="flex h-9 w-9 flex-none items-center justify-center rounded-full bg-accent text-base font-semibold text-on-accent" aria-hidden="true">&#8369;</span>
+            <div class="min-w-0 flex-1">
+              <p class="truncate text-base font-medium text-txt-primary">{{ entry.label }}</p>
+              <p class="truncate text-sm text-txt-secondary">{{ entry.date|date:"l, j F" }} &middot; {{ entry.extension }}</p>
+              {% if entry.shared_with %}
+              <p class="truncate text-sm text-txt-secondary">Shared with {{ entry.shared_with|join:", " }}</p>
+              {% endif %}
+            </div>
+            <p class="flex-none text-base font-semibold tabular-nums text-txt-primary">&#8369;{{ entry.amount|floatformat:"2g" }}</p>
+          </li>
+          {% endfor %}
+        </ul>
+      </section>
       {% endfor %}
-    </ul>
-  </section>
-  {% endfor %}
+    </div>
+    <div class="mt-8">
+      {% include 'includes/pagination.html' with page=page querystring=querystring %}
+    </div>
+    {% elif has_any %}
+    <div class="rounded-3xl bg-surface px-6 py-12 text-center">
+      <p class="text-lg font-medium text-txt-primary">No tithes in {{ month|date:"F Y" }}</p>
+      <p class="mt-1 text-sm text-txt-secondary">Choose another month, or show all time.</p>
+    </div>
+    {% else %}
+    <div class="rounded-3xl bg-surface px-6 py-12 text-center">
+      <p class="text-lg font-medium text-txt-primary">No tithes yet</p>
+      <p class="mt-1 text-sm text-txt-secondary">Your tithes appear here after a report is finalized.</p>
+    </div>
+    {% endif %}
+  </div>
+
+  {% if has_any %}
+  <div class="order-first lg:order-last lg:sticky lg:top-20">
+    {% include 'includes/month_filter.html' %}
+    {% include 'includes/month_boxes.html' with boxes=boxes money=1 %}
+  </div>
+  {% endif %}
 </div>
-{% include 'includes/pagination.html' with page=page querystring=querystring %}
-{% elif has_any %}
-<div class="card mt-6 text-center">
-  <p class="text-base text-txt-primary">No tithes recorded in {{ month|date:"F Y" }}.</p>
 </div>
-{% else %}
-<div class="card text-center">
-  <p class="text-base text-txt-primary">Nothing here yet. Your tithes appear after a report is finalized.</p>
-</div>
-{% endif %}
 {% endblock %}

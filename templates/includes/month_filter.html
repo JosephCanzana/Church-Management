@@ -3,19 +3,18 @@ includes/month_filter.html
 Month filter for a personal history page. It filters BOTH the month boxes and the list below them.
 Usage: {% include 'includes/month_filter.html' %}
 Context (apps.core.weeks.month_view): months (list of {value, label}), selected ("YYYY-MM" or ""). "All time" shows the
-whole history in the list and the current month in the boxes. Changing the select submits the form (Alpine); the
-Apply button is the fallback.
+whole history in the list and the current month in the boxes. Changing the select submits the form (Alpine); without
+JavaScript the Apply button appears instead.
 {% endcomment %}
-<form method="get" class="mb-4 flex flex-wrap items-end gap-3" x-data x-on:change="$el.requestSubmit()">
-  <div class="w-full sm:w-56">
-    <label for="month-filter" class="label">Month</label>
-    <select id="month-filter" name="month" class="input">
-      <option value="">All time</option>
-      {% for choice in months %}
-      <option value="{{ choice.value }}"{% if choice.value == selected %} selected{% endif %}>{{ choice.label|date:"F Y" }}</option>
-      {% endfor %}
-    </select>
-  </div>
-  <button type="submit" class="btn btn-secondary">Apply</button>
-  {% if selected %}<a href="{{ request.path }}" class="btn btn-ghost">Show all</a>{% endif %}
+<form method="get" class="mb-6 flex flex-wrap items-center gap-3" x-data x-on:change="$el.requestSubmit()">
+  <label for="month-filter" class="sr-only">Month</label>
+  <select id="month-filter" name="month"
+          class="min-h-[44px] w-full cursor-pointer rounded-full border border-border bg-surface px-5 text-base font-medium text-txt-primary transition-colors focus:outline-none focus-visible:ring-2 focus-visible:ring-accent sm:w-56">
+    <option value="">All time</option>
+    {% for choice in months %}
+    <option value="{{ choice.value }}"{% if choice.value == selected %} selected{% endif %}>{{ choice.label|date:"F Y" }}</option>
+    {% endfor %}
+  </select>
+  <noscript><button type="submit" class="btn btn-secondary">Apply</button></noscript>
+  {% if selected %}<a href="{{ request.path }}" class="min-h-[44px] inline-flex items-center rounded-full px-3 text-base text-accent hover:underline focus:outline-none focus-visible:ring-2 focus-visible:ring-accent">Show all</a>{% endif %}
 </form>
