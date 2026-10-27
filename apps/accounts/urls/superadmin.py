@@ -12,6 +12,7 @@ from ..views import superadmin as views
 from ..views import users as people
 from ..views import registration
 from ..views.site_settings import registration_auto_approve_toggle
+import apps.accounts.site_section_bulk  # noqa: F401
 
 app_name = "superadmin"
 
@@ -62,4 +63,5 @@ urlpatterns = [
     path("prayer/", include("apps.prayer.area_urls")),
      path("", include("apps.dashboards.area_urls")),
     path("site-settings/", include("apps.accounts.urls.site_jobs")),
+      path("site-settings/", include("apps.accounts.urls.site_bulk")),
 ]

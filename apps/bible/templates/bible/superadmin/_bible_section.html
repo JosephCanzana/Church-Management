@@ -4,26 +4,6 @@
 -->
 <div class="grid gap-8">
 
-  <section aria-labelledby="online-heading">
-    <h2 id="online-heading" class="text-base font-semibold text-txt-primary">Online Bible services</h2>
-    <p class="mt-1 max-w-prose text-sm text-txt-secondary">
-      One switch for every version that is fetched from the internet. Today that is ESV.
-      Turning it off blocks ESV even if the ESV switch below is on.
-    </p>
-    <div class="card mt-3 flex flex-wrap items-center justify-between gap-4">
-      <div class="min-w-0 flex-1 basis-56">
-        <p class="font-medium text-txt-primary">
-          All online Bible services
-          <span class="ml-2 rounded-full border border-border bg-surface-alt px-2 py-0.5 text-xs font-medium text-txt-primary">
-            {% if online_on %}On{% else %}Off{% endif %}
-          </span>
-        </p>
-      </div>
-      {% url 'bible_superadmin:online_toggle' as online_url %}
-      {% include "bible/superadmin/_switch_button.html" with action=online_url on=online_on label="all online Bible services" off_message="ESV will be blocked for everyone until you turn this back on." %}
-    </div>
-  </section>
-
   <section aria-labelledby="versions-heading">
     <h2 id="versions-heading" class="text-base font-semibold text-txt-primary">Bible versions</h2>
     <p class="mt-1 max-w-prose text-sm text-txt-secondary">

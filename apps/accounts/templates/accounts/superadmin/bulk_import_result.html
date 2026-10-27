@@ -1,0 +1,115 @@
+<!--
+  Page: Site settings > Bulk add, preview and result.
+  Extends base_app.html and fills: title, page_title, content.
+  Context: report (services.bulk_import.Report), kind, title, mode ("preview" or "result"), csv_text, token,
+  secrets (dict for the show-once dialog or None), settings_url.
+  Posts: superadmin:bulk_commit (preview mode), superadmin:bulk_problems (download problem rows).
+-->
+{% extends "base_app.html" %}
+{% load ui_tags %}
+{% block title %}{{ title }}{% endblock %}
+{% block page_title %}Bulk add{% endblock %}
+
+{% block content %}
+{% comment %}
+  Status always carries its word (OK, Warning, Duplicate, Error) so colour is never the only signal.
+  The hidden textarea hands the file text back on confirm; the server checks it all again.
+{% endcomment %}
+<div class="mx-auto w-full max-w-5xl space-y-6">
+  {% include "includes/breadcrumb.html" with parent_label="Site settings" parent_url=settings_url current=title %}
+
+  {% if secrets %}{{ secrets|json_script:"secrets-data" }}{% endif %}
+
+  {% if report.file_problems %}
+    <section class="card p-5 space-y-3" role="alert">
+      <h2 class="text-lg font-semibold">This file cannot be read</h2>
+      <ul class="list-disc pl-5 space-y-1">
+        {% for problem in report.file_problems %}<li class="text-danger">{{ problem }}</li>{% endfor %}
+      </ul>
+      <a class="btn btn-secondary" href="{{ settings_url }}">Back to Site settings</a>
+    </section>
+  {% else %}
+
+  <header class="space-y-1">
+    <h2 class="text-xl font-semibold">{% if mode == "result" %}{{ title }}: result{% else %}{{ title }}: check before adding{% endif %}</h2>
+    {% for note in report.notes %}<p class="text-sm text-txt-secondary">{{ note }}</p>{% endfor %}
+  </header>
+
+  {% if mode == "result" %}
+    <section class="card p-5 space-y-2" aria-live="polite">
+      <p class="text-lg"><strong>{{ report.created }}</strong> added, <strong>{{ report.not_created|length }}</strong> not added.</p>
+      {% if report.secrets %}<p class="text-sm text-txt-secondary">Temporary passwords are in the dialog on this page. Close it only after you have copied them.</p>{% endif %}
+    </section>
+    {% if report.not_created %}
+    <section class="card p-5 space-y-3">
+      <h3 class="font-semibold">Not added</h3>
+      <ul class="space-y-1">
+        {% for o in report.not_created %}<li>Line {{ o.line }}{% if o.label %} ({{ o.label }}){% endif %}: {{ o.message }}</li>{% endfor %}
+      </ul>
+    </section>
+    {% endif %}
+    <a class="btn btn-secondary" href="{{ settings_url }}">Back to Site settings</a>
+  {% else %}
+    <dl class="grid grid-cols-2 gap-3 sm:grid-cols-5">
+      <div class="card p-3"><dt class="text-sm text-txt-secondary">Rows</dt><dd class="text-2xl font-semibold">{{ report.summary.total }}</dd></div>
+      <div class="card p-3"><dt class="text-sm text-txt-secondary">Will be added</dt><dd class="text-2xl font-semibold">{{ report.summary.importable }}</dd></div>
+      <div class="card p-3"><dt class="text-sm text-txt-secondary">Warnings</dt><dd class="text-2xl font-semibold">{{ report.summary.warning }}</dd></div>
+      <div class="card p-3"><dt class="text-sm text-txt-secondary">Duplicates</dt><dd class="text-2xl font-semibold">{{ report.summary.duplicate }}</dd></div>
+      <div class="card p-3"><dt class="text-sm text-txt-secondary">Errors</dt><dd class="text-2xl font-semibold">{{ report.summary.error }}</dd></div>
+    </dl>
+
+    <div x-data="{ onlyProblems: {% if report.summary.ok == report.summary.total %}false{% else %}true{% endif %} }" class="space-y-3">
+      <label class="inline-flex items-center gap-2 min-h-[44px]">
+        <input type="checkbox" x-model="onlyProblems"> Show only rows that need attention
+      </label>
+      <div class="overflow-x-auto card">
+        <table class="w-full text-left text-sm">
+          <caption class="sr-only">Result of checking each row</caption>
+          <thead class="border-b border-border"><tr>
+            <th scope="col" class="p-3">Line</th><th scope="col" class="p-3">Name</th>
+            <th scope="col" class="p-3">Status</th><th scope="col" class="p-3">Details</th>
+          </tr></thead>
+          <tbody>
+            {% for r in report.results %}
+            <tr class="border-b border-border align-top" {% if r.status == "ok" %}x-show="!onlyProblems"{% endif %}>
+              <td class="p-3 font-mono">{{ r.line }}</td>
+              <td class="p-3">{{ r.label|default:"(no name)" }}</td>
+              <td class="p-3 font-medium {% if r.status == 'error' or r.status == 'duplicate' %}text-danger{% endif %}">
+                {% if r.status == "ok" %}OK{% elif r.status == "warning" %}Warning, will be added{% elif r.status == "duplicate" %}Duplicate, skipped{% else %}Error, skipped{% endif %}
+              </td>
+              <td class="p-3">{% for reason in r.reasons %}<div>{{ reason }}</div>{% empty %}<span class="text-txt-secondary">Ready to add.</span>{% endfor %}</td>
+            </tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      </div>
+    </div>
+
+    <div class="flex flex-wrap items-start gap-3">
+      {% if report.summary.importable %}
+      <form method="post" action="{% url 'superadmin:bulk_commit' %}"
+            data-confirm="Add {{ report.summary.importable }} row{{ report.summary.importable|pluralize }}? Skipped rows are not added." data-confirm-title="Add these rows?">
+        {% csrf_token %}
+        <input type="hidden" name="kind" value="{{ kind }}">
+        <input type="hidden" name="token" value="{{ token }}">
+        <textarea name="csv_text" hidden>{{ csv_text }}</textarea>
+        <button type="submit" class="btn btn-primary">Add {{ report.summary.importable }} row{{ report.summary.importable|pluralize }}</button>
+      </form>
+      {% endif %}
+      {% if report.summary.ok != report.summary.total %}
+      <form method="post" action="{% url 'superadmin:bulk_problems' %}" data-no-lock>
+        {% csrf_token %}
+        <input type="hidden" name="kind" value="{{ kind }}">
+        <textarea name="csv_text" hidden>{{ csv_text }}</textarea>
+        <button type="submit" class="btn btn-secondary">Download rows that need attention</button>
+      </form>
+      {% endif %}
+      <a class="btn btn-ghost" href="{{ settings_url }}">Start over</a>
+    </div>
+    {% if not report.summary.importable %}
+      <p class="text-txt-secondary">Nothing can be added from this file. Fix the errors, or remove the duplicates, and check it again.</p>
+    {% endif %}
+  {% endif %}
+  {% endif %}
+</div>
+{% endblock %}

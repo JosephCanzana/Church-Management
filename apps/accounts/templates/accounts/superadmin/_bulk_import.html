@@ -1,0 +1,85 @@
+<!--
+  Partial: Site settings > Bulk add (included by the Site settings shell as a registered section).
+  Context: bulk_kinds (not used for layout; the two forms below are fixed).
+  Posts to superadmin:bulk_preview, which saves nothing. The import itself happens on the next page.
+-->
+{% comment %}
+  Each card is one kind (extensions, people). The file wins over pasted text when both are given.
+  Column help sits in a details element so the section stays short.
+{% endcomment %}
+<div class="space-y-6">
+  <p class="text-txt-secondary max-w-prose">
+    Add many extensions or people from a CSV file. Every row is checked first and nothing is saved until you confirm.
+    Rows that are duplicates or have a problem are skipped and explained; they never stop the others.
+  </p>
+
+  <section class="card p-5 space-y-4" aria-labelledby="bulk-ext-h">
+    <h3 id="bulk-ext-h" class="text-lg font-semibold">Extensions</h3>
+    <form method="post" action="{% url 'superadmin:bulk_preview' %}" enctype="multipart/form-data" class="space-y-4">
+      {% csrf_token %}
+      <input type="hidden" name="kind" value="extensions">
+      <div>
+        <label class="label" for="bulk-ext-file">CSV file</label>
+        <input class="input" type="file" id="bulk-ext-file" name="file" accept=".csv,text/csv,.txt">
+      </div>
+      <div>
+        <label class="label" for="bulk-ext-paste">Or paste rows, header line first</label>
+        <textarea class="input font-mono" id="bulk-ext-paste" name="pasted" rows="4" spellcheck="false"></textarea>
+        <p class="field-help">Pasting straight from Excel works. If you choose a file, the pasted text is ignored.</p>
+      </div>
+      <div class="flex flex-wrap items-center gap-3">
+        <button type="submit" class="btn btn-primary">Check extensions</button>
+        <a class="btn btn-ghost" href="{% url 'superadmin:bulk_template' %}?kind=extensions">Download blank template</a>
+      </div>
+    </form>
+    <details class="text-sm">
+      <summary class="cursor-pointer font-medium">Columns</summary>
+      <p class="mt-2 text-txt-secondary">
+        Required: <span class="font-mono">name, country, province, municipality, barangay, postal_code</span>.
+        Optional: <span class="font-mono">street, building_number</span>. Philippine addresses must match the
+        province, municipality and barangay list, and the postal code has 4 digits (format that column as Text in Excel
+        so a leading zero is not lost).
+      </p>
+    </details>
+  </section>
+
+  <section class="card p-5 space-y-4" aria-labelledby="bulk-ppl-h">
+    <h3 id="bulk-ppl-h" class="text-lg font-semibold">People</h3>
+    <form method="post" action="{% url 'superadmin:bulk_preview' %}" enctype="multipart/form-data" class="space-y-4">
+      {% csrf_token %}
+      <input type="hidden" name="kind" value="people">
+      <div>
+        <label class="label" for="bulk-ppl-file">CSV file</label>
+        <input class="input" type="file" id="bulk-ppl-file" name="file" accept=".csv,text/csv,.txt">
+      </div>
+      <div>
+        <label class="label" for="bulk-ppl-paste">Or paste rows, header line first</label>
+        <textarea class="input font-mono" id="bulk-ppl-paste" name="pasted" rows="4" spellcheck="false"></textarea>
+        <p class="field-help">If you choose a file, the pasted text is ignored.</p>
+      </div>
+      <div class="flex flex-wrap items-center gap-3">
+        <button type="submit" class="btn btn-primary">Check people</button>
+        <a class="btn btn-ghost" href="{% url 'superadmin:bulk_template' %}?kind=people">Download blank template</a>
+      </div>
+    </form>
+    <details class="text-sm">
+      <summary class="cursor-pointer font-medium">Columns</summary>
+      <div class="mt-2 space-y-2 text-txt-secondary">
+        <p>
+          Required: <span class="font-mono">first_name, last_name, gender, extension</span>. Gender is male or female.
+          The extension is matched by name, ignoring capitals and extra spaces; it must already exist and not be archived.
+        </p>
+        <p>
+          Optional: <span class="font-mono">middle_name, suffix, birth_date, person_type, phone_number</span> and the
+          address columns. Write dates as YYYY-MM-DD. <span class="font-mono">person_type</span> is member (default,
+          can sign in), member_record (no account) or guest. Bulk add creates members only; add coordinators and
+          admins from the People screen.
+        </p>
+        <p>
+          Members who can sign in get the default password that applies to you (or a generated one) and must change it
+          at first sign-in. The passwords are shown once after the import.
+        </p>
+      </div>
+    </details>
+  </section>
+</div>
