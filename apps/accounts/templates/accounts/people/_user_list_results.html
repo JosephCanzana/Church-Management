@@ -59,6 +59,7 @@ XHR search requests.
         {% if 'suspend' in can %}data-suspend-url="{% role_url 'user_suspend' person.pk %}"{% endif %}
         {% if 'unsuspend' in can %}data-unsuspend-url="{% role_url 'user_unsuspend' person.pk %}"{% endif %}
         {% if 'delete' in can %}data-delete-url="{% role_url 'user_delete' person.pk %}"{% endif %}
+        {% if 'reset_password' in can %}data-reset-password-url="{% role_url 'user_reset_password' person.pk %}"{% endif %}
         @contextmenu.prevent="openMenu($event, $el)">
       <input type="checkbox" form="bulk-form" name="ids" value="{{ person.pk }}" x-model="selected"
              class="relative z-10 size-5 shrink-0 rounded border-border-strong accent-[var(--color-accent)]"

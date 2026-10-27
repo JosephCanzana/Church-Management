@@ -144,6 +144,7 @@ document.addEventListener('alpine:init', () => {
     // The state-changing entries of the menu, in order, for the person it was opened on.
     get menuItems() {
       const items = [
+        ['reset_password', 'Reset password', false],
         ['archive', 'Archive', false], ['restore', 'Restore', false], ['suspend', 'Suspend', false],
         ['unsuspend', 'Unsuspend', false], ['delete', 'Delete', true],
       ];
@@ -231,7 +232,8 @@ document.addEventListener('alpine:init', () => {
         unsuspend:  { url: d.unsuspendUrl },
         delete:     { url: d.deleteUrl, title: 'Delete this person?', confirmText: 'Delete permanently', danger: true,
                       message: `This permanently deletes ${d.name}. It cannot be undone.` },
-      }[kind];
+        reset_password: { url: d.resetPasswordUrl, title: 'Reset this password?', confirmText: 'Reset password', danger: false,
+        message: `${d.name}'s password will be reset to the default password. They will be asked to change it when they next log in.` },      }[kind];
       this.closeMenu();
       if (!copy || !copy.url) return;
       if (copy.message) {

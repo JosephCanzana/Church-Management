@@ -203,13 +203,18 @@ def report_action(anchor="", to="report_detail"):
 
 # ============================================================================ list
 def _listable_sheets(user):
-    """Attendance sheets the person may see on the tithes list (not archived), narrowed by who is asking.
+    """Attendance sheets the person may see on the tithes list, narrowed by who is asking.
 
-    Admins: every sheet. Coordinator: their extension. Special member: the extension(s) of their seat, and
-    only sheets with no report yet or a DRAFT one. `permissions.can_create` / `can_view` still decide what
+    A sheet whose attendance is still a DRAFT is not ready for tithes, so it never appears here (and no
+    report can be started on it). Archived sheets are left out too.
+
+    Admins: every ready sheet. Coordinator: their extension. Special member: the extension(s) of their seat,
+    and only sheets with no report yet or a DRAFT one. `permissions.can_create` / `can_view` still decide what
     each row offers, and every service checks again.
     """
-    sheets = Attendance.objects.exclude(status=Attendance.Status.ARCHIVED)
+    sheets = Attendance.objects.exclude(
+        status__in=[Attendance.Status.DRAFT, Attendance.Status.ARCHIVED]
+    )
     if user.role in ADMIN_ROLES:
         return sheets
     if user.role == Role.COORDINATOR:

@@ -57,7 +57,7 @@ header from sm up, then two columns from xl: the names (left, flowing into colum
       </div>
     </div>
 
-    {% if needs_category %}
+    {% if needs_category and sheet.status == 'draft' %}
     <p class="mt-5 rounded-lg border border-warning px-4 py-3 text-base text-txt-primary" role="status">
       <strong class="font-semibold">{{ needs_category }} {% if needs_category == 1 %}person still needs{% else %}people still need{% endif %} a gender and an age network.</strong>
       Go back and fill {% if needs_category == 1 %}it{% else %}them{% endif %} in before uploading.
@@ -68,7 +68,7 @@ header from sm up, then two columns from xl: the names (left, flowing into colum
   {# ---------- actions: stay in reach while scrolling a long list ---------- #}
   <div class="flex flex-wrap items-start gap-3 sm:sticky sm:top-14 sm:z-20 sm:-mx-6 sm:border-b sm:border-shell-border/70 sm:bg-shell/75 sm:px-6 sm:py-3 sm:backdrop-blur-xl lg:-mx-8 lg:px-8"
        role="toolbar" aria-label="Sheet actions">
-    {% if can_edit %}<a class="btn btn-secondary min-h-[44px] text-base" href="{% role_url 'sheet_detail' sheet.pk %}">Back to editing</a>{% endif %}
+    {% if can_edit and sheet.status == 'draft' %}<a class="btn btn-secondary min-h-[44px] text-base" href="{% role_url 'sheet_detail' sheet.pk %}">Back to editing</a>{% endif %}
     {# Opens the standalone A4 page in a new tab; "Save as PDF" is the browser's print destination. #}
     {% if can_print %}<a class="btn btn-secondary min-h-[44px] text-base" href="{% role_url 'sheet_print' sheet.pk %}" target="_blank" rel="noopener">Print or save as PDF</a>{% endif %}
     {% if can_reopen %}
@@ -80,7 +80,7 @@ header from sm up, then two columns from xl: the names (left, flowing into colum
       <button type="submit" class="btn btn-secondary min-h-[44px] text-base">Reopen to correct</button>
     </form>
     {% endif %}
-    {% if can_upload %}
+    {% if can_upload and sheet.status == 'draft' %}
     <div class="sm:ml-auto">{% include 'attendance/_upload_form.html' with sheet=sheet submit_token=submit_token upload_blocker=upload_blocker %}</div>
     {% endif %}
   </div>
