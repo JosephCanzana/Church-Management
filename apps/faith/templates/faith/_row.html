@@ -34,11 +34,11 @@ Usage: include with row=row (a dict from stats.today_overview).
       </p>
     </div>
 
-    <div class="flex shrink-0 items-center">
+    <!-- <div class="flex shrink-0 items-center">
       <button type="button" class="btn btn-ghost min-h-11 min-w-11" @click="noteOpen = !noteOpen"
               :aria-expanded="noteOpen.toString()" aria-expanded="false" aria-label="Private note for {{ row.goal.title }}">
         <svg class="h-5 w-5" aria-hidden="true"><use href="{% static 'icons/sprite.svg' %}#chat-bubble-left"></use></svg>
-      </button>
+      </button> -->
       {% if can.edit %}
       <a href="{% url 'faith:goal_edit' row.goal.pk %}" class="btn btn-ghost min-h-11 min-w-11" aria-label="{% if can.edit_end_date %}Change end date of{% else %}Edit{% endif %} {{ row.goal.title }}">
         <svg class="h-5 w-5" aria-hidden="true"><use href="{% static 'icons/sprite.svg' %}#pencil-square"></use></svg>

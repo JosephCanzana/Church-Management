@@ -280,8 +280,12 @@ def change_schedule(actor, goal_id, data, *, request=None):
     if repeat_same and time_same:
         raise ServiceError("Nothing changed. Pick a different repeat or time.")
 
+    # Close the old goal now (the same fields end_goal sets) instead of leaving it
+    # active until the nightly complete_ended_goals job runs.
     goal.end_date = today
-    goal.save(update_fields=["end_date"])
+    goal.status = Goal.Status.COMPLETED
+    goal.completed_at = timezone.now()
+    goal.save(update_fields=["end_date", "status", "completed_at"])
     new_goal = Goal.objects.create(user=actor, status=Goal.Status.ACTIVE, previous_goal=goal, **clean)
     fields = ["previous_goal"]
     if not repeat_same:
