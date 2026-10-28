@@ -304,7 +304,9 @@
       <div class="flex flex-wrap items-center justify-between gap-4">
         <button type="submit" class="btn btn-primary">Change password</button>
         {# Placeholder until the forgot / reset password flow is built. #}
-        <a href="#" class="text-base text-txt-secondary underline underline-offset-4 hover:text-txt-primary">Forgot password?</a>
+                    <a href="{% url 'accounts:forgot_password' %}" class="ml-auto text-base text-txt-secondary underline underline-offset-4 hover:text-txt-primary">
+              Forgot password?
+            </a>
       </div>
     </form>
   </section>

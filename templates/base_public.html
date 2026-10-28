@@ -3,6 +3,7 @@
 
 {% block body %}
 <div class="flex min-h-dvh flex-col">
+  {% include 'includes/legal_modals.html' %}
   {% include "includes/public_navbar.html" %}
   {% if site_manager %}{% include "includes/admin_bar.html" %}{% endif %}
   

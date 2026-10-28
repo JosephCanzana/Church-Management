@@ -1,0 +1,180 @@
+<!--
+  Legal modals: Privacy Policy and Terms of Use.
+  Expects: nothing. Needs the ui_tags library and the global Alpine store "ui".
+  Usage: include this file once inside a block of a base template (base_public.html and base_app.html),
+  then open a modal from any link or button with the store call openModal and the id "privacy" or "terms".
+-->
+{% load ui_tags %}
+
+{% modal "privacy" title="Privacy Policy" %}
+<div class="max-h-[60vh] space-y-5 overflow-y-auto pr-1 text-base text-txt-secondary">
+  <p>Welcome to the JIL Church Management System. This System is designed to help Jesus Is Lord (JIL) Church manage membership records, attendance, church events, record Tithes Offering and other administrative activities.</p>
+  <p>This Privacy Policy explains what information we collect, how we use and protect it, who may access it, and what rights you have over your personal information. We handle personal information in accordance with the Data Privacy Act of 2012 (Republic Act No. 10173) and other applicable laws of the Philippines.</p>
+
+  <section class="space-y-2">
+    <h3 class="font-semibold text-txt-primary">1. What Information We Collect</h3>
+    <p>We collect information necessary for church administration and the proper operation of the System.</p>
+    <p><span class="font-medium text-txt-primary">Account Information.</span> When an account is created, we may collect your name, username, email address, contact number, and other details required for account management.</p>
+    <p><span class="font-medium text-txt-primary">Church Membership Information.</span> We may collect membership details, attendance records, and participation in church services and activities.</p>
+    <p><span class="font-medium text-txt-primary">System Activity Information.</span> We may record login activity, account roles, and relevant system logs to help maintain security and prevent unauthorized access.</p>
+    <p>We collect only information that is necessary for the purposes disclosed to you and permitted by law.</p>
+  </section>
+
+  <section class="space-y-2">
+    <h3 class="font-semibold text-txt-primary">2. How We Use Your Information</h3>
+    <p>We use collected information to:</p>
+    <ul class="list-disc space-y-1 pl-5">
+      <li>Manage church membership records and member accounts.</li>
+      <li>Monitor attendance at worship services and church activities.</li>
+      <li>Organize ministries, events, and church programs.</li>
+      <li>Send relevant announcements and updates.</li>
+      <li>Generate reports for authorized church administrators.</li>
+      <li>Maintain system security and prevent unauthorized access.</li>
+    </ul>
+    <p>We do not use members' information for unrelated purposes without an appropriate lawful basis.</p>
+  </section>
+
+  <section class="space-y-2">
+    <h3 class="font-semibold text-txt-primary">3. How We Share Your Information</h3>
+    <p>Your information may be accessed by authorized church administrators and personnel who need it to perform their assigned responsibilities.</p>
+    <p>Information may also be shared with service providers that support the System, or with appropriate authorities when required or permitted by law.</p>
+    <p>We do not make private membership records publicly available or sell personal information for commercial purposes.</p>
+  </section>
+
+  <section class="space-y-2">
+    <h3 class="font-semibold text-txt-primary">4. Where We Store Your Information</h3>
+    <p>Your information is stored using the database and hosting services configured for the JIL Church Management System.</p>
+    <p>Access to stored information should be restricted to authorized personnel. Appropriate security measures must be implemented to protect records against unauthorized access, loss, or disclosure.</p>
+    <p>The church should identify its actual hosting provider and storage location and provide additional information about data transfers when applicable.</p>
+  </section>
+
+  <section class="space-y-2">
+    <h3 class="font-semibold text-txt-primary">5. Your Rights and Choices</h3>
+    <p>Under applicable data privacy laws, you may have the right to:</p>
+    <ul class="list-disc space-y-1 pl-5">
+      <li>Request access to your personal information.</li>
+      <li>Request correction of inaccurate or incomplete records.</li>
+      <li>Object to certain types of processing.</li>
+      <li>File a complaint with the National Privacy Commission when appropriate.</li>
+    </ul>
+    <p>You may contact the church administrator or designated privacy contact to exercise these rights, subject to applicable legal requirements and exceptions.</p>
+  </section>
+
+  <section class="space-y-2">
+    <h3 class="font-semibold text-txt-primary">6. How We Protect Your Information</h3>
+    <p>We use or seek to implement appropriate security measures, such as account authentication, access restrictions, secure data handling, backups, and system monitoring.</p>
+    <p>Users must keep their login credentials confidential and must not access or share records without authorization.</p>
+  </section>
+
+  <section class="space-y-2">
+    <h3 class="font-semibold text-txt-primary">7. How Long We Keep Your Information</h3>
+    <p>We retain personal information only for as long as necessary for church administration, recordkeeping, and applicable legal obligations.</p>
+    <p>When information is no longer needed and no lawful retention requirement applies, it should be securely deleted, anonymized, or disposed of.</p>
+  </section>
+
+  <section class="space-y-2">
+    <h3 class="font-semibold text-txt-primary">8. Privacy Policy Updates</h3>
+    <p>We may update this Privacy Policy when the System's features, data processing practices, or legal requirements change.</p>
+    <p>Significant changes will be communicated through appropriate church channels or system notifications when appropriate.</p>
+  </section>
+</div>
+{% endmodal %}
+
+{% modal "terms" title="Terms of Use" %}
+<div class="max-h-[60vh] space-y-5 overflow-y-auto pr-1 text-base text-txt-secondary">
+  <p>These Terms of Use govern your access to and use of the System, which supports church membership management, attendance monitoring, ministry coordination, event management, and other administrative activities of Jesus Is Lord (JIL) Church.</p>
+  <p>By accessing or using the System, you agree to follow these Terms. If you do not agree, please refrain from using the System.</p>
+
+  <section class="space-y-2">
+    <h3 class="font-semibold text-txt-primary">1. Who Can Use the System?</h3>
+    <p>The System is intended for authorized church administrators, coordinator, and members.</p>
+    <p>Users must provide accurate information and follow the rules established by the church and its system administrators.</p>
+  </section>
+
+  <section class="space-y-2">
+    <h3 class="font-semibold text-txt-primary">2. Account Registration and Security</h3>
+    <p>Users are responsible for keeping their account credentials confidential and protecting their accounts from unauthorized access.</p>
+    <p>You must not share your password, use another person's account without permission, or provide false information during registration.</p>
+    <p>If you suspect that your account has been compromised, notify the system administrator promptly.</p>
+  </section>
+
+  <section class="space-y-2">
+    <h3 class="font-semibold text-txt-primary">3. What Can You Use the System For?</h3>
+    <p>The System may be used to manage church membership records, record attendance, organize ministries and events, view announcements, and perform other authorized church-related activities.</p>
+    <p>Users must use the System only for its intended purposes and within the permissions assigned to their accounts.</p>
+  </section>
+
+  <section class="space-y-2">
+    <h3 class="font-semibold text-txt-primary">4. What Is Not Allowed?</h3>
+    <p>Users must not:</p>
+    <ul class="list-disc space-y-1 pl-5">
+      <li>Access or disclose confidential church records without authorization.</li>
+      <li>Modify or delete information without permission.</li>
+      <li>Use another person's account or impersonate another user.</li>
+      <li>Attempt to bypass system security or disrupt its operation.</li>
+      <li>Use members' personal information for unauthorized purposes.</li>
+      <li>Upload malicious content or engage in unlawful activities through the System.</li>
+    </ul>
+    <p>Violations may result in account restrictions, suspension, or other appropriate action.</p>
+  </section>
+
+  <section class="space-y-2">
+    <h3 class="font-semibold text-txt-primary">5. How Do We Handle Your Information?</h3>
+    <p>Your use of the System is also subject to the JIL Church Management System Privacy Policy.</p>
+    <p>Personal information must be handled responsibly and in accordance with the Data Privacy Act of 2012 (Republic Act No. 10173) and other applicable laws.</p>
+  </section>
+
+  <section class="space-y-2">
+    <h3 class="font-semibold text-txt-primary">6. Who Is Responsible for the Information in the System?</h3>
+    <p>Users who enter or update records must make reasonable efforts to ensure that the information is accurate.</p>
+    <p>Only authorized personnel may make changes to official membership, attendance, and administrative records. Users may report incorrect information to the church administrator for review.</p>
+  </section>
+
+  <section class="space-y-2">
+    <h3 class="font-semibold text-txt-primary">7. Can Your Account Be Suspended?</h3>
+    <p>The church or authorized system administrator may restrict, suspend, or revoke access if an account is used improperly, these Terms are violated, or a security risk is identified.</p>
+    <p>Such actions should be handled consistently with applicable laws and relevant church policies.</p>
+  </section>
+
+  <section class="space-y-2">
+    <h3 class="font-semibold text-txt-primary">8. System Availability and Maintenance</h3>
+    <p>The System may occasionally be unavailable due to maintenance, technical issues, updates, or circumstances beyond the church's control.</p>
+    <p>Reasonable efforts will be made to maintain the System and restore access when problems occur.</p>
+  </section>
+
+  <section class="space-y-2">
+    <h3 class="font-semibold text-txt-primary">9. Ownership and Authorized Use</h3>
+    <p>The System's software, design, documentation, and other protected materials may be subject to intellectual property rights.</p>
+    <p>Users may not copy, distribute, modify, or use protected materials beyond the permissions granted by the relevant rights holder.</p>
+    <p>Church names, logos, and other protected materials must be used only with proper authorization.</p>
+  </section>
+
+  <section class="space-y-2">
+    <h3 class="font-semibold text-txt-primary">10. Limitation of Liability</h3>
+    <p>The System is provided to support church administration. Although reasonable efforts should be made to maintain its accuracy, security, and availability, uninterrupted or error-free operation cannot be guaranteed.</p>
+    <p>Nothing in these Terms excludes rights or liabilities that cannot legally be excluded under applicable Philippine law.</p>
+  </section>
+
+  <section class="space-y-2">
+    <h3 class="font-semibold text-txt-primary">11. Changes to These Terms</h3>
+    <p>We may update these Terms of Use when necessary to reflect changes in the System, church policies, or applicable laws.</p>
+    <p>Significant changes will be communicated through appropriate channels. Where required, users will be asked to acknowledge or accept the revised Terms.</p>
+  </section>
+
+  <section class="space-y-2">
+    <h3 class="font-semibold text-txt-primary">12. Governing Law</h3>
+    <p>These Terms of Use shall be governed by the applicable laws of the Republic of the Philippines.</p>
+  </section>
+</div>
+{% endmodal %}
+
+<script>
+  /* Any link whose address is "#modal-<id>" opens the modal with that id, so a managed footer link
+     can open a modal just by having that address. Other links are left alone. */
+  document.addEventListener('click', function (e) {
+    var a = e.target.closest('a[href^="#modal-"]');
+    if (!a) return;
+    e.preventDefault();
+    Alpine.store('ui').openModal(a.getAttribute('href').slice(7));
+  });
+</script>

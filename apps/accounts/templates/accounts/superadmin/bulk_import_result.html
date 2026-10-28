@@ -26,7 +26,7 @@
       <ul class="list-disc pl-5 space-y-1">
         {% for problem in report.file_problems %}<li class="text-danger">{{ problem }}</li>{% endfor %}
       </ul>
-      <a class="btn btn-secondary" href="{{ settings_url }}">Back to Site settings</a>
+      <a class="btn btn-secondary" href="{{ settings_url }}?section=bulk-add">Back to Site settings</a>
     </section>
   {% else %}
 
@@ -104,7 +104,7 @@
         <button type="submit" class="btn btn-secondary">Download rows that need attention</button>
       </form>
       {% endif %}
-      <a class="btn btn-ghost" href="{{ settings_url }}">Start over</a>
+      <a class="btn btn-ghost" href="{{ settings_url }}/?section=bulk-add">Start over</a>
     </div>
     {% if not report.summary.importable %}
       <p class="text-txt-secondary">Nothing can be added from this file. Fix the errors, or remove the duplicates, and check it again.</p>

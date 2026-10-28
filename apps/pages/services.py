@@ -161,9 +161,8 @@ FOOTER = {
     "brand": "Jesus Is Lord Church",
     "blurb": "A church family growing in faith, love, worship, prayer, and service.",
     "more": [
-        {"label": "Copyright", "url": "#"},
-        {"label": "Join Us", "url": "#"},
-        {"label": "Privacy Policy", "url": "#"},  # placeholder until the page exists
+        {"label": "Privacy Policy", "url": "#modal-privacy"},
+        {"label": "Terms of Use", "url": "#modal-terms"},
     ],
     # "affiliates": [
     #     {"label": "", "url": "#"},
