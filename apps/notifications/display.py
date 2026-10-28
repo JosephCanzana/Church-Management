@@ -24,18 +24,45 @@ TYPES = {
     "admin_alert": ("exclamation-triangle", "{action} was recorded by {actor}."),
     "registration_request": ("user-plus", "A registration request is waiting for review."),
     "registration_email_failed": ("envelope", "An account email could not be sent. Review the account and issue a new password."),
+    "prayer_replied": ("chat-bubble-left-ellipsis", "Your prayer request has a reply."),
+    "buddy_request": ("user-plus", "{actor} sent you a buddy request."),
+    "buddy_accepted": ("user-plus", "{actor} accepted your buddy request."),
+    "buddy_message": ("chat-bubble-left-ellipsis", "{actor} sent you a message."),
+    "buddy_end_requested": ("user-plus", "{actor} asked to end your buddy pairing."),
+    "buddy_ended": ("user-plus", "Your buddy pairing has ended."),
+    "tithes_bypass_requested": ("exclamation-triangle", "{actor} asked for a tithes edit approval."),
+    "tithes_bypass_approved": ("check-circle", "Your tithes edit request was approved."),
+    "tithes_bypass_rejected": ("exclamation-triangle", "Your tithes edit request was rejected."),
+    "extension_service_changed": ("calendar-days", "An extension's service schedule was changed."),
 }
 
-# entity_type -> url name taking the entity id. A name that does not resolve yet falls back to the list page.
+# The people screens exist once per role area; {area} becomes the recipient's area.
+ROLE_AREAS = {"super_admin": "superadmin", "admin": "admin_area", "coordinator": "coordinator_area"}
+
+# type -> url name with no id. Checked first: these types point at a page, not at a row.
+TYPE_ROUTES = {
+    "buddy_request": "buddy:home",
+    "buddy_accepted": "buddy:home",
+    "buddy_end_requested": "buddy:home",
+    "buddy_ended": "buddy:home",
+    "buddy_message": "buddy:messages",
+    "prayer_replied": "prayer:list",
+    "email_taken_over": "accounts:profile_email",
+    "registration_email_failed": "{area}:registration_approvals",
+}
+
+# entity_type -> url name taking the entity id. A name that does not resolve falls back to the list page.
 ENTITY_ROUTES = {
-    "event": "events:detail",
-    "prayer_request": "prayer:detail",
-    "attendance": "attendance:detail",
-    "tithes_offering": "tithes:detail",
-    "registration_request": "superadmin:registration_detail",
-    "app_user": "superadmin:user_detail",
+    "prayer_request": "{area}:prayer_detail",
+    "registration_request": "{area}:registration_detail",
+    "app_user": "{area}:user_detail",
+    "attendance": "attendance:sheet_detail",
+    "tithes_offering": "tithes:report_detail",
 }
-
+# Only the super-admin has these pages.
+SUPER_ADMIN_ROUTES = {
+    "extension": "superadmin:extension_detail",
+}
 
 class _Safe(dict):
     """format_map helper: a placeholder with no value becomes a neutral word instead of raising."""
@@ -80,13 +107,28 @@ def describe(notification):
 
 def target_url(notification):
     """The page this notification leads to, or None. The page itself does the permission check."""
-    route = ENTITY_ROUTES.get(notification.entity_type or "")
-    if not route or notification.entity_id is None:
-        return None
-    try:
-        return reverse(route, args=[notification.entity_id])
-    except NoReverseMatch:
-        return None
+    role = notification.user.role
+    area = ROLE_AREAS.get(role)
+
+    def resolve(route, args=()):
+        if "{area}" in route:
+            if area is None:                      # a member has no people screens
+                return None
+            route = route.format(area=area)
+        try:
+            return reverse(route, args=args)
+        except NoReverseMatch:
+            return None
+
+    route = TYPE_ROUTES.get(notification.type)
+    if route:
+        return resolve(route)
+    if notification.entity_type and notification.entity_id is not None:
+        route = SUPER_ADMIN_ROUTES.get(notification.entity_type) if role == "super_admin" else None
+        route = route or ENTITY_ROUTES.get(notification.entity_type)
+        if route:
+            return resolve(route, args=[notification.entity_id])
+    return None
 
 
 def decorate(items):
