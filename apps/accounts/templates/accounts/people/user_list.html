@@ -74,7 +74,9 @@
               :class="item.danger ? 'text-error' : 'text-txt-primary'" x-text="item.label"></button>
     </template>
   </div>
-  <form id="row-action-form" method="post" hidden x-ref="rowForm">{% csrf_token %}</form>
+  <form id="row-action-form" method="post" hidden x-ref="rowForm">{% csrf_token %}
+  <input type="hidden" name="submit_token" value="{{ submit_token }}">
+</form>
 
 </div>
 
@@ -233,7 +235,8 @@ document.addEventListener('alpine:init', () => {
         delete:     { url: d.deleteUrl, title: 'Delete this person?', confirmText: 'Delete permanently', danger: true,
                       message: `This permanently deletes ${d.name}. It cannot be undone.` },
         reset_password: { url: d.resetPasswordUrl, title: 'Reset this password?', confirmText: 'Reset password', danger: false,
-        message: `${d.name}'s password will be reset to the default password. They will be asked to change it when they next log in.` },      }[kind];
+          message: `${d.name}'s password will be reset to the default password. They will be asked to change it when they next log in.` },
+      }[kind];
       this.closeMenu();
       if (!copy || !copy.url) return;
       if (copy.message) {

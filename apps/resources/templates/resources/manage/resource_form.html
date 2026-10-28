@@ -52,6 +52,9 @@ Context: form, resource_type (monthly, weekly, or general), resource, theme (mon
     {% if resource and resource.original_filename %}<p class="mb-2 text-sm text-txt-secondary">Current file: {{ resource.original_filename }}</p>{% endif %}
     <label class="label" for="{{ form.file.id_for_label }}">{% if resource_type == 'monthly' %}{% if resource %}Replace picture{% else %}Picture{% endif %}{% else %}{% if resource %}Replace file{% else %}File{% endif %}{% endif %}</label>
     {{ form.file }}
+    {% if resource and resource.file %}
+      <p class="mt-1 text-sm text-txt-muted">Current file: {{ resource.original_filename }}. Choose a new file only to replace it.</p>
+    {% endif %}
     {% if resource_type == 'monthly' %}
       <p class="field-help">JPG, PNG or WebP. Older PDF, PPTX, DOCX and XLSX files are still accepted. Maximum size: {{ resource_limit_mb }} MB.</p>
     {% else %}

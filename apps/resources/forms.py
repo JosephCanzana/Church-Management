@@ -20,7 +20,7 @@ PICTURE_ACCEPT = "image/jpeg,image/png,image/webp"
 MAX_PICTURES_PER_UPLOAD = 20
 
 
-class MultipleFileInput(forms.ClearableFileInput):
+class MultipleFileInput(forms.FileInput):
     """File input that lets the browser pick several files at once."""
     allow_multiple_selected = True
 
@@ -206,7 +206,7 @@ class WeeklyPowerpointForm(_ResourceModelForm):
     file = forms.FileField(
         required=False,
         validators=[validate_resource_upload],
-        widget=forms.ClearableFileInput(attrs={"class": "input"}),
+        widget=forms.FileInput(attrs={"class": "input", "accept": ALLOWED_ACCEPT}),
     )
     monthly_theme = forms.ModelChoiceField(
         queryset=MonthlyTheme.objects.none(),

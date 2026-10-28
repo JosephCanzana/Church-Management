@@ -30,7 +30,10 @@ Never shows another person's request. The sender name comes from permissions.sen
           <span class="block text-sm text-txt-secondary">{{ form.is_anonymous.help_text }}</span>
         </span>
       </label>
-      <button type="submit" class="btn btn-primary">Send request</button>
+      <form method="post" action="{% url 'prayer:send' %}" class="mt-4 space-y-4"
+      data-confirm="Send this prayer request to your coordinator?"
+      data-confirm-title="Send prayer request"
+      data-confirm-text="Send">
     </form>
   </section>
 

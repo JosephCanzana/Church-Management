@@ -63,7 +63,7 @@ PAGE_SIZE = 25
 RETURN_QS_MAX = 1000               # longest "return to this filtered list" string accepted
 SECRETS_HEADERS = ["Name", "Account ID", "Password"]
 SECRETS_MESSAGE = (
-    "This are the important account credantial"
+    "These are the account credentials. Share them only with the person concerned."
 )
 
 LIST_TEMPLATE = "accounts/people/user_list.html"
