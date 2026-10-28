@@ -43,6 +43,9 @@ docker compose exec web python manage.py import_bible KJV --url https://raw.gith
 docker compose exec web python manage.py import_bible ADB --url https://raw.githubusercontent.com/seven1m/open-bibles/master/tgl-tagalog.osis.xml
 
 
+docker compose -f docker-compose.prod.yml exec web python manage.py import_bible ADB --url https://raw.githubusercontent.com/seven1m/open-bibles/master/tgl-tagalog.osis.xml
+
+docker compose -f docker-compose.prod.yml exec web python manage.py import_bible KJV --url https://raw.githubusercontent.com/seven1m/open-bibles/master/eng-kjv.osis.xml
 ### Resetting dev data and seeding a super-admin
 Add a password for the seeded account to `.env` (it is never stored in code):
 ```

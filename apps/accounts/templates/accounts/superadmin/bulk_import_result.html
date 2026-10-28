@@ -104,7 +104,7 @@
         <button type="submit" class="btn btn-secondary">Download rows that need attention</button>
       </form>
       {% endif %}
-      <a class="btn btn-ghost" href="{{ settings_url }}/?section=bulk-add">Start over</a>
+      <a class="btn btn-ghost" href="{{ settings_url }}?section=bulk-add">Start over</a>
     </div>
     {% if not report.summary.importable %}
       <p class="text-txt-secondary">Nothing can be added from this file. Fix the errors, or remove the duplicates, and check it again.</p>
