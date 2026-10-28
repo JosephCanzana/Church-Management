@@ -22,11 +22,7 @@
         <label class="label" for="bulk-ext-file">CSV file</label>
         <input class="input" type="file" id="bulk-ext-file" name="file" accept=".csv,text/csv,.txt">
       </div>
-      <div>
-        <label class="label" for="bulk-ext-paste">Or paste rows, header line first</label>
-        <textarea class="input font-mono" id="bulk-ext-paste" name="pasted" rows="4" spellcheck="false"></textarea>
-        <p class="field-help">Pasting straight from Excel works. If you choose a file, the pasted text is ignored.</p>
-      </div>
+
       <div class="flex flex-wrap items-center gap-3">
         <button type="submit" class="btn btn-primary">Check extensions</button>
         <a class="btn btn-ghost" href="{% url 'superadmin:bulk_template' %}?kind=extensions">Download blank template</a>
@@ -52,12 +48,8 @@
         <label class="label" for="bulk-ppl-file">CSV file</label>
         <input class="input" type="file" id="bulk-ppl-file" name="file" accept=".csv,text/csv,.txt">
       </div>
+
       <div>
-        <label class="label" for="bulk-ppl-paste">Or paste rows, header line first</label>
-        <textarea class="input font-mono" id="bulk-ppl-paste" name="pasted" rows="4" spellcheck="false"></textarea>
-        <p class="field-help">If you choose a file, the pasted text is ignored.</p>
-      </div>
-      <div class="flex flex-wrap items-center gap-3">
         <button type="submit" class="btn btn-primary">Check people</button>
         <a class="btn btn-ghost" href="{% url 'superadmin:bulk_template' %}?kind=people">Download blank template</a>
       </div>

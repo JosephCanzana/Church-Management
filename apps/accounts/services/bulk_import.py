@@ -147,25 +147,34 @@ def _create_person(actor, request, data: dict) -> tuple[str, str | None]:
     """Create one person. Returns (account id, password or None when the type has no sign-in)."""
     from apps.accounts.models import Extension
     from apps.accounts.services import users
+    from apps.core.services import new_submission_token
 
     payload = {**data, "extension": Extension.objects.get(pk=data["extension_id"]), "role": "member"}
-    result = users.create_user(actor, request, payload)  # VERIFY: signature and return shape
-    user, password = result if isinstance(result, tuple) else (result, None)
+    # create_user spends its own one-time token, so every row needs a fresh one.
+    result = users.create_user(actor, request, payload, token=new_submission_token())
+    if result.duplicate:
+        raise ServiceError("Already exists (blocked by the submission token).")
+    password = result.password
     # PasswordInfo may expose .value or .password; show it only for people who can sign in.
-    secret = getattr(password, "value", None) or (password if isinstance(password, str) else None)
-    return user.account_id, secret
+    secret = getattr(password, "value", None) or getattr(password, "password", None) or (
+        password if isinstance(password, str) else None
+    )
+    return result.user.account_id, secret
 
 
 def _audit_summary(actor, request, kind: str, report: Report) -> None:
     """One summary row with COUNTS ONLY (each person already got their own row from the create service)."""
     from apps.audit.services import log_action
 
-    log_action(  # VERIFY: keyword names
-        actor=actor, request=request, action=f"{'extension' if kind == 'extensions' else 'account'}.bulk_import",
-        entity_type="extension" if kind == "extensions" else "app_user", entity_id=None, label="bulk add",
+    log_action(
+        action=f"{'extension' if kind == 'extensions' else 'account'}.bulk_import",
+        actor=actor,
+        request=request,
+        entity_type="extension" if kind == "extensions" else "app_user",
+        entity_id=None,
+        entity_label="bulk add",
         after={"created": report.created, "skipped": len(report.not_created), "rows": len(report.results)},
     )
-
 
 def _consume_token(token: str) -> None:
     from apps.core.services import consume_submission_token  # VERIFY import path
